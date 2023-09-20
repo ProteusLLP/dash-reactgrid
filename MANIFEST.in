@@ -1,0 +1,11 @@
+include dash_reactgrid/dash_reactgrid.min.js
+include dash_reactgrid/dash_reactgrid.min.js.map
+include dash_reactgrid/async-*.js
+include dash_reactgrid/async-*.js.map
+include dash_reactgrid/*-shared.js
+include dash_reactgrid/*-shared.js.map
+include dash_reactgrid/metadata.json
+include dash_reactgrid/package-info.json
+include README.md
+include LICENSE
+include package.json

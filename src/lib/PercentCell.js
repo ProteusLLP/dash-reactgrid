@@ -5,9 +5,11 @@ import { getCellProperty,keyCodes,  } from "@silevis/reactgrid";
 import { isNumpadNumericKey, inNumericKey, isAllowedOnNumberTypingKey, isNavigationKey } from "@silevis/reactgrid";
 import {PercentParser} from './NumberParser'
 
-const percentParser = new PercentParser(window.navigator.language)
+export const percentParser = new PercentParser(window.navigator.language)
 
-export default class PercentNumberCellTemplate {
+export class PercentCellTemplate {
+    constructor() {
+      }
     wasEscKeyPressed = false;
 
     getCompatibleCell(uncertainCell) {
@@ -38,7 +40,7 @@ export default class PercentNumberCellTemplate {
     }
 
     update(cell, cellToMerge){
-        return this.getCompatibleCell({ ...cell, value: cellToMerge.value });
+        return this.getCompatibleCell({ ...cell, value: percentParser.parse(cellToMerge.text) });
     }
 
      getTextFromCharCode = (cellText)=> {
@@ -110,3 +112,4 @@ export default class PercentNumberCellTemplate {
         />
     }
 }
+

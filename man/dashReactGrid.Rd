@@ -13,9 +13,10 @@
 dashReactGrid(id=NULL, columns=NULL, data=NULL,
 enableColumnSelection=NULL, enableFillHandle=NULL,
 enableRangeSelection=NULL, enableRowSelection=NULL,
-highlights=NULL, selectedCell=NULL, stickyBottomRows=NULL,
-stickyLeftColumns=NULL, stickyRightColumns=NULL,
-stickyTopRows=NULL, style=NULL, styleHeader=NULL)
+highlights=NULL, isExtendable=NULL, selectedCell=NULL,
+stickyBottomRows=NULL, stickyLeftColumns=NULL,
+stickyRightColumns=NULL, stickyTopRows=NULL, style=NULL,
+styleHeader=NULL)
 }
 
 \arguments{
@@ -34,6 +35,8 @@ stickyTopRows=NULL, style=NULL, styleHeader=NULL)
 \item{enableRowSelection}{Logical. }
 
 \item{highlights}{Logical | numeric | character | named list | unnamed list. }
+
+\item{isExtendable}{Logical. Whether the table automatically adds extra rows}
 
 \item{selectedCell}{Logical | numeric | character | named list | unnamed list. }
 

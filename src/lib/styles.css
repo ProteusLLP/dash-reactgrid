@@ -1,3 +1,7 @@
 .reactgrid input {
   border: none 
 }
+
+.reactgrid-content .rg-pane .rg-cell {
+  color: black
+}

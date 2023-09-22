@@ -5,9 +5,12 @@ import { getCellProperty,keyCodes,  } from "@silevis/reactgrid";
 import { isNumpadNumericKey, inNumericKey, isAllowedOnNumberTypingKey, isNavigationKey } from "@silevis/reactgrid";
 import {NumberParser} from './NumberParser.js'
 
-const numberParser = new NumberParser(window.navigator.language)
+export const numberParser = new NumberParser(window.navigator.language)
 
-export default class CustomNumberCellTemplate {
+export class CustomNumberCellTemplate {
+    constructor() {
+      }
+
     wasEscKeyPressed = false;
 
     getCompatibleCell(uncertainCell) {

@@ -131,6 +131,17 @@
         "required": false,
         "description": ""
       },
+      "isExtendable": {
+        "type": {
+          "name": "bool"
+        },
+        "required": false,
+        "description": "Whether the table automatically adds extra rows",
+        "defaultValue": {
+          "value": "false",
+          "computed": false
+        }
+      },
       "style": {
         "type": {
           "name": "object"

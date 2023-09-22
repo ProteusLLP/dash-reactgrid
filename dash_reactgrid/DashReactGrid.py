@@ -28,6 +28,9 @@ Keyword arguments:
 
 - highlights (boolean | number | string | dict | list; optional)
 
+- isExtendable (boolean; default False):
+    Whether the table automatically adds extra rows.
+
 - selectedCell (boolean | number | string | dict | list; optional)
 
 - stickyBottomRows (number; default 0)
@@ -47,10 +50,10 @@ Keyword arguments:
     _namespace = 'dash_reactgrid'
     _type = 'DashReactGrid'
     @_explicitize_args
-    def __init__(self, id=Component.UNDEFINED, columns=Component.REQUIRED, data=Component.REQUIRED, stickyLeftColumns=Component.UNDEFINED, stickyRightColumns=Component.UNDEFINED, stickyTopRows=Component.UNDEFINED, stickyBottomRows=Component.UNDEFINED, enableFillHandle=Component.UNDEFINED, enableRangeSelection=Component.UNDEFINED, enableRowSelection=Component.UNDEFINED, enableColumnSelection=Component.UNDEFINED, highlights=Component.UNDEFINED, selectedCell=Component.UNDEFINED, style=Component.UNDEFINED, styleHeader=Component.UNDEFINED, **kwargs):
-        self._prop_names = ['id', 'columns', 'data', 'enableColumnSelection', 'enableFillHandle', 'enableRangeSelection', 'enableRowSelection', 'highlights', 'selectedCell', 'stickyBottomRows', 'stickyLeftColumns', 'stickyRightColumns', 'stickyTopRows', 'style', 'styleHeader']
+    def __init__(self, id=Component.UNDEFINED, columns=Component.REQUIRED, data=Component.REQUIRED, stickyLeftColumns=Component.UNDEFINED, stickyRightColumns=Component.UNDEFINED, stickyTopRows=Component.UNDEFINED, stickyBottomRows=Component.UNDEFINED, enableFillHandle=Component.UNDEFINED, enableRangeSelection=Component.UNDEFINED, enableRowSelection=Component.UNDEFINED, enableColumnSelection=Component.UNDEFINED, highlights=Component.UNDEFINED, selectedCell=Component.UNDEFINED, isExtendable=Component.UNDEFINED, style=Component.UNDEFINED, styleHeader=Component.UNDEFINED, **kwargs):
+        self._prop_names = ['id', 'columns', 'data', 'enableColumnSelection', 'enableFillHandle', 'enableRangeSelection', 'enableRowSelection', 'highlights', 'isExtendable', 'selectedCell', 'stickyBottomRows', 'stickyLeftColumns', 'stickyRightColumns', 'stickyTopRows', 'style', 'styleHeader']
         self._valid_wildcard_attributes =            []
-        self.available_properties = ['id', 'columns', 'data', 'enableColumnSelection', 'enableFillHandle', 'enableRangeSelection', 'enableRowSelection', 'highlights', 'selectedCell', 'stickyBottomRows', 'stickyLeftColumns', 'stickyRightColumns', 'stickyTopRows', 'style', 'styleHeader']
+        self.available_properties = ['id', 'columns', 'data', 'enableColumnSelection', 'enableFillHandle', 'enableRangeSelection', 'enableRowSelection', 'highlights', 'isExtendable', 'selectedCell', 'stickyBottomRows', 'stickyLeftColumns', 'stickyRightColumns', 'stickyTopRows', 'style', 'styleHeader']
         self.available_wildcard_properties =            []
         _explicit_args = kwargs.pop('_explicit_args')
         _locals = locals()

@@ -1,11 +1,12 @@
-import React, {Component, useEffect, useState} from 'react';
+import React, { useEffect, useState} from 'react';
 import PropTypes from 'prop-types';
-import { ReactGrid,  Highlight  } from "@silevis/reactgrid";
+import { ReactGrid,  handlePaste  } from "@silevis/reactgrid";
 import "@silevis/reactgrid/styles.css";
 import "../styles.css"
 import { length } from 'ramda';
-import   CustomNumberCellTemplate  from './CustomNumberCell';
-import PercentCellTemplate  from './PercentCell';
+import  { CustomNumberCellTemplate, numberParser}  from '../CustomNumberCell';
+import {PercentCellTemplate, percentParser}  from '../PercentCell';
+import { NumberParser } from '../NumberParser';
 
 const createCellByType = (column,value,columnStyle,columnNonEditable)=>{
   
@@ -22,7 +23,8 @@ const createCellByType = (column,value,columnStyle,columnNonEditable)=>{
       return {type:column.type,time:Date(value),style:columnStyle,nonEditable:columnNonEditable}
  }
 }
-const CustomCellTemplates = {'percent':new PercentCellTemplate(),'customnumber': new CustomNumberCellTemplate()}
+
+const customCellTemplates = {'percent':new PercentCellTemplate(),'customnumber': new CustomNumberCellTemplate()}
 
 const getCellDataByType = (type,cell)=>{
   switch(type){
@@ -41,9 +43,9 @@ const getCellDataByType = (type,cell)=>{
 const alignToStyle =(align)=>{
   switch(align)
   {
-    case "left": return {"justify-content":"flex-start"};
-    case "center": return {"justify-content":"center"};
-    case "right": return {"justify-content":"flex-end"};
+    case "left": return {"justifyContent":"flex-start"};
+    case "center": return {"justifyContent":"center"};
+    case "right": return {"justifyContent":"flex-end"};
   }
 }
 
@@ -54,15 +56,9 @@ const DashReactGrid = props =>{
         const {id, columns, data,enableFillHandle, enableRangeSelection,enableRowSelection, enableColumnSelection, highlights, stickyLeftColumns,
         stickyRightColumns,
         stickyTopRows,
-        stickyBottomRows,
-        selectedCell, style, styleHeader, setProps} =props;
-        const columnIds = columns.map((column)=>column["columnId"])
-        const rows = []
-        const [thisRows, setRows] = useState(rows)
-        const [thisData, setData] = useState(data)
-        const [cellChangesIndex, setCellChangesIndex] = useState(() => -1);
-        const [cellChanges, setCellChanges] = useState(() => []);
-        const columnsStyle = columns.map((column)=>({...column.align ? alignToStyle(column.align):null,...column.style}))
+        stickyBottomRows,isExtendable,
+        selectedCell,  selectedRange, style, styleHeader, setProps} =props;       
+
         const simpleHandleContextMenu = (
           selectedRowIds,
           selectedColIds,
@@ -72,137 +68,21 @@ const DashReactGrid = props =>{
           return menuOptions;
         }
         
-        const undoChanges = (
-          changes, data
-        ) => {
-          const updated = applyNewValue(changes, data, true);
-          setCellChangesIndex(cellChangesIndex - 1);
-          return updated;
-        };
-
-        const redoChanges = (
-          changes,data
-        ) => {
-          const updated = applyNewValue(changes, data);
-          setCellChangesIndex(cellChangesIndex + 1);
-          return updated;
-        };
-
-      
-
-        const headerRow = {
-          rowId: "header",
-          cells: columns.map((column)=>( 
-            { type: "header", 
-              text: column.title, 
-              style: {...styleHeader,...(column.align ? alignToStyle(column.align):null),...column.style} || null } 
-            )
-            )
-          }
-        const applyNewValue = (
-          changes,
-          data,
-          usePrevValue = false
-        ) => {
-          let newData = structuredClone(data);
-          changes.forEach((change) => {
-            const fieldName = change.columnId;
-            const columnIndex = columnIds.indexOf(fieldName)
-            const Index = change.rowId;
-            const cell = usePrevValue ? change.previousCell : change.newCell;
-            if(Index>=length(newData))
-            {
-              const emptyRow = columns.map((column)=>null)
-              newData.push(...Array(Index-length(newData)+1).fill(emptyRow))
-            }
-            newData[Index][columnIndex] = getCellDataByType(columns[columnIndex].type,cell)
-          });
-          
-          return newData;
-        };
-
-        const handleUndoChanges = () => {
-          if (cellChangesIndex >= 0) {
-            const newData = undoChanges(cellChanges[cellChangesIndex], data)
-            createRows(newData)
-            setData(newData)
-            setProps({data:newData})
-          }
-        };
-      
-        const handleRedoChanges = () => {
-          if (cellChangesIndex + 1 <= cellChanges.length - 1) {
-            const newData = redoChanges(cellChanges[cellChangesIndex + 1], data)
-            createRows(newData)
-            setData(newData)
-            setProps({data:newData})
-          }
-        };
-     
-        const handleFocusLocationChanged = location =>{
-          setProps({selectedCell:location})
-        }
-      
-        
-        const createRow = (idx,data_row)=>{
-          return (
-          {
-            rowId:idx, 
-            cells : data_row.map( (data_item, col_num) => ( createCellByType(columns[col_num],data_item,columnsStyle[col_num],columns[col_num].nonEditable)))
-
-          })
-        }
-        const createRows = (data)=>(
-          setRows( [
-          headerRow,
-          ...data.map( (data_row,idx)=>(
-          createRow(idx,data_row)
-        ))])
-        );
-
-        useEffect(()=>{
-            createRows(data)
-        }, [data])
-
-        const applyChanges = (changes,data)=>{
-          const newData = structuredClone(data);
-            changes.forEach((change)=>
-            {
-                const fieldName = change.columnId;
-                const columnIndex = columnIds.indexOf(fieldName)
-                const Index = change.rowId;
-                newData[Index][columnIndex] = getCellDataByType(columns[columnIndex].type,change.newCell)
-            })
-            setData(newData)
-            createRows(newData)
-            setProps({data:newData})
-            setCellChanges([...cellChanges.slice(0, cellChangesIndex + 1), changes]);
-            setCellChangesIndex(cellChangesIndex + 1);
-        }
-        
-        const handleChanges = (changes) => { 
-          applyChanges(changes,data)
-          }; 
         return (
-            <div id={id} style={style} onKeyDown={(e) => {
-              if ((!isMacOs() && e.ctrlKey) || e.metaKey) {
-                switch (e.key) {
-                  case "z":
-                    handleUndoChanges();
-                    return;
-                  case "y":
-                    handleRedoChanges();
-                    return;
-                }
-              }
-            }}>
-                <ReactGrid rows={thisRows} columns={columns} onCellsChanged = {handleChanges} onFocusLocationChanged={handleFocusLocationChanged} enableFillHandle = {enableFillHandle} enableRangeSelection ={enableRangeSelection} enableRowSelection={enableRowSelection} enableColumnSelection={enableColumnSelection} 
+            <div id={id} style={style}        
+            >
+                <ReactGridDataHandler data={data} columns={columns} enableFillHandle = {enableFillHandle} enableRangeSelection ={enableRangeSelection} enableRowSelection={enableRowSelection} enableColumnSelection={enableColumnSelection} 
                 onContextMenu={simpleHandleContextMenu} highlights={highlights}
                 stickyLeftColumns={stickyLeftColumns}
 		            stickyRightColumns={stickyRightColumns}
 		            stickyTopRows={stickyTopRows}
 		            stickyBottomRows={stickyBottomRows}
-                customCellTemplates= {CustomCellTemplates}
+                isExtendable = {isExtendable}
+                styleHeader = {styleHeader}
+                selectedCell = {selectedCell}
+                selectedRange = {selectedRange}
+                setProps = {setProps}
+                
                 />
             </div>
         );
@@ -213,7 +93,8 @@ DashReactGrid.defaultProps = {enableFillHandle:true,enableRangeSelection:true,en
   stickyRightColumns:0,
   stickyTopRows:0,
   stickyBottomRows:0,
-  highlights:null
+  highlights:null,
+  isExtendable: false
 }
 
 ;
@@ -246,6 +127,10 @@ DashReactGrid.propTypes = {
     highlights: PropTypes.any,
     selectedCell: PropTypes.any,
     /**
+     * Whether the table automatically adds extra rows
+     */
+    isExtendable: PropTypes.bool,
+    /**
      * The style of the container (div)
      */
         style: PropTypes.object,
@@ -257,4 +142,270 @@ DashReactGrid.propTypes = {
         setProps: PropTypes.func
 };
 
+const ReactGridDataHandler = (props)=>{
+
+  const {columns,data,selectedCell,selectedRange,styleHeader,isExtendable, setProps,...otherProps} = props;
+const columnIds = columns.map((column)=>column["columnId"])
+const rows = []
+const [thisRows, setRows] = useState(rows)
+const [thisData, setData] = useState(data)
+const columnsStyle = columns.map((column)=>({...column.align ? alignToStyle(column.align):null,...column.style}))
+const [cellChangesIndex, setCellChangesIndex] = useState(() => -1);
+const [cellChanges, setCellChanges] = useState(() => []);
+const undoChanges = (
+  changes, data
+) => {
+  const updated = applyNewValue(changes, data, true);
+  setCellChangesIndex(cellChangesIndex - 1);
+  return updated;
+};
+
+const redoChanges = (
+  changes,data
+) => {
+  const updated = applyNewValue(changes, data);
+  setCellChangesIndex(cellChangesIndex + 1);
+  return updated;
+};
+
+const headerRow = {
+  rowId: "header",
+  cells: columns.map((column)=>( 
+    { type: "header", 
+      text: column.title, 
+      style: {...styleHeader,...(column.align ? alignToStyle(column.align):null),...column.style} || null } 
+    )
+    )
+  }
+
+
+const applyNewValue = (
+  changes,
+  data,
+  usePrevValue = false
+) => {
+  let newData = structuredClone(data);
+  changes.forEach((change) => {
+    const fieldName = change.columnId;
+    const columnIndex = columnIds.indexOf(fieldName)
+    const Index = change.rowId;
+    const cell = usePrevValue ? change.previousCell : change.newCell;
+    if(Index>=length(newData))
+    {
+      const emptyRow = columns.map((column)=>null)
+      newData.push(...Array(Index-length(newData)+1).fill(emptyRow))
+    }
+    newData[Index][columnIndex] = getCellDataByType(columns[columnIndex].type,cell)
+  });
+  
+  return newData;
+};
+
+const handleUndoChanges = () => {
+  if (cellChangesIndex >= 0) {
+    const newData = undoChanges(cellChanges[cellChangesIndex], data)
+    createRows(newData)
+    setData(newData)
+    setProps({data:newData})
+  }
+};
+
+const handleRedoChanges = () => {
+  if (cellChangesIndex + 1 <= cellChanges.length - 1) {
+    const newData = redoChanges(cellChanges[cellChangesIndex + 1], data)
+    createRows(newData)
+    setData(newData)
+    setProps({data:newData})
+  }
+};
+
+
+const createRow = (idx,data_row)=>{
+  return (
+  {
+    rowId:idx, 
+    cells :          
+        columns.map( (column, col_num) => ( createCellByType(column,data_row[col_num],columnsStyle[col_num],column.nonEditable)))
+  })
+}
+
+const createRows = (data)=>{(
+  setRows( [
+  headerRow,
+  ...data.map( (data_row,idx)=>(
+  createRow(idx,data_row)
+))])
+)};
+
+const reshapeData = (data)=>{
+    const newData = structuredClone(data)
+    newData.forEach((row)=>{
+      row.length = columns.length
+    })
+    setProps({data:newData})
+}
+
+
+useEffect(()=>{
+    createRows(data)
+}, [data,columns])
+
+useEffect(()=>{
+  reshapeData(data)
+}, [columns])
+
+const applyChanges = (changes,data)=>{
+  const newData = structuredClone(data);
+    changes.forEach((change)=>
+    {
+        const fieldName = change.columnId;
+        const columnIndex = columnIds.indexOf(fieldName)
+        const Index = change.rowId;
+        newData[Index][columnIndex] = getCellDataByType(columns[columnIndex].type,change.newCell)
+    })
+    if(isExtendable){
+      //check to see if rows can be removed
+    while (newData.length>1 && !newData[newData.length-1].some((v)=>v)) {
+      newData.pop()
+    }
+    //check to see if a new row is needed
+    if (isExtendable && newData[newData.length-1].some((v)=>v)) {
+        newData.push(columns.map((column)=>null))
+    }
+  }
+    
+    createRows(newData)
+    setProps({data:newData})
+    setCellChanges([...cellChanges.slice(0, cellChangesIndex + 1), changes]);
+    setCellChangesIndex(cellChangesIndex + 1);
+}
+
+
+const handleFocusLocationChanged = location =>{
+  setProps({selectedCell:location})
+}
+
+
+const handleChanges = (changes) => { 
+  applyChanges(changes,data)
+  }; 
+
+const myHandlePaste = (e) => {
+        e.stopPropagation()
+        e.preventDefault()
+        const activeSelectedRange = selectedRange;
+        if (!activeSelectedRange) {
+           return
+        }
+
+        // count the rows in the clipboard
+        const htmlData = e.clipboardData.getData("text/html");
+        const document = new DOMParser().parseFromString(htmlData, "text/html");
+        console.log(document)
+        const hasReactGridAttribute = document.body.firstElementChild?.getAttribute("data-reactgrid") === "reactgrid-content";
+        let pastedRows =[]
+        if (
+            hasReactGridAttribute &&
+            document.body.firstElementChild?.firstElementChild
+            )        {
+            const  tableRows = document.body.firstElementChild.firstElementChild.children;
+
+            for (let ri = 0; ri < tableRows.length; ri++) {
+              const row = [];
+              for (let ci = 0; ci < tableRows[ri].children.length; ci++) {
+                const rawData =
+                  tableRows[ri].children[ci].getAttribute("data-reactgrid");
+                const data = rawData && JSON.parse(rawData);
+                const text = tableRows[ri].children[ci].innerHTML;
+                row.push(data ? data : { type: "text", text});
+              }
+              pastedRows.push(row)
+            }
+          }
+        else {console.log(pastedRows = e.clipboardData
+          .getData("text/plain"))
+              pastedRows = e.clipboardData
+        .getData("text/plain")
+        .split("\n")
+        .map((line) =>
+          line
+            .split("\t")
+            .map((t) => { let tnew = t.replace('\r','');
+              return { type: "text", text: tnew }
+            })
+        );
+        }
+        console.log(pastedRows)
+        let newData = structuredClone(data);
+        // check to see if there are sufficient rows in the table - if not create them
+        if (isExtendable){
+            const nNewRows = pastedRows.length- (thisRows.length-activeSelectedRange[0].first.row.idx )+1
+            console.log(nNewRows)
+            if (nNewRows> 0 )        {
+              for(let row=0;row<nNewRows; row++){
+                newData.push(createEmptyDataRow()) 
+              }
+        }
+        }
+
+        pastedRows.forEach((row, ri) =>
+          row.forEach((cell, ci) => {
+            const rowIdx = activeSelectedRange[0].first.row.idx + ri-1; //-1 for header cell
+            const columnIdx = activeSelectedRange[0].first.column.idx + ci;
+            if (columnIdx>=columns.length) return
+            newData[rowIdx][columnIdx]=cell.value || parseToValue(cell.text,columns[columnIdx].type)
+      }))
+      createRows(newData)
+      setProps({data:newData})
+
+      return
+      }
+    
+const createEmptyDataRow = () =>{
+  return columns.map((column)=>null)
+}        
+
+const parseToValue=(text,type)=>{
+  switch(type){
+    case "number":
+      return numberParser.parse(text)
+    case "percent":
+      return percentParser.parse(text)
+} return text
+}
+
+const handleSelectionChanged = e =>
+{
+  setProps({selectedRange:e})
+}
+
+
+
+      return (
+        <div onPasteCapture = {myHandlePaste} onKeyDown={(e) => {
+          if ((!isMacOs() && e.ctrlKey) || e.metaKey) {
+            switch (e.key) {
+              case "z":
+                handleUndoChanges();
+                return;
+              case "y":
+                handleRedoChanges();
+                return;
+            }
+          }
+        }} >
+          <ReactGrid rows={thisRows} columns={props.columns} onCellsChanged = {handleChanges} onFocusLocationChanged={handleFocusLocationChanged} enableFillHandle = {props.enableFillHandle} enableRangeSelection ={props.enableRangeSelection} enableRowSelection={props.enableRowSelection} enableColumnSelection={props.enableColumnSelection} 
+                onContextMenu={props.simpleHandleContextMenu} highlights={props.highlights}
+                stickyLeftColumns={props.stickyLeftColumns}
+		            stickyRightColumns={props.stickyRightColumns}
+		            stickyTopRows={props.stickyTopRows}
+		            stickyBottomRows={props.stickyBottomRows}
+                customCellTemplates= {customCellTemplates}
+                onSelectionChanged = {handleSelectionChanged}
+                />
+        </div>
+      )
+
+
+}
 export default DashReactGrid

@@ -16,6 +16,7 @@ Keyword arguments:
 - `enableRangeSelection` (Bool; optional)
 - `enableRowSelection` (Bool; optional)
 - `highlights` (Bool | Real | String | Dict | Array; optional)
+- `isExtendable` (Bool; optional): Whether the table automatically adds extra rows
 - `selectedCell` (Bool | Real | String | Dict | Array; optional)
 - `stickyBottomRows` (Real; optional)
 - `stickyLeftColumns` (Real; optional)
@@ -25,7 +26,7 @@ Keyword arguments:
 - `styleHeader` (Dict; optional)
 """
 function dashreactgrid(; kwargs...)
-        available_props = Symbol[:id, :columns, :data, :enableColumnSelection, :enableFillHandle, :enableRangeSelection, :enableRowSelection, :highlights, :selectedCell, :stickyBottomRows, :stickyLeftColumns, :stickyRightColumns, :stickyTopRows, :style, :styleHeader]
+        available_props = Symbol[:id, :columns, :data, :enableColumnSelection, :enableFillHandle, :enableRangeSelection, :enableRowSelection, :highlights, :isExtendable, :selectedCell, :stickyBottomRows, :stickyLeftColumns, :stickyRightColumns, :stickyTopRows, :style, :styleHeader]
         wild_props = Symbol[]
         return Component("dashreactgrid", "DashReactGrid", "dash_reactgrid", available_props, wild_props; kwargs...)
 end

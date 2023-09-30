@@ -6,7 +6,8 @@ import "../styles.css"
 import { length } from 'ramda';
 import  { CustomNumberCellTemplate, numberParser}  from '../CustomNumberCell';
 import {PercentCellTemplate, percentParser}  from '../PercentCell';
-import { NumberParser } from '../NumberParser';
+
+const locale = window.navigator.language
 
 const createCellByType = (column,value,columnStyle,columnNonEditable)=>{
   
@@ -14,13 +15,13 @@ const createCellByType = (column,value,columnStyle,columnNonEditable)=>{
    case 'text':
      return {type:column.type,text:value||'',style:columnStyle,nonEditable:columnNonEditable}
    case 'number':
-     return {type:'customnumber',value:value,style:columnStyle,nonEditable:columnNonEditable}
+     return {type:'customnumber',value:value,style:columnStyle,nonEditable:columnNonEditable,format:new Intl.NumberFormat(locale, {...column.formatOptions})}
      case 'percent':
-      return {type:'percent',value:value,style:columnStyle,nonEditable:columnNonEditable,format:new Intl.NumberFormat(window.navigator.language, {style: "percent",maximumFractionDigits:15,maximumSignificantDigits:15})}
+      return {type:'percent',value:value,style:columnStyle,nonEditable:columnNonEditable,format:new Intl.NumberFormat(locale, {...column.formatOptions,style: "percent"})}
      case 'date':
-     return {type:column.type,date:Date(value),style:columnStyle,nonEditable:columnNonEditable}
+     return {type:column.type,date:Date(value),style:columnStyle,nonEditable:columnNonEditable,format:new Intl.DateTimeFormat(locale, {...column.formatOptions})}
      case 'time':
-      return {type:column.type,time:Date(value),style:columnStyle,nonEditable:columnNonEditable}
+      return {type:column.type,time:Date(value),style:columnStyle,nonEditable:columnNonEditable,format:new Intl.DateTimeFormat(locale, {...column.formatOptions})}
  }
 }
 

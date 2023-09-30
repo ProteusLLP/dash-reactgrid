@@ -36,11 +36,11 @@ export class PercentCellTemplate {
                 return { cell: { ...this.getCompatibleCell({ ...cell, value }), text: char }, enableEditMode: true }
             return { cell: this.getCompatibleCell({ ...cell, value }), enableEditMode: true }
         }
-        return { cell, enableEditMode: keyCode === keyCodes.POINTER || keyCode === keyCodes.ENTER }
+       return { cell, enableEditMode: keyCode === keyCodes.POINTER || keyCode === keyCodes.ENTER }
     }
 
     update(cell, cellToMerge){
-        return this.getCompatibleCell({ ...cell, value: percentParser.parse(cellToMerge.text) });
+        return this.getCompatibleCell({ ...cell, value: cellToMerge.value });
     }
 
      getTextFromCharCode = (cellText)=> {
@@ -80,7 +80,7 @@ export class PercentCellTemplate {
             onCellChanged(this.getCompatibleCell({ ...cell, value: percentParser.parse(e.currentTarget.value) }), !this.wasEscKeyPressed); this.wasEscKeyPressed = false; }
         
         const locale = cell.format ? cell.format.resolvedOptions().locale : window.navigator.languages[0];
-        const format = new Intl.NumberFormat(locale, {style:'percent', useGrouping: false, maximumFractionDigits: 17 });
+        const format = new Intl.NumberFormat(locale, {style:'percent', useGrouping: false, maximumFractionDigits: 16 });
         var defaultValue = Number.isNaN(cell.value) ? this.getTextFromCharCode(cell.text) : format.format(cell.value);
         return <input
             inputMode='text'

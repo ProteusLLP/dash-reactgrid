@@ -5,7 +5,7 @@ app = Dash(__name__)
 
 target_terms = [1, 5, 20]
 def create_columns(terms):
-    columns = [{"columnId":"time","title":"Time","align":"left","type":"number"}]+[{"columnId":str(term),"title":str(term)+ " Year Rate","align":"right","type":"percent"} for term in terms]
+    columns = [{"columnId":"time","title":"Time","align":"left","type":"number"}]+[{"columnId":str(term),"title":str(term)+ " Year Rate","align":"right","type":"percent","formatOptions":{"maximumFractionDigits":3}} for term in terms]
     return columns
 
 columns = create_columns(target_terms)

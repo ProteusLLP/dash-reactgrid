@@ -58,7 +58,7 @@ const DashReactGrid = props =>{
         stickyRightColumns,
         stickyTopRows,
         stickyBottomRows,isExtendable,
-        selectedCell,  selectedRange, style, styleHeader, setProps} =props;       
+        selectedCell,  selectedRange, style, styleHeader, className,disableVirtualScrolling,setProps} =props;       
 
         const simpleHandleContextMenu = (
           selectedRowIds,
@@ -82,7 +82,9 @@ const DashReactGrid = props =>{
                 styleHeader = {styleHeader}
                 selectedCell = {selectedCell}
                 selectedRange = {selectedRange}
+                className = {className}
                 setProps = {setProps}
+                disableVirtualScrolling = {disableVirtualScrolling}
                 
                 />
             </div>
@@ -95,7 +97,9 @@ DashReactGrid.defaultProps = {enableFillHandle:true,enableRangeSelection:true,en
   stickyTopRows:0,
   stickyBottomRows:0,
   highlights:null,
-  isExtendable: false
+  isExtendable: false,
+  className:null,
+  disableVirtualScrolling:true
 }
 
 ;
@@ -136,6 +140,8 @@ DashReactGrid.propTypes = {
      */
         style: PropTypes.object,
         styleHeader: PropTypes.object,
+    className: PropTypes.string,
+    disableVirtualScrolling: PropTypes.bool,
     /**
      * Dash-assigned callback that should be called to report property changes
      * to Dash, to make them available for callbacks.
@@ -145,7 +151,7 @@ DashReactGrid.propTypes = {
 
 const ReactGridDataHandler = (props)=>{
 
-  const {columns,data,selectedCell,selectedRange,styleHeader,isExtendable, setProps,...otherProps} = props;
+  const {columns,data,selectedCell,selectedRange,styleHeader,isExtendable, className,highlights,setProps,...otherProps} = props;
 const columnIds = columns.map((column)=>column["columnId"])
 const rows = []
 const [thisRows, setRows] = useState(rows)
@@ -174,9 +180,10 @@ const headerRow = {
   cells: columns.map((column)=>( 
     { type: "header", 
       text: column.title, 
-      style: {...styleHeader,...(column.align ? alignToStyle(column.align):null),...column.style} || null } 
+      style: {...styleHeader,...column.headerStyle, ...(column.align ? alignToStyle(column.align):null)} || null } 
     )
-    )
+    ),
+    height:styleHeader?.height
   }
 
 
@@ -302,7 +309,6 @@ const myHandlePaste = (e) => {
         // count the rows in the clipboard
         const htmlData = e.clipboardData.getData("text/html");
         const document = new DOMParser().parseFromString(htmlData, "text/html");
-        console.log(document)
         const hasReactGridAttribute = document.body.firstElementChild?.getAttribute("data-reactgrid") === "reactgrid-content";
         let pastedRows =[]
         if (
@@ -323,8 +329,7 @@ const myHandlePaste = (e) => {
               pastedRows.push(row)
             }
           }
-        else {console.log(pastedRows = e.clipboardData
-          .getData("text/plain"))
+        else {
               pastedRows = e.clipboardData
         .getData("text/plain")
         .split("\n")
@@ -336,12 +341,10 @@ const myHandlePaste = (e) => {
             })
         );
         }
-        console.log(pastedRows)
         let newData = structuredClone(data);
         // check to see if there are sufficient rows in the table - if not create them
         if (isExtendable){
             const nNewRows = pastedRows.length- (thisRows.length-activeSelectedRange[0].first.row.idx )+1
-            console.log(nNewRows)
             if (nNewRows> 0 )        {
               for(let row=0;row<nNewRows; row++){
                 newData.push(createEmptyDataRow()) 
@@ -396,13 +399,15 @@ const handleSelectionChanged = e =>
           }
         }} >
           <ReactGrid rows={thisRows} columns={props.columns} onCellsChanged = {handleChanges} onFocusLocationChanged={handleFocusLocationChanged} enableFillHandle = {props.enableFillHandle} enableRangeSelection ={props.enableRangeSelection} enableRowSelection={props.enableRowSelection} enableColumnSelection={props.enableColumnSelection} 
-                onContextMenu={props.simpleHandleContextMenu} highlights={props.highlights}
+                onContextMenu={props.simpleHandleContextMenu} highlights={highlights}
                 stickyLeftColumns={props.stickyLeftColumns}
 		            stickyRightColumns={props.stickyRightColumns}
 		            stickyTopRows={props.stickyTopRows}
 		            stickyBottomRows={props.stickyBottomRows}
                 customCellTemplates= {customCellTemplates}
                 onSelectionChanged = {handleSelectionChanged}
+                disableVirtualScrolling = {props.disableVirtualScrolling}
+                className = {className}
                 />
         </div>
       )

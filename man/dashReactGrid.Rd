@@ -10,21 +10,25 @@
 }
 
 \usage{
-dashReactGrid(id=NULL, columns=NULL, data=NULL,
-enableColumnSelection=NULL, enableFillHandle=NULL,
-enableRangeSelection=NULL, enableRowSelection=NULL,
-highlights=NULL, isExtendable=NULL, selectedCell=NULL,
-stickyBottomRows=NULL, stickyLeftColumns=NULL,
-stickyRightColumns=NULL, stickyTopRows=NULL, style=NULL,
-styleHeader=NULL)
+dashReactGrid(id=NULL, className=NULL, columns=NULL, data=NULL,
+disableVirtualScrolling=NULL, enableColumnSelection=NULL,
+enableFillHandle=NULL, enableRangeSelection=NULL,
+enableRowSelection=NULL, highlights=NULL, isExtendable=NULL,
+selectedCell=NULL, stickyBottomRows=NULL,
+stickyLeftColumns=NULL, stickyRightColumns=NULL,
+stickyTopRows=NULL, style=NULL, styleHeader=NULL)
 }
 
 \arguments{
 \item{id}{Character. The ID used to identify this component in Dash callbacks.}
 
+\item{className}{Character. }
+
 \item{columns}{Logical | numeric | character | named list | unnamed list. A label that will be printed when this component is rendered.}
 
 \item{data}{Logical | numeric | character | named list | unnamed list. The value displayed in the input.}
+
+\item{disableVirtualScrolling}{Logical. }
 
 \item{enableColumnSelection}{Logical. }
 

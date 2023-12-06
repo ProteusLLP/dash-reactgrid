@@ -12,11 +12,15 @@ Keyword arguments:
 - id (string; optional):
     The ID used to identify this component in Dash callbacks.
 
+- className (string; optional)
+
 - columns (boolean | number | string | dict | list; required):
     A label that will be printed when this component is rendered.
 
 - data (boolean | number | string | dict | list; required):
     The value displayed in the input.
+
+- disableVirtualScrolling (boolean; default True)
 
 - enableColumnSelection (boolean; default True)
 
@@ -50,10 +54,10 @@ Keyword arguments:
     _namespace = 'dash_reactgrid'
     _type = 'DashReactGrid'
     @_explicitize_args
-    def __init__(self, id=Component.UNDEFINED, columns=Component.REQUIRED, data=Component.REQUIRED, stickyLeftColumns=Component.UNDEFINED, stickyRightColumns=Component.UNDEFINED, stickyTopRows=Component.UNDEFINED, stickyBottomRows=Component.UNDEFINED, enableFillHandle=Component.UNDEFINED, enableRangeSelection=Component.UNDEFINED, enableRowSelection=Component.UNDEFINED, enableColumnSelection=Component.UNDEFINED, highlights=Component.UNDEFINED, selectedCell=Component.UNDEFINED, isExtendable=Component.UNDEFINED, style=Component.UNDEFINED, styleHeader=Component.UNDEFINED, **kwargs):
-        self._prop_names = ['id', 'columns', 'data', 'enableColumnSelection', 'enableFillHandle', 'enableRangeSelection', 'enableRowSelection', 'highlights', 'isExtendable', 'selectedCell', 'stickyBottomRows', 'stickyLeftColumns', 'stickyRightColumns', 'stickyTopRows', 'style', 'styleHeader']
+    def __init__(self, id=Component.UNDEFINED, columns=Component.REQUIRED, data=Component.REQUIRED, stickyLeftColumns=Component.UNDEFINED, stickyRightColumns=Component.UNDEFINED, stickyTopRows=Component.UNDEFINED, stickyBottomRows=Component.UNDEFINED, enableFillHandle=Component.UNDEFINED, enableRangeSelection=Component.UNDEFINED, enableRowSelection=Component.UNDEFINED, enableColumnSelection=Component.UNDEFINED, highlights=Component.UNDEFINED, selectedCell=Component.UNDEFINED, isExtendable=Component.UNDEFINED, style=Component.UNDEFINED, styleHeader=Component.UNDEFINED, className=Component.UNDEFINED, disableVirtualScrolling=Component.UNDEFINED, **kwargs):
+        self._prop_names = ['id', 'className', 'columns', 'data', 'disableVirtualScrolling', 'enableColumnSelection', 'enableFillHandle', 'enableRangeSelection', 'enableRowSelection', 'highlights', 'isExtendable', 'selectedCell', 'stickyBottomRows', 'stickyLeftColumns', 'stickyRightColumns', 'stickyTopRows', 'style', 'styleHeader']
         self._valid_wildcard_attributes =            []
-        self.available_properties = ['id', 'columns', 'data', 'enableColumnSelection', 'enableFillHandle', 'enableRangeSelection', 'enableRowSelection', 'highlights', 'isExtendable', 'selectedCell', 'stickyBottomRows', 'stickyLeftColumns', 'stickyRightColumns', 'stickyTopRows', 'style', 'styleHeader']
+        self.available_properties = ['id', 'className', 'columns', 'data', 'disableVirtualScrolling', 'enableColumnSelection', 'enableFillHandle', 'enableRangeSelection', 'enableRowSelection', 'highlights', 'isExtendable', 'selectedCell', 'stickyBottomRows', 'stickyLeftColumns', 'stickyRightColumns', 'stickyTopRows', 'style', 'styleHeader']
         self.available_wildcard_properties =            []
         _explicit_args = kwargs.pop('_explicit_args')
         _locals = locals()

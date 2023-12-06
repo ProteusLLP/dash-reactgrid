@@ -9,8 +9,10 @@ A DashReactGrid component.
 
 Keyword arguments:
 - `id` (String; optional): The ID used to identify this component in Dash callbacks.
+- `className` (String; optional)
 - `columns` (Bool | Real | String | Dict | Array; required): A label that will be printed when this component is rendered.
 - `data` (Bool | Real | String | Dict | Array; required): The value displayed in the input.
+- `disableVirtualScrolling` (Bool; optional)
 - `enableColumnSelection` (Bool; optional)
 - `enableFillHandle` (Bool; optional)
 - `enableRangeSelection` (Bool; optional)
@@ -26,7 +28,7 @@ Keyword arguments:
 - `styleHeader` (Dict; optional)
 """
 function dashreactgrid(; kwargs...)
-        available_props = Symbol[:id, :columns, :data, :enableColumnSelection, :enableFillHandle, :enableRangeSelection, :enableRowSelection, :highlights, :isExtendable, :selectedCell, :stickyBottomRows, :stickyLeftColumns, :stickyRightColumns, :stickyTopRows, :style, :styleHeader]
+        available_props = Symbol[:id, :className, :columns, :data, :disableVirtualScrolling, :enableColumnSelection, :enableFillHandle, :enableRangeSelection, :enableRowSelection, :highlights, :isExtendable, :selectedCell, :stickyBottomRows, :stickyLeftColumns, :stickyRightColumns, :stickyTopRows, :style, :styleHeader]
         wild_props = Symbol[]
         return Component("dashreactgrid", "DashReactGrid", "dash_reactgrid", available_props, wild_props; kwargs...)
 end

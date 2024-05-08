@@ -24,7 +24,7 @@
   "author": "James Norman <james.norman@proteusllp.com>",
   "license": "MIT",
   "dependencies": {
-    "@silevis/reactgrid": "^4.0.5",
+    "@silevis/reactgrid": "^4.1.3",
     "ramda": "^0.29.1"
   },
   "devDependencies": {

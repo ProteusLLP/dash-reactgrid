@@ -1,15 +1,15 @@
 import React from 'react';
 // NOTE: all modules imported below may be imported from '@silevis/reactgrid'
 
-import { getCellProperty,keyCodes,  } from "@silevis/reactgrid";
+import { getCellProperty, keyCodes, } from "@silevis/reactgrid";
 import { isNumpadNumericKey, inNumericKey, isAllowedOnNumberTypingKey, isNavigationKey } from "@silevis/reactgrid";
-import {PercentParser} from './NumberParser'
+import { PercentParser } from './NumberParser'
 
 export const percentParser = new PercentParser(window.navigator.language)
 
 export class PercentCellTemplate {
     constructor() {
-      }
+    }
     wasEscKeyPressed = false;
 
     getCompatibleCell(uncertainCell) {
@@ -25,25 +25,25 @@ export class PercentCellTemplate {
         return { ...uncertainCell, value: displayValue, text }
     }
 
-    handleKeyDown(cell, keyCode, ctrl,shift, alt){
+    handleKeyDown(cell, keyCode, ctrl, shift, alt) {
         if (isNumpadNumericKey(keyCode)) keyCode -= 48;
         const char = String.fromCharCode(keyCode);
-        if (!ctrl && !alt && !shift && (inNumericKey(keyCode) || isAllowedOnNumberTypingKey(keyCode)) ) {
-            
-            const value = Number(char)/100;
+        if (!ctrl && !alt && !shift && (inNumericKey(keyCode) || isAllowedOnNumberTypingKey(keyCode))) {
 
-            if (Number.isNaN(value) )
+            const value = Number(char) / 100;
+
+            if (Number.isNaN(value))
                 return { cell: { ...this.getCompatibleCell({ ...cell, value }), text: char }, enableEditMode: true }
             return { cell: this.getCompatibleCell({ ...cell, value }), enableEditMode: true }
         }
-       return { cell, enableEditMode: keyCode === keyCodes.POINTER || keyCode === keyCodes.ENTER }
+        return { cell, enableEditMode: keyCode === keyCodes.POINTER || keyCode === keyCodes.ENTER }
     }
 
-    update(cell, cellToMerge){
+    update(cell, cellToMerge) {
         return this.getCompatibleCell({ ...cell, value: cellToMerge.value });
     }
 
-     getTextFromCharCode = (cellText)=> {
+    getTextFromCharCode = (cellText) => {
         switch (cellText.charCodeAt(0)) {
             case keyCodes.DASH:
             case keyCodes.FIREFOX_DASH:
@@ -67,20 +67,21 @@ export class PercentCellTemplate {
 
     render(cell, isInEditMode, onCellChanged) {
         if (!isInEditMode) {
-            const isValid = cell.validator?.(cell.value) ?? true;           
+            const isValid = cell.validator?.(cell.value) ?? true;
             const textToDisplay = !isValid && cell.errorMessage ? cell.errorMessage : cell.text;
             return textToDisplay;
         }
 
-        const handleOnChange = (e)=>{
-                    onCellChanged(this.getCompatibleCell({ ...cell, value: percentParser.parse(e.currentTarget.value) }), false)
-            }
+        const handleOnChange = (e) => {
+            onCellChanged(this.getCompatibleCell({ ...cell, value: percentParser.parse(e.currentTarget.value) }), false)
+        }
 
-        const handleOnBlur = (e) => { 
-            onCellChanged(this.getCompatibleCell({ ...cell, value: percentParser.parse(e.currentTarget.value) }), !this.wasEscKeyPressed); this.wasEscKeyPressed = false; }
-        
+        const handleOnBlur = (e) => {
+            onCellChanged(this.getCompatibleCell({ ...cell, value: percentParser.parse(e.currentTarget.value) }), !this.wasEscKeyPressed); this.wasEscKeyPressed = false;
+        }
+
         const locale = cell.format ? cell.format.resolvedOptions().locale : window.navigator.languages[0];
-        const format = new Intl.NumberFormat(locale, {style:'percent', useGrouping: false, maximumFractionDigits: 16 });
+        const format = new Intl.NumberFormat(locale, { style: 'percent', useGrouping: false, maximumFractionDigits: 16 });
         var defaultValue = Number.isNaN(cell.value) ? this.getTextFromCharCode(cell.text) : format.format(cell.value);
         return <input
             inputMode='text'
@@ -88,7 +89,11 @@ export class PercentCellTemplate {
                 this.input = input
                 if (input) {
                     input.focus();
-                    input.setSelectionRange(input.value.length-1, input.value.length-1); // to set caret to before the suffix
+                    if (input.value.charAt(input.value.length - 1) === '-') {
+                        input.value = input.value + '%';
+                    }
+                    input.setSelectionRange(input.value.length - 1, input.value.length - 1);
+                    // to set caret to before the suffix
                 }
             }}
             defaultValue={defaultValue}
@@ -96,13 +101,13 @@ export class PercentCellTemplate {
             onBlur={handleOnBlur}
             onKeyDown={(e) => {
                 if (
-                  inNumericKey(e.keyCode) ||
-                  ((this.input.selectionStart!=this.input.value.length-1 || this.input.selectionEnd!=this.input.value.length-1) && isNavigationKey(e.keyCode)) ||
-                  isAllowedOnNumberTypingKey(e.keyCode) ||
-                  ((e.ctrlKey || e.metaKey) && e.keyCode === keyCodes.KEY_A)
-                )                   
-                  e.stopPropagation();
-                if (!inNumericKey(e.keyCode) && !((this.input.selectionStart!=this.input.value.length-1 || this.input.selectionEnd!=this.input.value.length-1) && isNavigationKey(e.keyCode))  && !isAllowedOnNumberTypingKey(e.keyCode)) e.preventDefault();
+                    inNumericKey(e.keyCode) ||
+                    ((this.input.selectionStart != this.input.value.length - 1 || this.input.selectionEnd != this.input.value.length - 1) && isNavigationKey(e.keyCode)) ||
+                    isAllowedOnNumberTypingKey(e.keyCode) ||
+                    ((e.ctrlKey || e.metaKey) && e.keyCode === keyCodes.KEY_A)
+                )
+                    e.stopPropagation();
+                if (!inNumericKey(e.keyCode) && !((this.input.selectionStart != this.input.value.length - 1 || this.input.selectionEnd != this.input.value.length - 1) && isNavigationKey(e.keyCode)) && !isAllowedOnNumberTypingKey(e.keyCode)) e.preventDefault();
                 if (e.keyCode === keyCodes.ESCAPE) this.wasEscKeyPressed = true;
             }}
             onCopy={e => e.stopPropagation()}

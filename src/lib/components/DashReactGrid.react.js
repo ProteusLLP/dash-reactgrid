@@ -153,10 +153,34 @@ const ReactGridDataHandler = (props)=>{
 
   const {columns,data,selectedCell,selectedRange,styleHeader,isExtendable, className,highlights,setProps,...otherProps} = props;
 const columnIds = columns.map((column)=>column["columnId"])
-const rows = []
+const columnsStyle = columns.map((column)=>({...column.align ? alignToStyle(column.align):null,...column.style}))
+const createRow = (idx,data_row)=>{
+  return (
+  {
+    rowId:idx, 
+    cells :          
+        columns.map( (column, col_num) => ( createCellByType(column,data_row[col_num],columnsStyle[col_num],column.nonEditable)))
+  })
+}
+
+const headerRow = {
+  rowId: "header",
+  cells: columns.map((column)=>( 
+    { type: "header", 
+      text: column.title, 
+      style: {...styleHeader,...column.headerStyle, ...(column.align ? alignToStyle(column.align):null)} || null } 
+    )
+    ),
+    height:styleHeader?.height
+  }
+
+const rows = [
+  headerRow,
+  ...data.map( (data_row,idx)=>(
+  createRow(idx,data_row)
+))]
 const [thisRows, setRows] = useState(rows)
 const [thisData, setData] = useState(data)
-const columnsStyle = columns.map((column)=>({...column.align ? alignToStyle(column.align):null,...column.style}))
 const [cellChangesIndex, setCellChangesIndex] = useState(() => -1);
 const [cellChanges, setCellChanges] = useState(() => []);
 const undoChanges = (
@@ -175,16 +199,6 @@ const redoChanges = (
   return updated;
 };
 
-const headerRow = {
-  rowId: "header",
-  cells: columns.map((column)=>( 
-    { type: "header", 
-      text: column.title, 
-      style: {...styleHeader,...column.headerStyle, ...(column.align ? alignToStyle(column.align):null)} || null } 
-    )
-    ),
-    height:styleHeader?.height
-  }
 
 
 const applyNewValue = (
@@ -228,14 +242,7 @@ const handleRedoChanges = () => {
 };
 
 
-const createRow = (idx,data_row)=>{
-  return (
-  {
-    rowId:idx, 
-    cells :          
-        columns.map( (column, col_num) => ( createCellByType(column,data_row[col_num],columnsStyle[col_num],column.nonEditable)))
-  })
-}
+
 
 const createRows = (data)=>{(
   setRows( [
@@ -382,8 +389,6 @@ const handleSelectionChanged = e =>
 {
   setProps({selectedRange:e})
 }
-
-
 
       return (
         <div onPasteCapture = {myHandlePaste} onKeyDown={(e) => {

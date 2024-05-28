@@ -1,0 +1,5 @@
+.topleft{border-width: 10px 0 0 10px;
+     border-color: red;}
+.topright{border-color: blue;}
+.bottomleft{border-color: green;}
+.bottomright{border-color: yellow;}

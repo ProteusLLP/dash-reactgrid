@@ -10,7 +10,7 @@ columns = [
 ]
 data = [["Matthew", "Norman", (9)], ["James", "Norman", (44)]] + [
     ["James", "Norman", 1234]
-] * 10000
+] * 100
 
 highlights = [
     {"columnId": "surname", "rowId": 2, "borderColor": "green", "className": "test"}
@@ -30,6 +30,9 @@ app.layout = html.Div(
             },
             stickyTopRows=1,
             highlights=highlights,
+            # disableVirtualScrolling=True,
+            isExtendable=False,
+            persistence=True,
         ),
         html.Div(id="output"),
         html.Div(id="output2"),
@@ -41,7 +44,7 @@ def isempty(cell):
     return True if cell is None or cell == "" or cell == float("nan") else False
 
 
-@callback(Output("input", "data"), Input("input", "data"))
+# @callback(Output("input", "data"), Input("input", "data"))
 def new_row(data):
     if not isempty(data[-1][0]):
         data.append([None] * len(columns))

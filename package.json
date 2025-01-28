@@ -1,6 +1,6 @@
 {
   "name": "dash_reactgrid",
-  "version": "0.0.1",
+  "version": "0.0.19",
   "description": "Dash component wrapping the ReactGrid library",
   "repository": {
     "type": "git",

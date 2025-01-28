@@ -2,7 +2,7 @@
 name = "DashReactgrid"
 uuid = "1b08a953-4be3-4667-9a23-19324f574885"
 authors = ["James Norman <james.norman@proteusllp.com>"]
-version = "0.0.1"
+version = "0.0.19"
 
 [deps]
 Dash = "1b08a953-4be3-4667-9a23-3db579824955"

@@ -321,7 +321,7 @@ const ReactGridDataHandler = (props) => {
   const changeCellDataToType = (new_type, cell) => {
     switch (new_type) {
       case 'text':
-        return cell.text
+        return getCellValueAsString(cell)
       case 'number':
       case 'customnumber':
       case 'percent':
@@ -330,6 +330,43 @@ const ReactGridDataHandler = (props) => {
         }
         return cell.value || parseToValue(cell.text, new_type)
     }
+  }
+
+  const getCellValueAsString = (cell) => {
+    switch (cell.type) {
+      case 'text':
+        return cell.text
+      case 'number':
+      case 'customnumber':
+      case 'percent':
+        return cell.value.toLocaleString(locale, { useGrouping: false, maximumFractionDigits: 17 })
+    }
+  }
+
+  const myHandleCopy = (e) => {
+    /* copies the values of the selected range to the clipboard */
+    /* the values are stored in plain text*/
+    const activeSelectedRange = selectedRange;
+    if (!activeSelectedRange) {
+      return
+    }
+    const table = selectedRangeToTable(activeSelectedRange)
+    e.clipboardData.setData("text/plain", table)
+    e.preventDefault()
+  }
+
+  const selectedRangeToTable = (selectedRange) => {
+    const table = []
+    for (let row = selectedRange[0].first.row.idx; row <= selectedRange[0].last.row.idx; row++) {
+      const tableRow = []
+      for (let column = selectedRange[0].first.column.idx; column <= selectedRange[0].last.column.idx; column++) {
+        const cell = thisRows[row].cells[column]
+        console.log(cell)
+        tableRow.push(getCellValueAsString(cell))
+      }
+      table.push(tableRow.join("\t"))
+    }
+    return table.join("\n")
   }
 
 
@@ -341,7 +378,6 @@ const ReactGridDataHandler = (props) => {
     if (!activeSelectedRange) {
       return
     }
-
     // count the rows in the clipboard
     const htmlData = e.clipboardData.getData("text/html");
     const document = new DOMParser().parseFromString(htmlData, "text/html");
@@ -368,6 +404,7 @@ const ReactGridDataHandler = (props) => {
     else {
       pastedRows = e.clipboardData
         .getData("text/plain")
+        .replace(/(\r\n)$/, '') // pasting from excel adds an extra row
         .split("\n")
         .map((line) =>
           line
@@ -377,8 +414,7 @@ const ReactGridDataHandler = (props) => {
               return { type: "text", text: tnew }
             })
         )
-      // pasting from excel adds an extra row
-      pastedRows.pop()
+
     }
     let newData = structuredClone(data);
     // check to see if there are sufficient rows in the table - if not create them
@@ -427,7 +463,7 @@ const ReactGridDataHandler = (props) => {
   }
 
   return (
-    <div onPasteCapture={myHandlePaste} onKeyDown={(e) => {
+    <div onPasteCapture={myHandlePaste} onCopy={myHandleCopy} onKeyDown={(e) => {
       if ((!isMacOs() && e.ctrlKey) || e.metaKey) {
         switch (e.key) {
           case "z":

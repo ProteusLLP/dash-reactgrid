@@ -44,6 +44,9 @@ const getCellValueAsString = (cell) => {
   return "";
 };
 
+/**
+ * DashReactGrid is a wrapper around the ReactGrid component that allows for easy integration with Dash applications. 
+ */
 const DashReactGrid = ({
   id,
   columns,
@@ -131,10 +134,10 @@ const DashReactGrid = ({
 
   const selectedRangeToTable = (selectedRange) => {
     const table = []
-    for (let row = selectedRange[0].first.row.idx; row <= selectedRange[0].last.row.idx; row++) {
+    for (let row = selectedRange.first.row.idx; row <= selectedRange.last.row.idx; row++) {
       const tableRow = []
-      for (let column = selectedRange[0].first.column.idx; column <= selectedRange[0].last.column.idx; column++) {
-        const cellValue = row === 0 ? Headers.title : gridData[row - 1][column];
+      for (let column = selectedRange.first.column.idx; column <= selectedRange.last.column.idx; column++) {
+        const cellValue = row === 0 ? columns[column].title : gridData[row - 1][column];
         tableRow.push(getCellValueAsString({ type: columns[column].type || "text", value: cellValue, text: cellValue }))
       }
       table.push(tableRow.join("\t"))
@@ -143,12 +146,11 @@ const DashReactGrid = ({
   }
 
   const handleCopy = (e) => {
-    const activeSelectedRange = selectedRange;
+    const activeSelectedRange = selectedRange[0];
     if (!activeSelectedRange) {
       return
     }
     const table = selectedRangeToTable(activeSelectedRange);
-    console.log(table)
     e.clipboardData.setData("text/plain", table);
     e.preventDefault();
   };
@@ -156,7 +158,7 @@ const DashReactGrid = ({
   const handlePaste = (e) => {
     e.stopPropagation()
     e.preventDefault()
-    const activeSelectedRange = selectedRange;
+    const activeSelectedRange = selectedRange[0];
     if (!activeSelectedRange) {
       return
     }
@@ -203,7 +205,7 @@ const DashReactGrid = ({
       let maxRowId = prevData.length;
       // check to see if there are sufficient rows in the table - if not create them
       if (isExtendable) {
-        const nNewRows = pastedRows.length - (newData.length - activeSelectedRange[0].first.row.idx) + 1
+        const nNewRows = pastedRows.length - (newData.length - activeSelectedRange.first.row.idx) + 1
         if (nNewRows > 0) {
           for (let row = 0; row < nNewRows; row++) {
             newData.push(columns.map(column => null)) // add a blank new row
@@ -212,17 +214,17 @@ const DashReactGrid = ({
       }
 
       pastedRows.forEach((row, ri) => {
-        const rowIdx = activeSelectedRange[0].first.row.idx + ri - 1; //-1 for header cell
+        const rowIdx = activeSelectedRange.first.row.idx + ri - 1; //-1 for header cell
         if (rowIdx >= newData.length) return;
         row.forEach((cell, ci) => {
-          const columnIdx = activeSelectedRange[0].first.column.idx + ci;
+          const columnIdx = activeSelectedRange.first.column.idx + ci;
           if (columnIdx >= columns.length) return
           newData[rowIdx] = [...newData[rowIdx]];
           newData[rowIdx][columnIdx] = changeCellDataToType(columns[columnIdx].type, cell) || parseToValue(cell.text, columns[columnIdx].type)
         })
       })
       setProps({ data: newData });
-      return
+      return newData
 
     })
 
@@ -259,7 +261,12 @@ const DashReactGrid = ({
         stickyTopRows={stickyTopRows}
         stickyBottomRows={stickyBottomRows}
         disableVirtualScrolling={disableVirtualScrolling}
-        onSelectionChanged={selectedRange => setProps({ selectedRange })}
+        onSelectionChanged={selectedRange => setProps({ selectedRange: selectedRange })}
+        onSelectionChanging={selectedRange => {
+          setProps({ selectedRange: selectedRange });
+          return true
+        }
+        }
         onFocusLocationChanged={selectedCell => setProps({ selectedCell })}
         customCellTemplates={customCellTemplates}
       />
@@ -286,29 +293,54 @@ DashReactGrid.defaultProps = {
 }
 
 DashReactGrid.propTypes = {
-  id: PropTypes.string, // The ID used to identify this component in Dash callbacks
-  columns: PropTypes.array.isRequired, // Array of column definitions containing column metadata
-  data: PropTypes.array.isRequired, // 2D array representing the grid data
-  enableFillHandle: PropTypes.bool, // Enables fill handle for quick copy-pasting of cell values
-  enableRangeSelection: PropTypes.bool, // Allows selection of a range of cells
-  enableRowSelection: PropTypes.bool, // Enables row selection
-  enableColumnSelection: PropTypes.bool, // Enables column selection
-  highlights: PropTypes.array, // Array of highlighted cell ranges
-  stickyLeftColumns: PropTypes.number, // Number of columns that should remain fixed on the left when scrolling
-  stickyRightColumns: PropTypes.number, // Number of columns that should remain fixed on the right when scrolling
-  stickyTopRows: PropTypes.number, // Number of rows that should remain fixed on top when scrolling
-  stickyBottomRows: PropTypes.number, // Number of rows that should remain fixed at the bottom when scrolling
-  isExtendable: PropTypes.bool, // Whether new rows can be added dynamically
-  selectedCell: PropTypes.object, // Object representing the currently selected cell
-  selectedRange: PropTypes.array, // Object representing the currently selected range of cells
-  style: PropTypes.object, // Custom styles applied to the component wrapper
-  styleHeader: PropTypes.object, // Custom styles applied to the header row
-  className: PropTypes.string, // CSS class applied to the component wrapper
-  disableVirtualScrolling: PropTypes.bool, // Disables virtual scrolling for large datasets
-  setProps: PropTypes.func, // Dash callback function to update component props
-  persistence: PropTypes.oneOfType([PropTypes.bool, PropTypes.string]), // Whether the component's state should persist across sessions
-  persistence_type: PropTypes.oneOf(["local", "session", "memory"]), // The storage type used for persistence
-  persisted_props: PropTypes.array // List of properties that should persist across sessions
+  /**
+  *The ID used to identify this component in Dash callbacks
+  */
+  id: PropTypes.string,
+  // Array of column definitions containing column metadata
+  columns: PropTypes.array.isRequired,
+  // 2D array representing the grid data 
+  data: PropTypes.array.isRequired,
+  // Enables fill handle for quick copy-pasting of cell values
+  enableFillHandle: PropTypes.bool,
+  // Allows selection of a range of cells
+  enableRangeSelection: PropTypes.bool,
+  // Enables row selection 
+  enableRowSelection: PropTypes.bool,
+  // Enables column selection
+  enableColumnSelection: PropTypes.bool,
+  // Array of highlighted cell ranges
+  highlights: PropTypes.array,
+  // Number of columns that should remain fixed on the left when scrolling
+  stickyLeftColumns: PropTypes.number,
+  // Number of columns that should remain fixed on the right when scrolling
+  stickyRightColumns: PropTypes.number,
+  // Number of rows that should remain fixed on top when scrolling 
+  stickyTopRows: PropTypes.number,
+  // Number of rows that should remain fixed at the bottom when scrolling
+  stickyBottomRows: PropTypes.number,
+  // Whether new rows can be added dynamically
+  isExtendable: PropTypes.bool,
+  // Object representing the currently selected cell
+  selectedCell: PropTypes.object,
+  // Object representing the currently selected range of cells
+  selectedRange: PropTypes.array,
+  // Custom styles applied to the component wrapper
+  style: PropTypes.object,
+  // Custom styles applied to the header row
+  styleHeader: PropTypes.object,
+  // CSS class applied to the component wrapper 
+  className: PropTypes.string,
+  // Disables virtual scrolling for large datasets
+  disableVirtualScrolling: PropTypes.bool,
+  // Dash callback function to update component props
+  setProps: PropTypes.func,
+  // Whether the component's state should persist across sessions
+  persistence: PropTypes.oneOfType([PropTypes.bool, PropTypes.string]),
+  // The storage type used for persistence 
+  persistence_type: PropTypes.oneOf(["local", "session", "memory"]),
+  // List of properties that should persist across sessions
+  persisted_props: PropTypes.array
 };
 
 export default DashReactGrid;

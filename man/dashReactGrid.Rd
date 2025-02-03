@@ -6,7 +6,7 @@
 \title{DashReactGrid component}
 
 \description{
-
+DashReactGrid is a wrapper around the ReactGrid component that allows for easy integration with Dash applications.
 }
 
 \usage{
@@ -16,19 +16,19 @@ enableFillHandle=NULL, enableRangeSelection=NULL,
 enableRowSelection=NULL, highlights=NULL, isExtendable=NULL,
 persisted_props=NULL, persistence=NULL,
 persistence_type=NULL, selectedCell=NULL,
-stickyBottomRows=NULL, stickyLeftColumns=NULL,
-stickyRightColumns=NULL, stickyTopRows=NULL, style=NULL,
-styleHeader=NULL)
+selectedRange=NULL, stickyBottomRows=NULL,
+stickyLeftColumns=NULL, stickyRightColumns=NULL,
+stickyTopRows=NULL, style=NULL, styleHeader=NULL)
 }
 
 \arguments{
-\item{id}{Character. The ID used to identify this component in Dash callbacks.}
+\item{id}{Character. The ID used to identify this component in Dash callbacks}
 
 \item{className}{Character. }
 
-\item{columns}{Logical | numeric | character | named list | unnamed list. A label that will be printed when this component is rendered.}
+\item{columns}{Unnamed list. }
 
-\item{data}{Logical | numeric | character | named list | unnamed list. The value displayed in the input.}
+\item{data}{Unnamed list. }
 
 \item{disableVirtualScrolling}{Logical. }
 
@@ -40,18 +40,19 @@ styleHeader=NULL)
 
 \item{enableRowSelection}{Logical. }
 
-\item{highlights}{Logical | numeric | character | named list | unnamed list. }
+\item{highlights}{Unnamed list. }
 
-\item{isExtendable}{Logical. Whether the table automatically adds extra rows}
+\item{isExtendable}{Logical. }
 
-\item{persisted_props}{List of a value equal to: 'columns', 'data]'s. }
+\item{persisted_props}{Unnamed list. }
 
-\item{persistence}{Logical | character | numeric. Dash-assigned callback that should be called to report property changes
-to Dash, to make them available for callbacks.}
+\item{persistence}{Logical | character. }
 
-\item{persistence_type}{A value equal to: 'local', 'session', 'memory'. }
+\item{persistence_type}{A value equal to: "local", "session", "memory". }
 
-\item{selectedCell}{Logical | numeric | character | named list | unnamed list. }
+\item{selectedCell}{Named list. }
+
+\item{selectedRange}{Unnamed list. }
 
 \item{stickyBottomRows}{Numeric. }
 
@@ -61,7 +62,7 @@ to Dash, to make them available for callbacks.}
 
 \item{stickyTopRows}{Numeric. }
 
-\item{style}{Named list. The style of the container (div)}
+\item{style}{Named list. }
 
 \item{styleHeader}{Named list. }
 }

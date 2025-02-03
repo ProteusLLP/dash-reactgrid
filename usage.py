@@ -30,8 +30,10 @@ app.layout = html.Div(
             },
             stickyTopRows=1,
             highlights=highlights,
-            # disableVirtualScrolling=True,
-            isExtendable=False,
+            disableVirtualScrolling=False,
+            enableRowSelection=True,
+            enableColumnSelection=True,
+            isExtendable=True,
             persistence=True,
         ),
         html.Div(id="output"),
@@ -56,4 +58,4 @@ def new_row(data):
 
 
 if __name__ == "__main__":
-    app.run_server(debug=True)
+    app.run_server(debug=True, port=8080)

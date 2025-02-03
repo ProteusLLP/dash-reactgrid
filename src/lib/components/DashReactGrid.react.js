@@ -1,377 +1,159 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import PropTypes from 'prop-types';
-import { ReactGrid, handlePaste } from "@silevis/reactgrid";
+import { ReactGrid } from "@silevis/reactgrid";
 import "@silevis/reactgrid/styles.css";
-import "../styles.css"
-import { length } from 'ramda';
+import "../styles.css";
 import { CustomNumberCellTemplate, numberParser } from '../CustomNumberCell';
 import { PercentCellTemplate, percentParser } from '../PercentCell';
 
-const locale = window.navigator.language
+const locale = window.navigator.language;
+const isMacOs = () => window.navigator.appVersion.includes("Mac");
 
-const createCellByType = (column, value, columnStyle, columnNonEditable) => {
-
-  switch (column.type) {
-    case 'text':
-      return { type: column.type, text: value || '', style: columnStyle, nonEditable: columnNonEditable }
-    case 'number':
-      return { type: 'customnumber', value: value, style: columnStyle, nonEditable: columnNonEditable, format: new Intl.NumberFormat(locale, { ...column.formatOptions }) }
-    case 'percent':
-      return { type: 'percent', value: value, style: columnStyle, nonEditable: columnNonEditable, format: new Intl.NumberFormat(locale, { ...column.formatOptions, style: "percent" }) }
-    case 'date':
-      return { type: column.type, date: Date(value), style: columnStyle, nonEditable: columnNonEditable, format: new Intl.DateTimeFormat(locale, { ...column.formatOptions }) }
-    case 'time':
-      return { type: column.type, time: Date(value), style: columnStyle, nonEditable: columnNonEditable, format: new Intl.DateTimeFormat(locale, { ...column.formatOptions }) }
-  }
-}
-
-const customCellTemplates = { 'percent': new PercentCellTemplate(), 'customnumber': new CustomNumberCellTemplate() }
-
-const getCellDataByType = (type, cell) => {
+const parseToValue = (text, type) => {
   switch (type) {
+    case "number":
+    case "customnumber":
+      return numberParser.parse(text);
+    case "percent":
+      return percentParser.parse(text);
+    default:
+      return text;
+  }
+};
+
+
+const changeCellDataToType = (new_type, cell) => {
+  switch (new_type) {
     case 'text':
-      return cell.text
+      return getCellValueAsString(cell)
     case 'number':
     case 'customnumber':
     case 'percent':
-      return cell.value
-    case 'date':
-      return cell.date
-    case 'time':
-      return cell.time
+      if (cell.type === 'text') {
+        return parseToValue(cell.text, new_type)
+      }
+      return cell.value || parseToValue(cell.text, new_type)
   }
 }
 
-
-const alignToStyle = (align) => {
-  switch (align) {
-    case "left": return { "justifyContent": "flex-start" };
-    case "center": return { "justifyContent": "center" };
-    case "right": return { "justifyContent": "flex-end" };
+const getCellValueAsString = (cell) => {
+  if (cell.type === "text") return cell.text;
+  if (cell.value !== undefined) {
+    return cell.value.toLocaleString(locale, { useGrouping: false, maximumFractionDigits: 17 });
   }
-}
-
-
-const isMacOs = () => window.navigator.appVersion.indexOf("Mac") !== -1;
-
-const DashReactGrid = props => {
-  const { id, columns, data, enableFillHandle, enableRangeSelection, enableRowSelection, enableColumnSelection, highlights, stickyLeftColumns,
-    stickyRightColumns,
-    stickyTopRows,
-    stickyBottomRows, isExtendable,
-    selectedCell, selectedRange, style, styleHeader, className, disableVirtualScrolling, setProps } = props;
-
-  const simpleHandleContextMenu = (
-    selectedRowIds,
-    selectedColIds,
-    selectionMode,
-    menuOptions
-  ) => {
-    return menuOptions;
-  }
-
-  return (
-    <div id={id} style={style}
-    >
-      <ReactGridDataHandler data={data} columns={columns} enableFillHandle={enableFillHandle} enableRangeSelection={enableRangeSelection} enableRowSelection={enableRowSelection} enableColumnSelection={enableColumnSelection}
-        onContextMenu={simpleHandleContextMenu} highlights={highlights}
-        stickyLeftColumns={stickyLeftColumns}
-        stickyRightColumns={stickyRightColumns}
-        stickyTopRows={stickyTopRows}
-        stickyBottomRows={stickyBottomRows}
-        isExtendable={isExtendable}
-        styleHeader={styleHeader}
-        selectedCell={selectedCell}
-        selectedRange={selectedRange}
-        className={className}
-        setProps={setProps}
-        disableVirtualScrolling={disableVirtualScrolling}
-
-      />
-    </div>
-  );
-}
-
-DashReactGrid.defaultProps = {
-  enableFillHandle: true, enableRangeSelection: true, enableRowSelection: true, enableColumnSelection: true,
-  stickyLeftColumns: 0,
-  stickyRightColumns: 0,
-  stickyTopRows: 0,
-  stickyBottomRows: 0,
-  highlights: null,
-  isExtendable: false,
-  className: null,
-  disableVirtualScrolling: true,
-  persistence_type: 'local',
-  persisted_props: ['columns', 'data'],
-}
-
-  ;
-
-DashReactGrid.propTypes = {
-  /**
-   * The ID used to identify this component in Dash callbacks.
-   */
-  id: PropTypes.string,
-
-  /**
-   * A label that will be printed when this component is rendered.
-   */
-  columns: PropTypes.any.isRequired,
-
-  /**
-   * The value displayed in the input.
-   */
-  data: PropTypes.any.isRequired,
-
-
-  stickyLeftColumns: PropTypes.number,
-  stickyRightColumns: PropTypes.number,
-  stickyTopRows: PropTypes.number,
-  stickyBottomRows: PropTypes.number,
-  enableFillHandle: PropTypes.bool,
-  enableRangeSelection: PropTypes.bool,
-  enableRowSelection: PropTypes.bool,
-  enableColumnSelection: PropTypes.bool,
-  highlights: PropTypes.any,
-  selectedCell: PropTypes.any,
-  /**
-   * Whether the table automatically adds extra rows
-   */
-  isExtendable: PropTypes.bool,
-  /**
-   * The style of the container (div)
-   */
-  style: PropTypes.object,
-  styleHeader: PropTypes.object,
-  className: PropTypes.string,
-  disableVirtualScrolling: PropTypes.bool,
-  /**
-   * Dash-assigned callback that should be called to report property changes
-   * to Dash, to make them available for callbacks.
-   */
-  persistence: PropTypes.oneOfType(
-    [PropTypes.bool, PropTypes.string, PropTypes.number]
-  ),
-  persistence_type: PropTypes.oneOf(['local', 'session', 'memory']),
-  persisted_props: PropTypes.arrayOf(PropTypes.oneOf(['columns', 'data]'])),
-  setProps: PropTypes.func
+  return "";
 };
 
-const ReactGridDataHandler = (props) => {
+const DashReactGrid = ({
+  id,
+  columns,
+  data,
+  enableFillHandle,
+  enableRangeSelection,
+  enableRowSelection,
+  enableColumnSelection,
+  highlights,
+  stickyLeftColumns,
+  stickyRightColumns,
+  stickyTopRows,
+  stickyBottomRows,
+  isExtendable,
+  selectedCell,
+  selectedRange,
+  style,
+  styleHeader,
+  className,
+  disableVirtualScrolling,
+  setProps,
+  persistence,
+  persistence_type,
+  persisted_props
+}) => {
+  const [gridData, setGridData] = useState(data);
+  const [history, setHistory] = useState([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
 
-  const { columns, data, selectedCell, selectedRange, styleHeader, isExtendable, className, highlights, setProps, ...otherProps } = props;
-  const columnIds = columns.map((column) => column["columnId"])
-  const columnsStyle = columns.map((column) => ({ ...column.align ? alignToStyle(column.align) : null, ...column.style }))
-  const createRow = (idx, data_row) => {
-    return (
-      {
+  useEffect(() => {
+    setGridData(data);
+  }, [data]);
+
+  const customCellTemplates = useMemo(() => ({
+    percent: new PercentCellTemplate(),
+    customnumber: new CustomNumberCellTemplate()
+  }), []);
+
+  const rows = useMemo(() => (
+    [
+      { rowId: "header", cells: columns.map(col => ({ type: "header", text: col.title, style: col.headerStyle || {} })) },
+      ...gridData.map((row, idx) => ({
         rowId: idx,
-        cells:
-          columns.map((column, col_num) => (createCellByType(column, data_row[col_num], columnsStyle[col_num], column.nonEditable)))
-      })
-  }
+        cells: columns.map((col, colIdx) => {
+          const cellValue = row[colIdx] || '';
+          return {
+            type: col.type || 'text',
+            value: cellValue,
+            text: col.type === 'text' ? String(cellValue) : undefined,
+            style: col.style || {},
+            nonEditable: col.nonEditable || false,
+            format: col.formatOptions ? new Intl.NumberFormat(locale, col.formatOptions) : undefined
+          };
+        })
+      }))
+    ]
+  ), [columns, gridData]);
 
-  const headerRow = {
-    rowId: "header",
-    cells: columns.map((column) => (
-      {
-        type: "header",
-        text: column.title,
-        style: { ...styleHeader, ...column.headerStyle, ...(column.align ? alignToStyle(column.align) : null) } || null
-      }
-    )
-    ),
-    height: styleHeader?.height
-  }
+  const applyChanges = useCallback((changes) => {
+    if (!changes.length) return;
+    setGridData(prevData => {
+      let newData = [...prevData];
+      let maxRowId = prevData.length;
 
-  const rows = [
-    headerRow,
-    ...data.map((data_row, idx) => (
-      createRow(idx, data_row)
-    ))]
-  const [thisRows, setRows] = useState(rows)
-  const [thisData, setData] = useState(data)
-  const [cellChangesIndex, setCellChangesIndex] = useState(() => -1);
-  const [cellChanges, setCellChanges] = useState(() => []);
-  const undoChanges = (
-    changes, data
-  ) => {
-    const updated = applyNewValue(changes, data, true);
-    setCellChangesIndex(cellChangesIndex - 1);
-    return updated;
-  };
-
-  const redoChanges = (
-    changes, data
-  ) => {
-    const updated = applyNewValue(changes, data);
-    setCellChangesIndex(cellChangesIndex + 1);
-    return updated;
-  };
-
-
-
-  const applyNewValue = (
-    changes,
-    data,
-    usePrevValue = false
-  ) => {
-    let newData = structuredClone(data);
-    changes.forEach((change) => {
-      const fieldName = change.columnId;
-      const columnIndex = columnIds.indexOf(fieldName)
-      const Index = change.rowId;
-      const cell = usePrevValue ? change.previousCell : change.newCell;
-      if (Index >= length(newData)) {
-        const emptyRow = columns.map((column) => null)
-        newData.push(...Array(Index - length(newData) + 1).fill(emptyRow))
-      }
-      newData[Index][columnIndex] = getCellDataByType(columns[columnIndex].type, cell)
-    });
-
-    return newData;
-  };
-
-  const handleUndoChanges = () => {
-    if (cellChangesIndex >= 0) {
-      const newData = undoChanges(cellChanges[cellChangesIndex], data)
-      createRows(newData)
-      setData(newData)
-      setProps({ data: newData })
-    }
-  };
-
-  const handleRedoChanges = () => {
-    if (cellChangesIndex + 1 <= cellChanges.length - 1) {
-      const newData = redoChanges(cellChanges[cellChangesIndex + 1], data)
-      createRows(newData)
-      setData(newData)
-      setProps({ data: newData })
-    }
-  };
-
-
-
-
-  const createRows = (data) => {
-    (
-      setRows([
-        headerRow,
-        ...data.map((data_row, idx) => (
-          createRow(idx, data_row)
-        ))])
-    )
-  };
-
-  const reshapeData = (data) => {
-    const newData = structuredClone(data)
-    newData.forEach((row) => {
-      row.length = columns.length
-    })
-    setProps({ data: newData })
-  }
-
-
-  useEffect(() => {
-    createRows(data)
-  }, [data, columns])
-
-  useEffect(() => {
-    reshapeData(data)
-  }, [columns])
-
-  const applyChanges = (changes, data) => {
-    const newData = structuredClone(data);
-    changes.forEach((change) => {
-      const fieldName = change.columnId;
-      const columnIndex = columnIds.indexOf(fieldName)
-      const Index = change.rowId;
-      newData[Index][columnIndex] = getCellDataByType(columns[columnIndex].type, change.newCell)
-    })
-    if (isExtendable) {
-      //check to see if rows can be removed
-      while (newData.length > 1 && !newData[newData.length - 1].some((v) => v)) {
-        newData.pop()
-      }
-      //check to see if a new row is needed
-      if (isExtendable && newData[newData.length - 1].some((v) => v)) {
-        newData.push(columns.map((column) => null))
-      }
-    }
-
-    createRows(newData)
-    setProps({ data: newData })
-    setCellChanges([...cellChanges.slice(0, cellChangesIndex + 1), changes]);
-    setCellChangesIndex(cellChangesIndex + 1);
-  }
-
-
-  const handleFocusLocationChanged = location => {
-    setProps({ selectedCell: location })
-  }
-
-
-  const handleChanges = (changes) => {
-    applyChanges(changes, data)
-  };
-
-
-
-  const changeCellDataToType = (new_type, cell) => {
-    switch (new_type) {
-      case 'text':
-        return getCellValueAsString(cell)
-      case 'number':
-      case 'customnumber':
-      case 'percent':
-        if (cell.type === 'text') {
-          return parseToValue(cell.text, new_type)
+      changes.forEach(({ rowId, columnId, newCell }) => {
+        const colIdx = columns.findIndex(col => col.columnId === columnId);
+        if (colIdx !== -1) {
+          if (rowId >= newData.length && isExtendable) {
+            // Add new rows if the pasted data exceeds current rows
+            while (newData.length <= rowId) {
+              newData.push(new Array(columns.length).fill(""));
+            }
+          }
+          newData[rowId] = [...newData[rowId]];
+          newData[rowId][colIdx] = newCell.value || newCell.text
         }
-        return cell.value || parseToValue(cell.text, new_type)
-    }
-  }
+      });
 
-  const getCellValueAsString = (cell) => {
-    switch (cell.type) {
-      case 'text':
-        return cell.text
-      case 'number':
-      case 'customnumber':
-      case 'percent':
-        return cell.value.toLocaleString(locale, { useGrouping: false, maximumFractionDigits: 17 })
-    }
-  }
-
-  const myHandleCopy = (e) => {
-    /* copies the values of the selected range to the clipboard */
-    /* the values are stored in plain text*/
-    const activeSelectedRange = selectedRange;
-    if (!activeSelectedRange) {
-      return
-    }
-    const table = selectedRangeToTable(activeSelectedRange)
-    e.clipboardData.setData("text/plain", table)
-    e.preventDefault()
-  }
+      setProps({ data: newData });
+      return newData;
+    });
+    setHistory(prev => [...prev.slice(0, historyIndex + 1), changes]);
+    setHistoryIndex(prev => prev + 1);
+  }, [columns, setProps, historyIndex, isExtendable]);
 
   const selectedRangeToTable = (selectedRange) => {
     const table = []
     for (let row = selectedRange[0].first.row.idx; row <= selectedRange[0].last.row.idx; row++) {
       const tableRow = []
       for (let column = selectedRange[0].first.column.idx; column <= selectedRange[0].last.column.idx; column++) {
-        const cell = thisRows[row].cells[column]
-        console.log(cell)
-        tableRow.push(getCellValueAsString(cell))
+        const cellValue = row === 0 ? Headers.title : gridData[row - 1][column];
+        tableRow.push(getCellValueAsString({ type: columns[column].type || "text", value: cellValue, text: cellValue }))
       }
       table.push(tableRow.join("\t"))
     }
     return table.join("\n")
   }
 
+  const handleCopy = (e) => {
+    const activeSelectedRange = selectedRange;
+    if (!activeSelectedRange) {
+      return
+    }
+    const table = selectedRangeToTable(activeSelectedRange);
+    console.log(table)
+    e.clipboardData.setData("text/plain", table);
+    e.preventDefault();
+  };
 
-
-  const myHandlePaste = (e) => {
+  const handlePaste = (e) => {
     e.stopPropagation()
     e.preventDefault()
     const activeSelectedRange = selectedRange;
@@ -416,79 +198,117 @@ const ReactGridDataHandler = (props) => {
         )
 
     }
-    let newData = structuredClone(data);
-    // check to see if there are sufficient rows in the table - if not create them
-    if (isExtendable) {
-      const nNewRows = pastedRows.length - (thisRows.length - activeSelectedRange[0].first.row.idx) + 1
-      if (nNewRows > 0) {
-        for (let row = 0; row < nNewRows; row++) {
-          newData.push(createEmptyDataRow())
+    setGridData(prevData => {
+      let newData = [...prevData];
+      let maxRowId = prevData.length;
+      // check to see if there are sufficient rows in the table - if not create them
+      if (isExtendable) {
+        const nNewRows = pastedRows.length - (newData.length - activeSelectedRange[0].first.row.idx) + 1
+        if (nNewRows > 0) {
+          for (let row = 0; row < nNewRows; row++) {
+            newData.push(columns.map(column => null)) // add a blank new row
+          }
         }
       }
-    }
 
-
-
-    pastedRows.forEach((row, ri) => {
-      const rowIdx = activeSelectedRange[0].first.row.idx + ri - 1; //-1 for header cell
-      if (rowIdx >= newData.length) return;
-      row.forEach((cell, ci) => {
-        const columnIdx = activeSelectedRange[0].first.column.idx + ci;
-        if (columnIdx >= columns.length) return
-        newData[rowIdx][columnIdx] = changeCellDataToType(columns[columnIdx].type, cell) || parseToValue(cell.text, columns[columnIdx].type)
+      pastedRows.forEach((row, ri) => {
+        const rowIdx = activeSelectedRange[0].first.row.idx + ri - 1; //-1 for header cell
+        if (rowIdx >= newData.length) return;
+        row.forEach((cell, ci) => {
+          const columnIdx = activeSelectedRange[0].first.column.idx + ci;
+          if (columnIdx >= columns.length) return
+          newData[rowIdx] = [...newData[rowIdx]];
+          newData[rowIdx][columnIdx] = changeCellDataToType(columns[columnIdx].type, cell) || parseToValue(cell.text, columns[columnIdx].type)
+        })
       })
+      setProps({ data: newData });
+      return
+
     })
-    createRows(newData)
-    setProps({ data: newData })
 
     return
   }
 
-  const createEmptyDataRow = () => {
-    return columns.map((column) => null)
-  }
-
-  const parseToValue = (text, type) => {
-    switch (type) {
-      case "number":
-      case "customnumber":
-        return numberParser.parse(text)
-      case "percent":
-        return percentParser.parse(text)
-    } return String(text)
-  }
-
-  const handleSelectionChanged = e => {
-    setProps({ selectedRange: e })
-  }
 
   return (
-    <div onPasteCapture={myHandlePaste} onCopy={myHandleCopy} onKeyDown={(e) => {
-      if ((!isMacOs() && e.ctrlKey) || e.metaKey) {
-        switch (e.key) {
-          case "z":
-            handleUndoChanges();
-            return;
-          case "y":
-            handleRedoChanges();
-            return;
+    <div id={id} style={style} className={className}
+
+      onPasteCapture={handlePaste} onCopy={handleCopy} onKeyDown={(e) => {
+        if ((!isMacOs() && e.ctrlKey) || e.metaKey) {
+          switch (e.key) {
+            case "z":
+              handleUndoChanges();
+              return;
+            case "y":
+              handleRedoChanges();
+              return;
+          }
         }
-      }
-    }} >
-      <ReactGrid rows={thisRows} columns={props.columns} onCellsChanged={handleChanges} onFocusLocationChanged={handleFocusLocationChanged} enableFillHandle={props.enableFillHandle} enableRangeSelection={props.enableRangeSelection} enableRowSelection={props.enableRowSelection} enableColumnSelection={props.enableColumnSelection}
-        onContextMenu={props.simpleHandleContextMenu} highlights={highlights}
-        stickyLeftColumns={props.stickyLeftColumns}
-        stickyRightColumns={props.stickyRightColumns}
-        stickyTopRows={props.stickyTopRows}
-        stickyBottomRows={props.stickyBottomRows}
+      }}>
+      <ReactGrid
+        rows={rows}
+        columns={columns}
+        onCellsChanged={applyChanges}
+        enableFillHandle={enableFillHandle}
+        enableRangeSelection={enableRangeSelection}
+        enableRowSelection={enableRowSelection}
+        enableColumnSelection={enableColumnSelection}
+        highlights={highlights}
+        stickyLeftColumns={stickyLeftColumns}
+        stickyRightColumns={stickyRightColumns}
+        stickyTopRows={stickyTopRows}
+        stickyBottomRows={stickyBottomRows}
+        disableVirtualScrolling={disableVirtualScrolling}
+        onSelectionChanged={selectedRange => setProps({ selectedRange })}
+        onFocusLocationChanged={selectedCell => setProps({ selectedCell })}
         customCellTemplates={customCellTemplates}
-        onSelectionChanged={handleSelectionChanged}
-        disableVirtualScrolling={props.disableVirtualScrolling}
-        className={className}
       />
     </div>
-  )
+  );
+};
 
 
+DashReactGrid.defaultProps = {
+  enableFillHandle: true,
+  enableRangeSelection: true,
+  enableRowSelection: false,
+  enableColumnSelection: false,
+  stickyLeftColumns: 0,
+  stickyRightColumns: 0,
+  stickyTopRows: 0,
+  stickyBottomRows: 0,
+  highlights: null,
+  isExtendable: false,
+  className: null,
+  disableVirtualScrolling: false,
+  persistence_type: 'local',
+  persisted_props: ['columns', 'data'],
 }
-export default DashReactGrid
+
+DashReactGrid.propTypes = {
+  id: PropTypes.string, // The ID used to identify this component in Dash callbacks
+  columns: PropTypes.array.isRequired, // Array of column definitions containing column metadata
+  data: PropTypes.array.isRequired, // 2D array representing the grid data
+  enableFillHandle: PropTypes.bool, // Enables fill handle for quick copy-pasting of cell values
+  enableRangeSelection: PropTypes.bool, // Allows selection of a range of cells
+  enableRowSelection: PropTypes.bool, // Enables row selection
+  enableColumnSelection: PropTypes.bool, // Enables column selection
+  highlights: PropTypes.array, // Array of highlighted cell ranges
+  stickyLeftColumns: PropTypes.number, // Number of columns that should remain fixed on the left when scrolling
+  stickyRightColumns: PropTypes.number, // Number of columns that should remain fixed on the right when scrolling
+  stickyTopRows: PropTypes.number, // Number of rows that should remain fixed on top when scrolling
+  stickyBottomRows: PropTypes.number, // Number of rows that should remain fixed at the bottom when scrolling
+  isExtendable: PropTypes.bool, // Whether new rows can be added dynamically
+  selectedCell: PropTypes.object, // Object representing the currently selected cell
+  selectedRange: PropTypes.array, // Object representing the currently selected range of cells
+  style: PropTypes.object, // Custom styles applied to the component wrapper
+  styleHeader: PropTypes.object, // Custom styles applied to the header row
+  className: PropTypes.string, // CSS class applied to the component wrapper
+  disableVirtualScrolling: PropTypes.bool, // Disables virtual scrolling for large datasets
+  setProps: PropTypes.func, // Dash callback function to update component props
+  persistence: PropTypes.oneOfType([PropTypes.bool, PropTypes.string]), // Whether the component's state should persist across sessions
+  persistence_type: PropTypes.oneOf(["local", "session", "memory"]), // The storage type used for persistence
+  persisted_props: PropTypes.array // List of properties that should persist across sessions
+};
+
+export default DashReactGrid;

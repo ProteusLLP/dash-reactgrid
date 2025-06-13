@@ -7,7 +7,38 @@ import { CustomNumberCellTemplate, numberParser } from '../CustomNumberCell';
 import { PercentCellTemplate, percentParser } from '../PercentCell';
 
 
-const locale = window.navigator.language;
+const locale = window.navigator.language|| 'en-US'; // Default to 'en-US' if locale is not set
+
+const createCellByType = (column, value, columnStyle, columnNonEditable) => {
+
+  switch (column.type) {
+    case 'text':
+      return { type: column.type, text: value || '', style: columnStyle, nonEditable: columnNonEditable }
+    case 'number':
+      return { type: 'customnumber', value: value, style: columnStyle, nonEditable: columnNonEditable, format: new Intl.NumberFormat(locale, { ...column.formatOptions }) }
+    case 'percent':
+      return { type: 'percent', value: value, style: columnStyle, nonEditable: columnNonEditable, format: new Intl.NumberFormat(locale, { ...column.formatOptions, style: "percent" }) }
+    case 'date':
+      return { type: column.type, date: Date(value), style: columnStyle, nonEditable: columnNonEditable, format: new Intl.DateTimeFormat(locale, { ...column.formatOptions }) }
+    case 'time':
+      return { type: column.type, time: Date(value), style: columnStyle, nonEditable: columnNonEditable, format: new Intl.DateTimeFormat(locale, { ...column.formatOptions }) }
+  }
+}
+
+const getCellDataByType = (type, cell) => {
+  switch (type) {
+    case 'text':
+      return cell.text
+    case 'number':
+    case 'customnumber':
+    case 'percent':
+      return cell.value
+    case 'date':
+      return cell.date
+    case 'time':
+      return cell.time
+  }
+}
 
 const parseToValue = (text, type) => {
   switch (type) {
@@ -16,15 +47,28 @@ const parseToValue = (text, type) => {
       return numberParser.parse(text);
     case "percent":
       return percentParser.parse(text);
+    case "date":
+      return new Date(text);
+    case "time":
+      return new Date(`1970-01-01T${text}`);
     default:
       return text;
   }
 };
 
 
+const alignToStyle = (align) => {
+  switch (align) {
+    case "left": return { "justifyContent": "flex-start" };
+    case "center": return { "justifyContent": "center" };
+    case "right": return { "justifyContent": "flex-end" };
+  }
+}
+
+
 const getCellValueAsString = (cell) => {
   if (cell.type === "text") return cell.text;
-  if (cell.value !== undefined) {
+  if (cell.value !== undefined ) {
     return cell.value.toLocaleString(locale, { useGrouping: false, maximumFractionDigits: 17 });
   }
   return "";
@@ -82,6 +126,8 @@ const DashReactGrid = ({
     setGridData(data);
   }, [data]);
 
+
+
   const customCellTemplates = useMemo(() => ({
     percent: new PercentCellTemplate(),
     customnumber: new CustomNumberCellTemplate(),
@@ -90,16 +136,16 @@ const DashReactGrid = ({
 
   const rows = useMemo(() => (
     [
-      { rowId: "header", cells: columns.map(col => ({ type: "header", text: col.title, style: col.headerStyle || styleHeader || {} })) },
+      { rowId: "header", cells: columns.map(col => ({ type: "header", text: col.title, style: { ...styleHeader, ...col.headerStyle, ...(col.align ? alignToStyle(col.align) : null) } || null })),height:styleHeader?.height},
       ...gridData.map((row, idx) => ({
         rowId: idx,
         cells: columns.map((col, colIdx) => {
-          const cellValue = row[colIdx] || null;
+          const cellValue = row[colIdx];
           return {
             type: col.type || 'text',
-            value: cellValue,
-            text: col.type === 'text' ? String(cellValue) : undefined,
-            style: col.style || {},
+            value: cellValue, // For number/percent types, this will be used for calculations
+            text: col.type === 'text' ? String(cellValue||'') : undefined,
+            style:  { ...col.align ? alignToStyle(col.align) : null, ...col.style },
             nonEditable: col.nonEditable || false,
             format: col.formatOptions ? new Intl.NumberFormat(locale, col.formatOptions) : undefined
           };
@@ -117,17 +163,27 @@ const DashReactGrid = ({
       changes.forEach(({ rowId, columnId, newCell }) => {
         const colIdx = columns.findIndex(col => col.columnId === columnId);
         if (colIdx !== -1) {
-          if (rowId >= newData.length && isExtendable) {
+          if (rowId >= maxRowId && isExtendable) {
             // Add new rows if the pasted data exceeds current rows
             while (newData.length <= rowId) {
-              newData.push(new Array(columns.length).fill(""));
+              newData.push(new Array(columns.length).fill(null));
             }
           }
           newData[rowId] = [...newData[rowId]];
-          newData[rowId][colIdx] = newCell.value || newCell.text
+          newData[rowId][colIdx] = columns[colIdx].type==="text"? newCell.text : newCell.value
         }
-      });
-
+      })
+      if (isExtendable) {
+      // check to see if rows can be removed
+      while (newData.length > 1 && !newData[newData.length - 1].some((v) => v)) {
+       newData.pop()
+      }
+      // check to see if a new row is needed
+      
+      if (newData[newData.length - 1].some((v) => v)) {
+        newData.push(columns.map((_) => null))
+      }
+    } 
       setProps({ data: newData });
       return newData;
     });
@@ -247,8 +303,8 @@ const handlePaste = (e) => {
   /** Convert a ReactGrid Cell object back to the plain value
  *  that belongs in `gridData`, respecting the column’s type. */
 const asGridValue = (cell, columnType) => {
-  if (!cell) return null;                          // blank / deleted
-  if (cell.value) return cell.value;
+  if (!cell) return null;
+  if (!isNaN(cell.value)) return cell.value;
   return changeCellDataToType(columnType || "text", cell);
 };
 

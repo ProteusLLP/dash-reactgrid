@@ -5,23 +5,58 @@ import "@silevis/reactgrid/styles.css";
 import "../styles.css";
 import { CustomNumberCellTemplate, numberParser } from '../CustomNumberCell';
 import { PercentCellTemplate, percentParser } from '../PercentCell';
+import { DateTime } from "luxon";
 
 
 const locale = window.navigator.language|| 'en-US'; // Default to 'en-US' if locale is not set
+
+function shortPattern(locale) {
+  // 31 Dec 1999 is safe (no leading zero), use it as a probe
+  const probe = new Date(1999, 11, 31);             // 31-12-1999
+  const parts = new Intl.DateTimeFormat(
+    locale,
+    { dateStyle: "short" }
+  ).formatToParts(probe);
+
+  return parts
+    .map(p => {
+      switch (p.type) {
+        case "day":   return p.value.length === 2 ? "dd" : "d";
+        case "month": return p.value.length === 2 ? "MM" : "M";
+        case "year":  return p.value.length === 4 ? "yyyy" : "yy";
+        case "literal": return p.value;                     // keep the slash/dot
+        default: return "";
+      }
+    })
+    .join("");
+}
+
+function parseLocaleDate(text, locale = locale) {
+  // 1️⃣ candidate patterns in *this* locale
+  const pattern = shortPattern(locale);          // e.g. "dd/MM/yyyy"
+  const dt = DateTime.fromFormat(text, pattern, { locale });
+  if (dt.isValid) return dt
+  // try UTC
+  const utc = DateTime.fromFormat(text, "yyyy-MM-dd'T'HH:mm:ss.SSSZZ", { locale });
+  if (utc.isValid) return utc;
+  // 3️⃣ last-ditch: ISO / browser parse
+  const iso = DateTime.fromISO(text,{locale});
+  return iso.isValid ? iso : null;
+}
 
 const createCellByType = (column, value, columnStyle, columnNonEditable) => {
 
   switch (column.type) {
     case 'text':
-      return { type: column.type, text: value || '', style: columnStyle, nonEditable: columnNonEditable }
+      return { type: column.type, text: String(value || ''), style: columnStyle, nonEditable: columnNonEditable }
     case 'number':
       return { type: 'customnumber', value: value, style: columnStyle, nonEditable: columnNonEditable, format: new Intl.NumberFormat(locale, { ...column.formatOptions }) }
     case 'percent':
       return { type: 'percent', value: value, style: columnStyle, nonEditable: columnNonEditable, format: new Intl.NumberFormat(locale, { ...column.formatOptions, style: "percent" }) }
-    case 'date':
-      return { type: column.type, date: Date(value), style: columnStyle, nonEditable: columnNonEditable, format: new Intl.DateTimeFormat(locale, { ...column.formatOptions }) }
-    case 'time':
-      return { type: column.type, time: Date(value), style: columnStyle, nonEditable: columnNonEditable, format: new Intl.DateTimeFormat(locale, { ...column.formatOptions }) }
+    case 'date':{
+      const d = new Date(value)
+      return { type: column.type, date: value ? d : null, style: columnStyle, nonEditable: columnNonEditable, format: new Intl.DateTimeFormat(locale, { ...column.formatOptions }) }
+    }
   }
 }
 
@@ -35,8 +70,6 @@ const getCellDataByType = (type, cell) => {
       return cell.value
     case 'date':
       return cell.date
-    case 'time':
-      return cell.time
   }
 }
 
@@ -47,14 +80,30 @@ const parseToValue = (text, type) => {
       return numberParser.parse(text);
     case "percent":
       return percentParser.parse(text);
-    case "date":
-      return new Date(text);
-    case "time":
-      return new Date(`1970-01-01T${text}`);
+    case "date":{
+      const d = new Date(parseLocaleDate(text,locale))
+      return d ;
+    }
     default:
       return text;
   }
 };
+
+const getValueAsString = (type,value)=>{
+  switch (type) {
+    case "number":
+    case "customnumber":
+    case "percent":
+      return value.toLocaleString(locale, { useGrouping: false, maximumFractionDigits: 17 })
+    case "date":{
+      const d = new Date(value)
+      const str = d.toISOString()
+      return str
+    }
+    default:
+      return String(value)
+  }
+}
 
 
 const alignToStyle = (align) => {
@@ -66,29 +115,6 @@ const alignToStyle = (align) => {
 }
 
 
-const getCellValueAsString = (cell) => {
-  if (cell.type === "text") return cell.text;
-  if (cell.value !== undefined ) {
-    return cell.value.toLocaleString(locale, { useGrouping: false, maximumFractionDigits: 17 });
-  }
-  return "";
-};
-
-const changeCellDataToType = (new_type, cell) => {
-  switch (new_type) {
-    case 'text':
-      return getCellValueAsString(cell)
-    case 'number':
-    case 'customnumber':
-    case 'percent':
-      if (cell.type === 'text') {
-        return parseToValue(cell.text, new_type)
-      }
-      return cell.value || parseToValue(cell.text, new_type)
-    default:
-      return cell.value || cell.text; // Fallback to text representation
-  }
-}
 
 /**
  * DashReactGrid is a wrapper around the ReactGrid component that allows for easy integration with Dash applications. 
@@ -128,6 +154,7 @@ const DashReactGrid = ({
 
 
 
+
   const customCellTemplates = useMemo(() => ({
     percent: new PercentCellTemplate(),
     customnumber: new CustomNumberCellTemplate(),
@@ -140,19 +167,12 @@ const DashReactGrid = ({
       ...gridData.map((row, idx) => ({
         rowId: idx,
         cells: columns.map((col, colIdx) => {
-          const cellValue = row[colIdx];
-          return {
-            type: col.type || 'text',
-            value: cellValue, // For number/percent types, this will be used for calculations
-            text: col.type === 'text' ? String(cellValue||'') : undefined,
-            style:  { ...col.align ? alignToStyle(col.align) : null, ...col.style },
-            nonEditable: col.nonEditable || false,
-            format: col.formatOptions ? new Intl.NumberFormat(locale, col.formatOptions) : undefined
-          };
+          return createCellByType(col, row[colIdx], { ...col.style, ...(col.align ? alignToStyle(col.align) : null) }, col.nonEditable);
         })
       }))
     ]
   ), [columns, gridData]);
+
 
   const applyChanges = useCallback((changes) => {
     if (!changes.length) return;
@@ -170,13 +190,13 @@ const DashReactGrid = ({
             }
           }
           newData[rowId] = [...newData[rowId]];
-          newData[rowId][colIdx] = columns[colIdx].type==="text"? newCell.text : newCell.value
+          newData[rowId][colIdx] = getCellDataByType(columns[colIdx].type,newCell)
         }
       })
       if (isExtendable) {
       // check to see if rows can be removed
       while (newData.length > 1 && !newData[newData.length - 1].some((v) => v)) {
-       newData.pop()
+        newData.pop()
       }
       // check to see if a new row is needed
       
@@ -197,7 +217,7 @@ const DashReactGrid = ({
       const tableRow = []
       for (let column = selectedRange.first.column.idx; column <= selectedRange.last.column.idx; column++) {
         const cellValue = row === 0 ? columns[column].title : gridData[row - 1][column];
-        tableRow.push(getCellValueAsString({ type: columns[column].type || "text", value: cellValue, text: cellValue }))
+        tableRow.push(getValueAsString( columns[column].type || "text", cellValue ))
       }
       table.push(tableRow.join("\t"))
     }
@@ -275,18 +295,13 @@ const handlePaste = (e) => {
 
       // --- previous value on the grid (may be undefined / overflow row) ---
       const prevVal  = gridData[rowId]?.[colIdx];
-      const oldCell  = colType === "text"
-        ? { text: prevVal ?? "" }
-        : { value: prevVal ?? null };
+      const oldCell  = createCellByType(column,prevVal)
+        
 
       // --- value coming from clipboard, coerced to column type -------------
-      const coerced  =
-        changeCellDataToType(colType, cell) ??
-        parseToValue(cell.text, colType);
+      const coerced  = parseToValue(cell.text, colType);
 
-      const newCell  = colType === "text"
-        ? { text: coerced ?? "" }
-        : { value: coerced };
+      const newCell  = createCellByType(column,coerced)
 
       changes.push({
         rowId,
@@ -300,13 +315,7 @@ const handlePaste = (e) => {
   /* -------- 3. Let the existing infrastructure apply & log it -------- */
   applyChanges(changes);
 };
-  /** Convert a ReactGrid Cell object back to the plain value
- *  that belongs in `gridData`, respecting the column’s type. */
-const asGridValue = (cell, columnType) => {
-  if (!cell) return null;
-  if (!isNaN(cell.value)) return cell.value;
-  return changeCellDataToType(columnType || "text", cell);
-};
+
 
 const handleUndoChanges = useCallback(() => {
   setHistoryIndex(idx => {
@@ -321,7 +330,7 @@ const handleUndoChanges = useCallback(() => {
         if (colIdx === -1 || rowId >= next.length) return;
 
         next[rowId] = [...next[rowId]];
-        next[rowId][colIdx] = asGridValue(previousCell, columns[colIdx].type);
+        next[rowId][colIdx] = getCellDataByType(columns[colIdx].type, previousCell);
       });
 
       setProps({ data: next });
@@ -347,7 +356,7 @@ const handleRedoChanges = useCallback(() => {
         if (colIdx === -1 || rowId >= next.length) return;
 
         next[rowId] = [...next[rowId]];
-        next[rowId][colIdx] = asGridValue(newCell, columns[colIdx].type);
+        next[rowId][colIdx] = getCellDataByType(columns[colIdx].type, newCell);
       });
 
       setProps({ data: next });

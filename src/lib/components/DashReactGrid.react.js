@@ -190,11 +190,13 @@ const DashReactGrid = ({
 
   const applyChanges = useCallback((changes) => {
     if (!changes.length) return;
+    const diff = [];
     setGridData(prevData => {
       const newData = [...prevData];
       const maxRowId = prevData.length;
+      
 
-      changes.forEach(({ rowId, columnId, newCell }) => {
+      changes.forEach(({ rowId, columnId, previousCell,newCell }) => {
         const colIdx = columns.findIndex(col => col.columnId === columnId);
         if (colIdx !== -1) {
           if (rowId >= maxRowId && isExtendable) {
@@ -204,7 +206,10 @@ const DashReactGrid = ({
             }
           }
           newData[rowId] = [...newData[rowId]];
-          newData[rowId][colIdx] = getCellDataByType(columns[colIdx].type,newCell)
+          const previousValue = getCellDataByType(columns[colIdx].type,previousCell)
+          const newValue = getCellDataByType(columns[colIdx].type,newCell)
+          newData[rowId][colIdx] = newValue
+          diff.push({rowId,columnId,previousValue,newValue})
         }
       })
       if (isExtendable) {
@@ -221,7 +226,8 @@ const DashReactGrid = ({
       setProps({ data: newData });
       return newData;
     });
-    setHistory(prev => [...prev.slice(0, historyIndex + 1), changes]);
+    
+    setHistory(prev => [...prev.slice(0, historyIndex + 1), diff]);
     setHistoryIndex(prev => prev + 1);
   }, [columns, setProps, historyIndex, isExtendable]);
 
@@ -320,7 +326,7 @@ const handlePaste = (e) => {
       changes.push({
         rowId,
         columnId: column.columnId,
-        oldCell,
+        previousCell: oldCell,
         newCell
       });
     });
@@ -339,12 +345,12 @@ const handleUndoChanges = useCallback(() => {
     setGridData(data => {
       const next = [...data];
 
-      batch.forEach(({ rowId, columnId, previousCell }) => {
+      batch.forEach(({ rowId, columnId, previousValue }) => {
         const colIdx = columns.findIndex(c => c.columnId === columnId);
         if (colIdx === -1 || rowId >= next.length) return;
 
         next[rowId] = [...next[rowId]];
-        next[rowId][colIdx] = getCellDataByType(columns[colIdx].type, previousCell);
+        next[rowId][colIdx] = previousValue;
       });
 
       setProps({ data: next });
@@ -365,12 +371,12 @@ const handleRedoChanges = useCallback(() => {
     setGridData(data => {
       const next = [...data];
 
-      batch.forEach(({ rowId, columnId, newCell }) => {
+      batch.forEach(({ rowId, columnId, newValue }) => {
         const colIdx = columns.findIndex(c => c.columnId === columnId);
         if (colIdx === -1 || rowId >= next.length) return;
 
         next[rowId] = [...next[rowId]];
-        next[rowId][colIdx] = getCellDataByType(columns[colIdx].type, newCell);
+        next[rowId][colIdx] = newValue;
       });
 
       setProps({ data: next });

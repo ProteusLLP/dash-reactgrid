@@ -158,17 +158,10 @@ const DashReactGrid = ({
   persistence_type,
   persisted_props
 }) => {
-  const [gridData, setGridData] = useState(data);
   const [history, setHistory] = useState([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
 
-  useEffect(() => {
-    setGridData(data);
-  }, [data]);
-
-
-
-
+  
   const customCellTemplates = useMemo(() => ({
     percent: new PercentCellTemplate(),
     customnumber: new CustomNumberCellTemplate(),
@@ -178,22 +171,21 @@ const DashReactGrid = ({
   const rows = useMemo(() => (
     [
       { rowId: "header", cells: columns.map(col => ({ type: "header", text: col.title, style: { ...styleHeader, ...col.headerStyle, ...(col.align ? alignToStyle(col.align) : null) } || null })),height:styleHeader?.height},
-      ...gridData.map((row, idx) => ({
+      ...data.map((row, idx) => ({
         rowId: idx,
         cells: columns.map((col, colIdx) => {
           return createCellByType(col, row[colIdx], { ...col.style, ...(col.align ? alignToStyle(col.align) : null) }, col.nonEditable);
         })
       }))
     ]
-  ), [columns, gridData]);
+  ), [columns, data]);
 
 
   const applyChanges = useCallback((changes) => {
     if (!changes.length) return;
     const diff = [];
-    setGridData(prevData => {
-      const newData = [...prevData];
-      const maxRowId = prevData.length;
+      const newData = [...data];
+      const maxRowId = data.length;
       
 
       changes.forEach(({ rowId, columnId, previousCell,newCell }) => {
@@ -223,9 +215,7 @@ const DashReactGrid = ({
         newData.push(columns.map((_) => null))
       }
     } 
-      setProps({ data: newData });
-      return newData;
-    });
+    setProps({ data: newData });
     
     setHistory(prev => [...prev.slice(0, historyIndex + 1), diff]);
     setHistoryIndex(prev => prev + 1);
@@ -236,7 +226,7 @@ const DashReactGrid = ({
     for (let row = selectedRange.first.row.idx; row <= selectedRange.last.row.idx; row++) {
       const tableRow = []
       for (let column = selectedRange.first.column.idx; column <= selectedRange.last.column.idx; column++) {
-        const cellValue = row === 0 ? columns[column].title : gridData[row - 1][column];
+        const cellValue = row === 0 ? columns[column].title : data[row - 1][column];
         tableRow.push(getValueAsString( columns[column].type || "text", cellValue ))
       }
       table.push(tableRow.join("\t"))
@@ -314,7 +304,7 @@ const handlePaste = (e) => {
       const colType  = column.type || "text";
 
       // --- previous value on the grid (may be undefined / overflow row) ---
-      const prevVal  = gridData[rowId]?.[colIdx];
+      const prevVal  = data[rowId]?.[colIdx];
       const oldCell  = createCellByType(column,prevVal)
         
 
@@ -338,12 +328,10 @@ const handlePaste = (e) => {
 
 
 const handleUndoChanges = useCallback(() => {
-  setHistoryIndex(idx => {
-    if (idx < 0) return idx;                       // nothing to undo
-    const batch = history[idx];
+  if (historyIndex < 0) return;                     // nothing to undo
+    const batch = history[historyIndex];
     
-    setGridData(data => {
-      const next = [...data];
+    const next = [...data];
 
       batch.forEach(({ rowId, columnId, previousValue }) => {
         const colIdx = columns.findIndex(c => c.columnId === columnId);
@@ -352,13 +340,8 @@ const handleUndoChanges = useCallback(() => {
         next[rowId] = [...next[rowId]];
         next[rowId][colIdx] = previousValue;
       });
-
+      setHistoryIndex(prev => prev - 1); // move pointer back
       setProps({ data: next });
-      return next;
-    });
-
-    return idx - 1;                               // move pointer back
-  });
 }, [history, columns, setProps]);
 
 /* ------------------------------ REDO ------------------------------ */
@@ -368,7 +351,6 @@ const handleRedoChanges = useCallback(() => {
     const nextIdx = idx + 1;
     const batch   = history[nextIdx];
 
-    setGridData(data => {
       const next = [...data];
 
       batch.forEach(({ rowId, columnId, newValue }) => {
@@ -377,10 +359,8 @@ const handleRedoChanges = useCallback(() => {
 
         next[rowId] = [...next[rowId]];
         next[rowId][colIdx] = newValue;
-      });
-
+      
       setProps({ data: next });
-      return next;
     });
 
     return nextIdx;                               // advance pointer

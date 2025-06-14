@@ -57,6 +57,10 @@ const createCellByType = (column, value, columnStyle, columnNonEditable) => {
       const d = new Date(value)
       return { type: column.type, date: value ? d : null, style: columnStyle, nonEditable: columnNonEditable, format: new Intl.DateTimeFormat(locale, { ...column.formatOptions }) }
     }
+    case 'checkbox':
+      return { type: column.type, checked: Boolean(value), style: columnStyle, nonEditable: columnNonEditable }
+    default:
+      return { type: 'text', text: String(value || ''), style: columnStyle, nonEditable: columnNonEditable }
   }
 }
 
@@ -70,22 +74,33 @@ const getCellDataByType = (type, cell) => {
       return cell.value
     case 'date':
       return cell.date
+    case 'checkbox':
+      return cell.checked;
+    default:
+      return cell.text || cell.value || cell.date || cell.checked || '';
   }
 }
 
 const parseToValue = (text, type) => {
+  const t = text.trim();
   switch (type) {
     case "number":
     case "customnumber":
-      return numberParser.parse(text);
+      return numberParser.parse(t);
     case "percent":
-      return percentParser.parse(text);
+      return percentParser.parse(t);
     case "date":{
-      const d = new Date(parseLocaleDate(text,locale))
+      const d = new Date(parseLocaleDate(t,locale))
       return d ;
     }
+    case "checkbox":
+      return /^(true|1|yes)$/i.test(t)
+        ? true
+        : /^(false|0|no)$/i.test(t)
+        ? false
+        : null;
     default:
-      return text;
+      return t;
   }
 };
 
@@ -97,7 +112,7 @@ const getValueAsString = (type,value)=>{
       return value.toLocaleString(locale, { useGrouping: false, maximumFractionDigits: 17 })
     case "date":{
       const d = new Date(value)
-      const str = d.toISOString()
+      const str = d.toISOString().slice(0,10)
       return str
     }
     default:
@@ -111,10 +126,9 @@ const alignToStyle = (align) => {
     case "left": return { "justifyContent": "flex-start" };
     case "center": return { "justifyContent": "center" };
     case "right": return { "justifyContent": "flex-end" };
+    default: return { "justifyContent": "flex-start" };
   }
 }
-
-
 
 /**
  * DashReactGrid is a wrapper around the ReactGrid component that allows for easy integration with Dash applications. 

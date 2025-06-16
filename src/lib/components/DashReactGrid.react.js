@@ -43,7 +43,7 @@ const getCellDataByType = (type, cell) => {
     case 'percent':
       return cell.value
     case 'date':
-      return cell.date
+      return cell.date?.toISOString().slice(0,10) || ''; // return date in YYYY-MM-DD format
     case 'checkbox':
       return cell.checked;
     case 'dropdown':
@@ -63,7 +63,7 @@ const parseToValue = (text, col) => {
       return percentParser.parse(t);
     case "date":{
       const d = new Date(parseLocaleDate(t,locale))
-      return d ;
+      return d.toISOString().slice(0,10) // return date in YYYY-MM-DD format;
     }
     case "checkbox":
       return /^(true|1|yes)$/i.test(t)
@@ -236,8 +236,8 @@ const DashReactGrid = ({
       setHistoryIndex(prev => prev + 1)
     };
 
-  return newData;
-  });
+    return newData;
+    });
 
   return newCells;  
   });

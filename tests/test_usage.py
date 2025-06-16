@@ -12,12 +12,10 @@ def test_render_component(dash_duo):
 
     # Get the generated component input with selenium
     # The html input will be a children of the #input dash component
-    first_cell = (
-        "#input > div > div > div.rg-pane.rg-pane-center-middle > div:nth-child(1)"
-    )
+    first_cell = "#grid > div > div > div.rg-pane.rg-pane-center-middle > div[data-cell-colIdx='0'][data-cell-rowIdx='1']"
     my_component = dash_duo.find_element(first_cell)
 
-    assert "Matthew" == my_component.text
+    assert "hello" == my_component.text
     # Clear the input
     # dash_duo.clear_input(my_component)
 

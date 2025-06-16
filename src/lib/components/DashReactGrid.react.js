@@ -314,6 +314,7 @@ const DashReactGrid = ({
   enableRangeSelection = true,
   enableRowSelection = false,
   enableColumnSelection = false,
+  enableColumnResizeOnAllHeaders = false,
   highlights = null,
   stickyLeftColumns = 0,
   stickyRightColumns = 0,
@@ -707,6 +708,7 @@ const DashReactGrid = ({
         enableRangeSelection={enableRangeSelection}
         enableRowSelection={enableRowSelection}
         enableColumnSelection={enableColumnSelection}
+        enableColumnResizeOnAllHeaders={enableColumnResizeOnAllHeaders}
         highlights={highlights}
         stickyLeftColumns={stickyLeftColumns}
         stickyRightColumns={stickyRightColumns}
@@ -716,6 +718,24 @@ const DashReactGrid = ({
         onSelectionChanged={handleSelectionChanged}
         onSelectionChanging={handleSelectionChanging}
         onFocusLocationChanged={handleFocusLocationChanged}
+        onColumnResized={(columnId, newWidth) => {
+          if (setPropsRef.current) {
+            setPropsRef.current({
+              columns: columns.map(col => 
+                col.columnId === columnId ? { ...col, width: newWidth } : col
+              )
+            });
+          }
+        }}
+        onColumnsReordered={(columnsOrder) => {
+          if (setPropsRef.current) {
+            setPropsRef.current({
+              columns: columnsOrder.map(colId => 
+                columns.find(col => col.columnId === colId) || {}
+              )
+            });
+          }
+        }}
         customCellTemplates={customCellTemplates}
       />
     </div>
@@ -743,6 +763,7 @@ DashReactGrid.propTypes = {
   enableRangeSelection: PropTypes.bool,
   enableRowSelection: PropTypes.bool,
   enableColumnSelection: PropTypes.bool,
+  enableColumnResizeOnAllHeaders: PropTypes.bool,
   highlights: PropTypes.array,
   stickyLeftColumns: PropTypes.number,
   stickyRightColumns: PropTypes.number,

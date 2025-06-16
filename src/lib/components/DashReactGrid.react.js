@@ -1,50 +1,16 @@
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, use } from 'react';
 import PropTypes, { checkPropTypes } from 'prop-types';
 import { ReactGrid } from "@silevis/reactgrid";
 import "@silevis/reactgrid/styles.css";
 import "../styles.css";
 import { CustomNumberCellTemplate, numberParser } from '../CustomNumberCell';
 import { PercentCellTemplate, percentParser } from '../PercentCell';
-import { DateTime } from "luxon";
+import { parseLocaleDate} from '../DateUtilities'
 
 
 const locale = window.navigator.language|| 'en-US'; // Default to 'en-US' if locale is not set
 
-function shortPattern(locale) {
-  // 31 Dec 1999 is safe (no leading zero), use it as a probe
-  const probe = new Date(1999, 11, 31);             // 31-12-1999
-  const parts = new Intl.DateTimeFormat(
-    locale,
-    { dateStyle: "short" }
-  ).formatToParts(probe);
-
-  return parts
-    .map(p => {
-      switch (p.type) {
-        case "day":   return p.value.length === 2 ? "dd" : "d";
-        case "month": return p.value.length === 2 ? "MM" : "M";
-        case "year":  return p.value.length === 4 ? "yyyy" : "yy";
-        case "literal": return p.value;                     // keep the slash/dot
-        default: return "";
-      }
-    })
-    .join("");
-}
-
-function parseLocaleDate(text, locale = locale) {
-  // 1️⃣ candidate patterns in *this* locale
-  const pattern = shortPattern(locale);          // e.g. "dd/MM/yyyy"
-  const dt = DateTime.fromFormat(text, pattern, { locale });
-  if (dt.isValid) return dt
-  // try UTC
-  const utc = DateTime.fromFormat(text, "yyyy-MM-dd'T'HH:mm:ss.SSSZZ", { locale });
-  if (utc.isValid) return utc;
-  // 3️⃣ last-ditch: ISO / browser parse
-  const iso = DateTime.fromISO(text,{locale});
-  return iso.isValid ? iso : null;
-}
-
-const createCellByType = (column, value, columnStyle, columnNonEditable) => {
+const createCell = (column, value, columnStyle, columnNonEditable, state) => {
 
   switch (column.type) {
     case 'text':
@@ -59,6 +25,10 @@ const createCellByType = (column, value, columnStyle, columnNonEditable) => {
     }
     case 'checkbox':
       return { type: column.type, checked: Boolean(value), style: columnStyle, nonEditable: columnNonEditable }
+    case 'dropdown':{
+      const label = Array.isArray(column.values) ? column.values.find(option => option.value === value)?.label || '': '';
+      return {type:'dropdown', selectedValue:value, text:label, values:column.values, style:columnStyle, nonEditable:columnNonEditable,isOpen:state?.isOpen||false}
+    }
     default:
       return { type: 'text', text: String(value || ''), style: columnStyle, nonEditable: columnNonEditable }
   }
@@ -76,14 +46,16 @@ const getCellDataByType = (type, cell) => {
       return cell.date
     case 'checkbox':
       return cell.checked;
+    case 'dropdown':
+      return cell.selectedValue;
     default:
       return cell.text || cell.value || cell.date || cell.checked || '';
   }
 }
 
-const parseToValue = (text, type) => {
+const parseToValue = (text, col) => {
   const t = text.trim();
-  switch (type) {
+  switch (col.type) {
     case "number":
     case "customnumber":
       return numberParser.parse(t);
@@ -99,21 +71,31 @@ const parseToValue = (text, type) => {
         : /^(false|0|no)$/i.test(t)
         ? false
         : null;
+    case "dropdown":{
+      // check if the text value is in the list of values
+      const options = col.values.map((option) => option.label);
+      return options.includes(t) ? col.values.find(option => option.label === t)?.value || '' : null;
+    }
     default:
       return t;
   }
 };
 
-const getValueAsString = (type,value)=>{
-  switch (type) {
+const getValueAsString = (col,value)=>{
+  switch (col.type) {
     case "number":
     case "customnumber":
     case "percent":
-      return value.toLocaleString(locale, { useGrouping: false, maximumFractionDigits: 17 })
+      return value?.toLocaleString(locale, { useGrouping: false, maximumFractionDigits: 17 }) || '';
     case "date":{
       const d = new Date(value)
       const str = d.toISOString().slice(0,10)
       return str
+    }
+    case "checkbox":
+      return String(value)
+    case "dropdown":{
+      return String(col.values.find(option => option.value === value)?.label || '')
     }
     default:
       return String(value)
@@ -129,6 +111,19 @@ const alignToStyle = (align) => {
     default: return { "justifyContent": "flex-start" };
   }
 }
+
+
+function buildCellsFromData(data, columns,styleHeader) {
+  const newCells= [{ rowId: "header", cells: columns.map(col => ({ type: "header", text: col.title, style: { ...styleHeader, ...col.headerStyle, ...(col.align ? alignToStyle(col.align) : null) } || null })),height:styleHeader?.height},
+    ...data.map((row, rowIndex) =>(
+    {
+        rowId: rowIndex,
+        cells:row.map((value, colIndex) => createCell(columns[colIndex],value,  { ...columns[colIndex].style, ...(columns[colIndex].align ? alignToStyle(columns[colIndex].align) : null) }, columns[colIndex].nonEditable))
+    })
+  )];
+  return newCells
+}
+
 
 /**
  * DashReactGrid is a wrapper around the ReactGrid component that allows for easy integration with Dash applications. 
@@ -160,34 +155,31 @@ const DashReactGrid = ({
 }) => {
   const [history, setHistory] = useState([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
+  const [gridData, setData] = useState([...[...data]]);
+  const [cells, setCells] = useState(buildCellsFromData([...[...data]], columns,styleHeader));
 
+  useEffect(()=>{
+    setProps({
+      data: gridData})}, [gridData, setProps]
+  );
   
   const customCellTemplates = useMemo(() => ({
-    percent: new PercentCellTemplate(),
-    customnumber: new CustomNumberCellTemplate(),
-    number: new CustomNumberCellTemplate()
+  percent: new PercentCellTemplate(),
+  customnumber: new CustomNumberCellTemplate(),
+  number: new CustomNumberCellTemplate()
   }), []);
-
-  const rows = useMemo(() => (
-    [
-      { rowId: "header", cells: columns.map(col => ({ type: "header", text: col.title, style: { ...styleHeader, ...col.headerStyle, ...(col.align ? alignToStyle(col.align) : null) } || null })),height:styleHeader?.height},
-      ...data.map((row, idx) => ({
-        rowId: idx,
-        cells: columns.map((col, colIdx) => {
-          return createCellByType(col, row[colIdx], { ...col.style, ...(col.align ? alignToStyle(col.align) : null) }, col.nonEditable);
-        })
-      }))
-    ]
-  ), [columns, data]);
-
-
-  const applyChanges = useCallback((changes) => {
+  
+  const applyChanges = (changes) => {
     if (!changes.length) return;
-    const diff = [];
-      const newData = [...data];
-      const maxRowId = data.length;
-      
-
+   
+    setCells(prevCells => {
+      const newCells = [ ...prevCells ];
+      setData(prevData => {
+      const diff = [];
+      const newData = [...prevData];
+      let dataChanged=false
+      const maxRowId = prevData.length;
+    
       changes.forEach(({ rowId, columnId, previousCell,newCell }) => {
         const colIdx = columns.findIndex(col => col.columnId === columnId);
         if (colIdx !== -1) {
@@ -195,61 +187,92 @@ const DashReactGrid = ({
             // Add new rows if the pasted data exceeds current rows
             while (newData.length <= rowId) {
               newData.push(new Array(columns.length).fill(null));
+              newCells.push({ rowId: newData.length - 1, cells: columns.map((col) => createCell(col, null, { ...col.style, ...(col.align ? alignToStyle(col.align) : null) }, col.nonEditable)) });
+              dataChanged=true
             }
           }
-          newData[rowId] = [...newData[rowId]];
           const previousValue = getCellDataByType(columns[colIdx].type,previousCell)
           const newValue = getCellDataByType(columns[colIdx].type,newCell)
-          newData[rowId][colIdx] = newValue
-          diff.push({rowId,columnId,previousValue,newValue})
-        }
-      })
-      if (isExtendable) {
+          if (previousValue !== newValue) {
+            dataChanged=true
+            const newDataRow = [...newData[rowId]];
+            newDataRow[colIdx] = newValue
+            newData[rowId] = newDataRow;
+            diff.push({rowId,columnId,previousValue,newValue})
+            const newCellsRow =  [...newCells[rowId+1].cells];
+            newCellsRow[colIdx] = createCell(columns[colIdx], newData[rowId][colIdx], { ...columns[colIdx].style, ...(columns[colIdx].align ? alignToStyle(columns[colIdx].align) : null) }, columns[colIdx].nonEditable );
+            newCells[rowId+1] = {rowId:rowId,cells:newCellsRow};
+          }
+          // Store transient UI state (e.g., isOpen)
+          else {if (newCell.isOpen !== undefined) {
+            const newCellsRow =  [...newCells[rowId+1].cells];
+            newCellsRow[colIdx] = {...createCell(columns[colIdx], newData[rowId][colIdx], { ...columns[colIdx].style, ...(columns[colIdx].align ? alignToStyle(columns[colIdx].align) : null) }, columns[colIdx].nonEditable ),isOpen: newCell.isOpen};
+            newCells[rowId+1] = {rowId:rowId,cells:newCellsRow};
+            const newDataRow = [...newData[rowId]];
+            newData[rowId] = newDataRow;
+              };
+            }
+          }
+
+    });
+    if (isExtendable) {
       // check to see if rows can be removed
-      while (newData.length > 1 && !newData[newData.length - 1].some((v) => v)) {
-        newData.pop()
+        while (newData.length > 1 && !newData[newData.length - 1].some((v) => v)) {
+          newData.pop()
+          newCells.pop();
       }
       // check to see if a new row is needed
       
       if (newData[newData.length - 1].some((v) => v)) {
         newData.push(columns.map((_) => null))
+        newCells.push({ rowId: newData.length - 1, cells: columns.map((col) => createCell(col, null, { ...col.style, ...(col.align ? alignToStyle(col.align) : null) }, col.nonEditable)) });
       }
-    } 
-    setProps({ data: newData });
-    
-    setHistory(prev => [...prev.slice(0, historyIndex + 1), diff]);
-    setHistoryIndex(prev => prev + 1);
-  }, [columns, setProps, historyIndex, isExtendable]);
-
-  const selectedRangeToTable = (selectedRange) => {
-    const table = []
-    for (let row = selectedRange.first.row.idx; row <= selectedRange.last.row.idx; row++) {
-      const tableRow = []
-      for (let column = selectedRange.first.column.idx; column <= selectedRange.last.column.idx; column++) {
-        const cellValue = row === 0 ? columns[column].title : data[row - 1][column];
-        tableRow.push(getValueAsString( columns[column].type || "text", cellValue ))
+      if (newData.length!==maxRowId) {
+        dataChanged=true
       }
-      table.push(tableRow.join("\t"))
     }
-    return table.join("\n")
+    if (dataChanged) {
+      setHistory(prev => [...prev.slice(0, historyIndex + 1), diff]);
+      setHistoryIndex(prev => prev + 1)
+    };
+
+  return newData;
+  });
+
+  return newCells;  
+  });
+  
+    
   }
 
-  const handleCopy = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    const activeSelectedRange = selectedRange[0];
-    if (!activeSelectedRange) {
-      return
+const selectedRangeToTable = (selectedRange) => {
+  const table = []
+  for (let row = selectedRange.first.row.idx; row <= selectedRange.last.row.idx; row++) {
+    const tableRow = []
+    for (let column = selectedRange.first.column.idx; column <= selectedRange.last.column.idx; column++) {
+      const cellValue = row === 0 ? columns[column].title : data[row - 1][column];
+      tableRow.push(getValueAsString( columns[column], cellValue ))
     }
-    const table = selectedRangeToTable(activeSelectedRange);
-    e.clipboardData.setData("text/plain", table);
-  };
+    table.push(tableRow.join("\t"))
+  }
+  return table.join("\n")
+}
+
+const handleCopy = (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  
+  const activeSelectedRange = selectedRange[0];
+  if (!activeSelectedRange) {
+    return
+  }
+  const table = selectedRangeToTable(activeSelectedRange);
+  e.clipboardData.setData("text/plain", table);
+};
 
 const handlePaste = (e) => {
   e.stopPropagation();
   e.preventDefault();
-
   const activeRange = selectedRange[0];
   if (!activeRange) return;                       // nothing selected
 
@@ -301,17 +324,14 @@ const handlePaste = (e) => {
       if (colIdx >= columns.length) return;                 // outside table
 
       const column   = columns[colIdx];
-      const colType  = column.type || "text";
-
+      
       // --- previous value on the grid (may be undefined / overflow row) ---
       const prevVal  = data[rowId]?.[colIdx];
-      const oldCell  = createCellByType(column,prevVal)
-        
-
+      const oldCell  = createCell(column,prevVal)
       // --- value coming from clipboard, coerced to column type -------------
-      const coerced  = parseToValue(cell.text, colType);
-
-      const newCell  = createCellByType(column,coerced)
+      const coerced  = parseToValue(cell.text, column);
+      
+      const newCell  = createCell(column,coerced)
 
       changes.push({
         rowId,
@@ -329,43 +349,40 @@ const handlePaste = (e) => {
 
 const handleUndoChanges = useCallback(() => {
   if (historyIndex < 0) return;                     // nothing to undo
-    const batch = history[historyIndex];
-    
-    const next = [...data];
+  const batch = history[historyIndex];
+  const next = [...gridData];
+  batch.forEach(({ rowId, columnId, previousValue }) => {
+    const colIdx = columns.findIndex(c => c.columnId === columnId);
+    if (colIdx === -1 || rowId >= next.length) return;
 
-      batch.forEach(({ rowId, columnId, previousValue }) => {
-        const colIdx = columns.findIndex(c => c.columnId === columnId);
-        if (colIdx === -1 || rowId >= next.length) return;
-
-        next[rowId] = [...next[rowId]];
-        next[rowId][colIdx] = previousValue;
-      });
-      setHistoryIndex(prev => prev - 1); // move pointer back
-      setProps({ data: next });
-}, [history, columns, setProps]);
+    next[rowId] = [...next[rowId]];
+    next[rowId][colIdx] = previousValue;
+  });
+  setHistoryIndex(prev => prev - 1); // move pointer back
+  setData(next);
+  setCells(buildCellsFromData(next, columns,styleHeader)); // update cells to reflect the undo
+}, [history,historyIndex,gridData, columns]);
 
 /* ------------------------------ REDO ------------------------------ */
 const handleRedoChanges = useCallback(() => {
-  setHistoryIndex(idx => {
-    if (idx + 1 >= history.length) return idx;     // nothing to redo
-    const nextIdx = idx + 1;
-    const batch   = history[nextIdx];
+  if (historyIndex + 1 >= history.length) return historyIndex;     // nothing to redo
+  const nextIdx = historyIndex + 1;
+  const batch   = history[nextIdx];
 
-      const next = [...data];
+  const next = [...gridData];
 
-      batch.forEach(({ rowId, columnId, newValue }) => {
-        const colIdx = columns.findIndex(c => c.columnId === columnId);
-        if (colIdx === -1 || rowId >= next.length) return;
+  batch.forEach(({ rowId, columnId, newValue }) => {
+    const colIdx = columns.findIndex(c => c.columnId === columnId);
+    if (colIdx === -1 || rowId >= next.length) return;
 
-        next[rowId] = [...next[rowId]];
-        next[rowId][colIdx] = newValue;
-      
-      setProps({ data: next });
-    });
-
-    return nextIdx;                               // advance pointer
+    next[rowId] = [...next[rowId]];
+    next[rowId][colIdx] = newValue;
   });
-}, [history, columns, setProps]);
+  setHistoryIndex(prev => prev + 1); // move pointer forward
+  setData(next);
+  setCells(buildCellsFromData(next, columns,styleHeader)); // update cells to reflect the redo
+
+}, [history,historyIndex,gridData, columns]);
 
   return (
     <div id={id} style={style} className={className} tabIndex={0}
@@ -379,7 +396,7 @@ const handleRedoChanges = useCallback(() => {
     }
   }}>
       <ReactGrid
-        rows={rows}
+        rows={cells}
         columns={columns}
         onCellsChanged={applyChanges}
         enableFillHandle={enableFillHandle}

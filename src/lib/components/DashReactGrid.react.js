@@ -6,6 +6,7 @@ import "../styles.css";
 import { CustomNumberCellTemplate, numberParser } from '../CustomNumberCell';
 import { PercentCellTemplate, percentParser } from '../PercentCell';
 import { parseLocaleDate} from '../DateUtilities'
+import { set } from 'ramda';
 
 
 const locale = window.navigator.language|| 'en-US'; // Default to 'en-US' if locale is not set
@@ -172,6 +173,12 @@ const DashReactGrid = ({
     setProps({
       data: gridData})}, [gridData]
   );
+
+  useEffect(()=> {
+    setCells(buildCellsFromData(data, columnsMemo, styleHeader));
+    setData(data);
+  }, [data, columnsMemo, styleHeader]
+);
   
   
   const applyChanges = (changes) => {

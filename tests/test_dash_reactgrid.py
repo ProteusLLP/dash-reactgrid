@@ -119,6 +119,22 @@ def test_edit_date(dash_duo, app):
     assert '"2024-01-31"' in dash_duo.find_element(f"#{OUTPUT_ID}").text
 
 
+def test_edit_date2(dash_duo, app):
+    dash_duo.start_server(app)
+    cell = dash_duo.find_element(f"{path}[data-cell-colIdx='3'][data-cell-rowIdx='1']")
+    cell.click()
+    time.sleep(0.05)
+    cell.click()
+    time.sleep(0.5)
+    grid = dash_duo.find_element(f"#{GRID_ID}")
+    grid.find_element(By.CSS_SELECTOR, 'input[type="date"]').send_keys("08.30.2025")
+    grid.find_element(By.CSS_SELECTOR, 'input[type="date"]').send_keys(
+        "\ue007"
+    )  # Enter
+    time.sleep(0.1)  # Allow time for the date to update
+    assert '"2025-08-30"' in dash_duo.find_element(f"#{OUTPUT_ID}").text
+
+
 def test_copy_paste(dash_duo, app):
     dash_duo.start_server(app)
     cell = dash_duo.find_element(f"{path}[data-cell-colIdx='0'][data-cell-rowIdx='1']")

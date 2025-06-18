@@ -42,8 +42,9 @@ const getCellDataByType = (type, cell) => {
     case 'customnumber':
     case 'percent':
       return cell.value
-    case 'date':
-      return cell.date?.toISOString().slice(0,10) || ''; // return date in YYYY-MM-DD format
+    case 'date':{
+      return cell.date.toLocaleDateString('en-CA').slice(0,10) || ''; // return date in YYYY-MM-DD format
+    }
     case 'checkbox':
       return cell.checked;
     case 'dropdown':
@@ -63,7 +64,7 @@ const parseToValue = (text, col) => {
       return percentParser.parse(t);
     case "date":{
       const d = new Date(parseLocaleDate(t,locale))
-      return d.toISOString().slice(0,10) // return date in YYYY-MM-DD format;
+      return d.toLocaleDateString('en-CA').slice(0,10) || ''; // return date in YYYY-MM-DD format
     }
     case "checkbox":
       return /^(true|1|yes)$/i.test(t)
@@ -87,11 +88,8 @@ const getValueAsString = (col,value)=>{
     case "customnumber":
     case "percent":
       return value?.toLocaleString(locale, { useGrouping: false, maximumFractionDigits: 17 }) || '';
-    case "date":{
-      const d = new Date(value)
-      const str = d.toISOString().slice(0,10)
-      return str
-    }
+    case "date":
+      return value // dates are already stored as strings in YYYY-MM-DD format
     case "checkbox":
       return String(value)
     case "dropdown":{
@@ -113,16 +111,24 @@ const alignToStyle = (align) => {
 }
 
 
-function buildCellsFromData(data, columns,styleHeader) {
-  const newCells= [{ rowId: "header", cells: columns.map(col => ({ type: "header", text: col.title, style: { ...styleHeader, ...col.headerStyle, ...(col.align ? alignToStyle(col.align) : null) } || null })),height:styleHeader?.height},
+function buildCellsFromData(data, columnsMemo,styleHeader) {
+
+  const newCells= [{ rowId: "header", cells: columnsMemo.map(col => ({ type: "header", text: col.title, style: { ...styleHeader, ...col.headerStyle, ...(col.align ? alignToStyle(col.align) : null) } || null })),height:styleHeader?.height},
     ...data.map((row, rowIndex) =>(
     {
         rowId: rowIndex,
-        cells:row.map((value, colIndex) => createCell(columns[colIndex],value,  { ...columns[colIndex].style, ...(columns[colIndex].align ? alignToStyle(columns[colIndex].align) : null) }, columns[colIndex].nonEditable))
+        cells:row.map((value, colIndex) => createCell(columnsMemo[colIndex],value,  { ...columnsMemo[colIndex].style, ...(columnsMemo[colIndex].align ? alignToStyle(columnsMemo[colIndex].align) : null) }, columnsMemo[colIndex].nonEditable))
     })
   )];
   return newCells
 }
+
+
+const customCellTemplates ={
+  percent: new PercentCellTemplate(),
+  customnumber: new CustomNumberCellTemplate(),
+  number: new CustomNumberCellTemplate()
+  }
 
 
 /**
@@ -155,19 +161,18 @@ const DashReactGrid = ({
 }) => {
   const [history, setHistory] = useState([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
-  const [gridData, setData] = useState([...[...data]]);
-  const [cells, setCells] = useState(buildCellsFromData([...[...data]], columns,styleHeader));
+  const [gridData, setData] = useState(()=>data);
+  const columnsMemo = useMemo(() => {
+    return [...columns]}, [columns]);
+  const [cells, setCells] =  useState(() =>
+  buildCellsFromData(gridData, columnsMemo, styleHeader)
+);
 
   useEffect(()=>{
     setProps({
-      data: gridData})}, [gridData, setProps]
+      data: gridData})}, [gridData]
   );
   
-  const customCellTemplates = useMemo(() => ({
-  percent: new PercentCellTemplate(),
-  customnumber: new CustomNumberCellTemplate(),
-  number: new CustomNumberCellTemplate()
-  }), []);
   
   const applyChanges = (changes) => {
     if (!changes.length) return;
@@ -181,18 +186,18 @@ const DashReactGrid = ({
       const maxRowId = prevData.length;
     
       changes.forEach(({ rowId, columnId, previousCell,newCell }) => {
-        const colIdx = columns.findIndex(col => col.columnId === columnId);
+        const colIdx = columnsMemo.findIndex(col => col.columnId === columnId);
         if (colIdx !== -1) {
           if (rowId >= maxRowId && isExtendable) {
             // Add new rows if the pasted data exceeds current rows
             while (newData.length <= rowId) {
-              newData.push(new Array(columns.length).fill(null));
-              newCells.push({ rowId: newData.length - 1, cells: columns.map((col) => createCell(col, null, { ...col.style, ...(col.align ? alignToStyle(col.align) : null) }, col.nonEditable)) });
+              newData.push(new Array(columnsMemo.length).fill(null));
+              newCells.push({ rowId: newData.length - 1, cells: columnsMemo.map((col) => createCell(col, null, { ...col.style, ...(col.align ? alignToStyle(col.align) : null) }, col.nonEditable)) });
               dataChanged=true
             }
           }
-          const previousValue = getCellDataByType(columns[colIdx].type,previousCell)
-          const newValue = getCellDataByType(columns[colIdx].type,newCell)
+          const previousValue = getCellDataByType(columnsMemo[colIdx].type,previousCell)
+          const newValue = getCellDataByType(columnsMemo[colIdx].type,newCell)
           if (previousValue !== newValue) {
             dataChanged=true
             const newDataRow = [...newData[rowId]];
@@ -200,13 +205,13 @@ const DashReactGrid = ({
             newData[rowId] = newDataRow;
             diff.push({rowId,columnId,previousValue,newValue})
             const newCellsRow =  [...newCells[rowId+1].cells];
-            newCellsRow[colIdx] = createCell(columns[colIdx], newData[rowId][colIdx], { ...columns[colIdx].style, ...(columns[colIdx].align ? alignToStyle(columns[colIdx].align) : null) }, columns[colIdx].nonEditable );
+            newCellsRow[colIdx] = createCell(columnsMemo[colIdx], newData[rowId][colIdx], { ...columnsMemo[colIdx].style, ...(columnsMemo[colIdx].align ? alignToStyle(columnsMemo[colIdx].align) : null) }, columnsMemo[colIdx].nonEditable );
             newCells[rowId+1] = {rowId:rowId,cells:newCellsRow};
           }
           // Store transient UI state (e.g., isOpen)
           else {if (newCell.isOpen !== undefined) {
             const newCellsRow =  [...newCells[rowId+1].cells];
-            newCellsRow[colIdx] = {...createCell(columns[colIdx], newData[rowId][colIdx], { ...columns[colIdx].style, ...(columns[colIdx].align ? alignToStyle(columns[colIdx].align) : null) }, columns[colIdx].nonEditable ),isOpen: newCell.isOpen};
+            newCellsRow[colIdx] = {...createCell(columnsMemo[colIdx], newData[rowId][colIdx], { ...columnsMemo[colIdx].style, ...(columnsMemo[colIdx].align ? alignToStyle(columnsMemo[colIdx].align) : null) }, columnsMemo[colIdx].nonEditable ),isOpen: newCell.isOpen};
             newCells[rowId+1] = {rowId:rowId,cells:newCellsRow};
             const newDataRow = [...newData[rowId]];
             newData[rowId] = newDataRow;
@@ -224,8 +229,8 @@ const DashReactGrid = ({
       // check to see if a new row is needed
       
       if (newData[newData.length - 1].some((v) => v)) {
-        newData.push(columns.map((_) => null))
-        newCells.push({ rowId: newData.length - 1, cells: columns.map((col) => createCell(col, null, { ...col.style, ...(col.align ? alignToStyle(col.align) : null) }, col.nonEditable)) });
+        newData.push(columnsMemo.map((_) => null))
+        newCells.push({ rowId: newData.length - 1, cells: columnsMemo.map((col) => createCell(col, null, { ...col.style, ...(col.align ? alignToStyle(col.align) : null) }, col.nonEditable)) });
       }
       if (newData.length!==maxRowId) {
         dataChanged=true
@@ -250,8 +255,8 @@ const selectedRangeToTable = (selectedRange) => {
   for (let row = selectedRange.first.row.idx; row <= selectedRange.last.row.idx; row++) {
     const tableRow = []
     for (let column = selectedRange.first.column.idx; column <= selectedRange.last.column.idx; column++) {
-      const cellValue = row === 0 ? columns[column].title : data[row - 1][column];
-      tableRow.push(getValueAsString( columns[column], cellValue ))
+      const cellValue = row === 0 ? columnsMemo[column].title : data[row - 1][column];
+      tableRow.push(getValueAsString( columnsMemo[column], cellValue ))
     }
     table.push(tableRow.join("\t"))
   }
@@ -321,9 +326,9 @@ const handlePaste = (e) => {
 
     row.forEach((cell, ci) => {
       const colIdx = activeRange.first.column.idx + ci;
-      if (colIdx >= columns.length) return;                 // outside table
+      if (colIdx >= columnsMemo.length) return;                 // outside table
 
-      const column   = columns[colIdx];
+      const column   = columnsMemo[colIdx];
       
       // --- previous value on the grid (may be undefined / overflow row) ---
       const prevVal  = data[rowId]?.[colIdx];
@@ -352,7 +357,7 @@ const handleUndoChanges = useCallback(() => {
   const batch = history[historyIndex];
   const next = [...gridData];
   batch.forEach(({ rowId, columnId, previousValue }) => {
-    const colIdx = columns.findIndex(c => c.columnId === columnId);
+    const colIdx = columnsMemo.findIndex(c => c.columnId === columnId);
     if (colIdx === -1 || rowId >= next.length) return;
 
     next[rowId] = [...next[rowId]];
@@ -360,8 +365,8 @@ const handleUndoChanges = useCallback(() => {
   });
   setHistoryIndex(prev => prev - 1); // move pointer back
   setData(next);
-  setCells(buildCellsFromData(next, columns,styleHeader)); // update cells to reflect the undo
-}, [history,historyIndex,gridData, columns]);
+  setCells(buildCellsFromData(next, columnsMemo,styleHeader)); // update cells to reflect the undo
+}, [history,historyIndex,gridData, columnsMemo]);
 
 /* ------------------------------ REDO ------------------------------ */
 const handleRedoChanges = useCallback(() => {
@@ -372,7 +377,7 @@ const handleRedoChanges = useCallback(() => {
   const next = [...gridData];
 
   batch.forEach(({ rowId, columnId, newValue }) => {
-    const colIdx = columns.findIndex(c => c.columnId === columnId);
+    const colIdx = columnsMemo.findIndex(c => c.columnId === columnId);
     if (colIdx === -1 || rowId >= next.length) return;
 
     next[rowId] = [...next[rowId]];
@@ -380,9 +385,9 @@ const handleRedoChanges = useCallback(() => {
   });
   setHistoryIndex(prev => prev + 1); // move pointer forward
   setData(next);
-  setCells(buildCellsFromData(next, columns,styleHeader)); // update cells to reflect the redo
+  setCells(buildCellsFromData(next, columnsMemo,styleHeader)); // update cells to reflect the redo
 
-}, [history,historyIndex,gridData, columns]);
+}, [history,historyIndex,gridData, columnsMemo]);
 
   return (
     <div id={id} style={style} className={className} tabIndex={0}
@@ -415,7 +420,7 @@ const handleRedoChanges = useCallback(() => {
           return true
         }
         }
-        onFocusLocationChanged={selectedCell => setProps({ selectedCell })}
+        onFocusLocationChanged={selectedCell => setProps({ selectedCell: selectedCell })}
         customCellTemplates={customCellTemplates}
       />
     </div>

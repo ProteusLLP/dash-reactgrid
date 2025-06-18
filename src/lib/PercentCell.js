@@ -85,6 +85,7 @@ export class PercentCellTemplate {
         var defaultValue = Number.isNaN(cell.value) ? this.getTextFromCharCode(cell.text) : format.format(cell.value);
         return <input
             inputMode='text'
+            className='rg-input'
             ref={input => {
                 this.input = input
                 if (input) {

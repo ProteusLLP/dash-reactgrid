@@ -95,7 +95,7 @@ jobs:
                   python run_tests.py --all --coverage --report
 
             - name: Upload comprehensive test results
-              uses: actions/upload-artifact@v3
+              uses: actions/upload-artifact@v4
               if: always()
               with:
                   name: comprehensive-test-results-${{ matrix.os }}-py${{ matrix.python-version }}
@@ -151,7 +151,7 @@ jobs:
                   kill $SAR_PID || true
 
             - name: Upload stress test results
-              uses: actions/upload-artifact@v3
+              uses: actions/upload-artifact@v4
               if: always()
               with:
                   name: stress-test-results
@@ -200,7 +200,7 @@ jobs:
                   xvfb-run -a python run_tests.py --fast --report
 
             - name: Upload browser test results
-              uses: actions/upload-artifact@v3
+              uses: actions/upload-artifact@v4
               if: always()
               with:
                   name: browser-test-results-${{ matrix.browser }}
@@ -239,7 +239,7 @@ jobs:
                   python -c "import dash_reactgrid; print('✅ Package installation successful')"
 
             - name: Upload build artifacts
-              uses: actions/upload-artifact@v3
+              uses: actions/upload-artifact@v4
               with:
                   name: package-artifacts
                   path: dist/

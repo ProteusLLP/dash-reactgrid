@@ -104,7 +104,7 @@ jobs:
                   fail_ci_if_error: false
 
             - name: Upload test results
-              uses: actions/upload-artifact@v3
+              uses: actions/upload-artifact@v4
               if: always()
               with:
                   name: test-results-${{ matrix.os }}-py${{ matrix.python-version }}
@@ -156,7 +156,7 @@ jobs:
                   xvfb-run -a python run_tests.py --suite performance --report
 
             - name: Upload performance test results
-              uses: actions/upload-artifact@v3
+              uses: actions/upload-artifact@v4
               if: always()
               with:
                   name: performance-test-results
@@ -206,7 +206,7 @@ jobs:
                   xvfb-run -a python run_tests.py --suite integration --report
 
             - name: Upload integration test results
-              uses: actions/upload-artifact@v3
+              uses: actions/upload-artifact@v4
               if: always()
               with:
                   name: integration-test-results

@@ -44,6 +44,9 @@ The test suite is organized with pytest markers:
 # Install test dependencies
 pip install -r tests/requirements.txt
 
+# Run tests quickly (headless, parallel, no slow tests) - RECOMMENDED
+python run_tests.py --fast
+
 # Run all tests (excluding slow ones)
 python run_tests.py
 
@@ -57,11 +60,22 @@ python run_tests.py --all
 # Run all tests
 pytest tests/
 
+# Run all tests in headless mode (faster)
+DASH_TEST_HEADLESS=true pytest tests/
+
+# Run tests in parallel (faster)
+pytest tests/ -n auto
+
+# Run tests excluding slow ones (faster)
+pytest tests/ -m "not slow"
+
+# Combine for fastest execution
+DASH_TEST_HEADLESS=true pytest tests/ -n auto -m "not slow"
+
 # Run specific test file
 pytest tests/test_basic_functionality.py
 
 # Run tests with specific marker
-pytest tests/ -m "not slow"
 pytest tests/ -m "dropdown"
 
 # Run with coverage
@@ -71,6 +85,12 @@ pytest tests/ --cov=dash_reactgrid --cov-report=html
 ### Using the test runner script
 
 ```bash
+# Run tests quickly (RECOMMENDED for development)
+python run_tests.py --fast
+
+# Run tests in headless mode
+python run_tests.py --headless
+
 # Run specific test suite
 python run_tests.py --suite basic
 python run_tests.py --suite dropdown
@@ -167,6 +187,32 @@ The test suite requires:
 - **selenium** - Web browser automation
 - **pytest-cov** - Coverage reporting
 - **pytest-html** - HTML test reports
+
+## Performance Optimization
+
+### Fastest Test Execution
+
+For the fastest test execution during development:
+
+```bash
+# Recommended: Fast mode (headless + parallel + no slow tests)
+python run_tests.py --fast
+
+# Alternative: Manual combination
+DASH_TEST_HEADLESS=true pytest tests/ -n auto -m "not slow"
+```
+
+### Speed Optimization Techniques
+
+1. **Headless Mode**: Tests run ~2x faster without GUI
+2. **Parallel Execution**: Use all CPU cores with `-n auto`
+3. **Skip Slow Tests**: Use `-m "not slow"` to exclude performance tests
+4. **Target Specific Tests**: Run only the tests you're working on
+
+### Environment Variables
+
+- `DASH_TEST_HEADLESS=true` - Run browsers in headless mode
+- `DASH_TEST_PROCESSES=1` - Control number of browser processes
 
 ## Browser Testing
 

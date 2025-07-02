@@ -1,0 +1,275 @@
+name: Release Tests
+
+on:
+  release:
+    types: [published, prereleased]
+  workflow_dispatch:
+    inputs:
+      test_type:
+        description: 'Type of tests to run'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+        - all
+        - performance
+        - compatibility
+
+jobs:
+  comprehensive-test:
+    name: Comprehensive Test Suite
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ['3.8', '3.9', '3.10', '3.11']
+        include:
+          # Test additional browser configurations on Ubuntu
+          - os: ubuntu-latest
+            python-version: '3.10'
+            browser: 'firefox'
+          - os: ubuntu-latest
+            python-version: '3.10'
+            browser: 'edge'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('**/requirements.txt', '**/tests/requirements.txt') }}
+
+    - name: Install system dependencies (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          chromium-browser \
+          chromium-chromedriver \
+          firefox \
+          xvfb
+
+    - name: Install system dependencies (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        brew install --cask google-chrome
+        brew install --cask firefox
+        brew install chromedriver
+
+    - name: Install system dependencies (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        choco install googlechrome
+        choco install firefox
+        choco install chromedriver
+
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e .
+        pip install -r tests/requirements.txt
+
+    - name: Run all tests including slow ones (Linux/macOS)
+      if: runner.os != 'Windows'
+      env:
+        DASH_TEST_HEADLESS: true
+        DASH_TEST_PROCESSES: 1
+      run: |
+        xvfb-run -a python run_tests.py --all --coverage --report
+
+    - name: Run all tests including slow ones (Windows)
+      if: runner.os == 'Windows'
+      env:
+        DASH_TEST_HEADLESS: true
+        DASH_TEST_PROCESSES: 1
+      run: |
+        python run_tests.py --all --coverage --report
+
+    - name: Upload comprehensive test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: comprehensive-test-results-${{ matrix.os }}-py${{ matrix.python-version }}
+        path: |
+          htmlcov/
+          test-report.html
+          coverage.xml
+
+  stress-test:
+    name: Stress Testing
+    runs-on: ubuntu-latest
+    if: github.event.inputs.test_type == 'all' || github.event.inputs.test_type == 'performance'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          chromium-browser \
+          chromium-chromedriver \
+          xvfb \
+          htop \
+          sysstat
+
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e .
+        pip install -r tests/requirements.txt
+        pip install psutil memory-profiler
+
+    - name: Run stress tests with monitoring
+      env:
+        DASH_TEST_HEADLESS: true
+        DASH_TEST_PROCESSES: 1
+      run: |
+        # Start system monitoring
+        sar -u -r 1 > system-stats.log &
+        SAR_PID=$!
+        
+        # Run performance tests
+        xvfb-run -a python run_tests.py --suite performance --report
+        
+        # Stop monitoring
+        kill $SAR_PID || true
+
+    - name: Upload stress test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: stress-test-results
+        path: |
+          test-report.html
+          system-stats.log
+
+  browser-matrix:
+    name: Browser Compatibility Matrix
+    runs-on: ubuntu-latest
+    if: github.event.inputs.test_type == 'all' || github.event.inputs.test_type == 'compatibility'
+    strategy:
+      matrix:
+        browser: [chrome, firefox]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          chromium-browser \
+          chromium-chromedriver \
+          firefox \
+          xvfb
+
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e .
+        pip install -r tests/requirements.txt
+
+    - name: Run tests with ${{ matrix.browser }}
+      env:
+        DASH_TEST_HEADLESS: true
+        DASH_TEST_PROCESSES: 1
+        DASH_TEST_BROWSER: ${{ matrix.browser }}
+      run: |
+        xvfb-run -a python run_tests.py --fast --report
+
+    - name: Upload browser test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: browser-test-results-${{ matrix.browser }}
+        path: test-report.html
+
+  deployment-check:
+    name: Deployment Readiness
+    runs-on: ubuntu-latest
+    needs: [comprehensive-test]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install build dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install build twine
+
+    - name: Build package
+      run: |
+        python -m build
+
+    - name: Check package
+      run: |
+        twine check dist/*
+
+    - name: Test installation
+      run: |
+        pip install dist/*.whl
+        python -c "import dash_reactgrid; print('✅ Package installation successful')"
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: package-artifacts
+        path: dist/
+
+  release-summary:
+    name: Release Test Summary
+    runs-on: ubuntu-latest
+    needs: [comprehensive-test, deployment-check]
+    if: always()
+    
+    steps:
+    - name: Generate release test summary
+      run: |
+        echo "# 🚀 Release Test Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## Test Results" >> $GITHUB_STEP_SUMMARY
+        echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
+        echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+        echo "| Comprehensive Tests | ${{ needs.comprehensive-test.result }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Deployment Check | ${{ needs.deployment-check.result }} |" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if [ "${{ needs.comprehensive-test.result }}" == "success" ] && [ "${{ needs.deployment-check.result }}" == "success" ]; then
+          echo "✅ **All release tests passed!** Ready for deployment." >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ **Some release tests failed.** Please review before deployment." >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## 📊 Artifacts Generated" >> $GITHUB_STEP_SUMMARY
+        echo "- Test reports and coverage data" >> $GITHUB_STEP_SUMMARY
+        echo "- Package build artifacts" >> $GITHUB_STEP_SUMMARY
+        echo "- Performance metrics" >> $GITHUB_STEP_SUMMARY

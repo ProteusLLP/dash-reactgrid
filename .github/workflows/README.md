@@ -8,8 +8,8 @@ This directory contains automated CI/CD workflows for the DashReactGrid project.
 **Triggered on:** Push to main/develop, Pull Requests, Daily schedule
 
 **Features:**
-- Cross-platform testing (Ubuntu, Windows, macOS)
-- Multiple Python versions (3.8, 3.9, 3.10, 3.11)
+- Cross-platform testing (Ubuntu, Windows)
+- Multiple Python versions (3.8, 3.9, 3.10, 3.11,3.12)
 - Fast tests with headless browsers
 - Coverage reporting
 - Performance and integration tests

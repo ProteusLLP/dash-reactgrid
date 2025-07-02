@@ -205,8 +205,8 @@ def run_smoke_tests():
         "python",
         "-m",
         "pytest",
-        "tests/test_basic_functionality.py::TestBasicFunctionality::test_grid_renders",
-        "tests/test_dropdown_functionality.py::TestDropdownFunctionality::test_dropdown_cell_renders",
+        "tests/test_basic_functionality.py::TestBasicGridFunctionality::test_grid_renders_correctly",
+        "tests/test_dropdown_functionality.py::TestDropdownBasicFunctionality::test_dropdown_cell_renders",
         "-v",
         "--tb=short",
     ]

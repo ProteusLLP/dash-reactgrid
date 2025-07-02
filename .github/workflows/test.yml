@@ -78,18 +78,12 @@ jobs:
 
             - name: Run fast tests (Linux/macOS)
               if: runner.os != 'Windows'
-              env:
-                  DASH_TEST_HEADLESS: true
-                  DASH_TEST_PROCESSES: 1
               run: |
                   xvfb-run -a python run_tests.py --fast --coverage
               continue-on-error: false
 
             - name: Run fast tests (Windows)
               if: runner.os == 'Windows'
-              env:
-                  DASH_TEST_HEADLESS: true
-                  DASH_TEST_PROCESSES: 1
               run: |
                   python run_tests.py --fast --coverage
               continue-on-error: false
@@ -149,9 +143,6 @@ jobs:
                   pip install -r tests/requirements.txt
 
             - name: Run performance tests
-              env:
-                  DASH_TEST_HEADLESS: true
-                  DASH_TEST_PROCESSES: 1
               run: |
                   xvfb-run -a python run_tests.py --suite performance --report
 
@@ -199,9 +190,6 @@ jobs:
                   pip install -r tests/requirements.txt
 
             - name: Run integration tests
-              env:
-                  DASH_TEST_HEADLESS: true
-                  DASH_TEST_PROCESSES: 1
               run: |
                   xvfb-run -a python run_tests.py --suite integration --report
 
@@ -241,9 +229,6 @@ jobs:
                   pip install -r tests/requirements.txt
 
             - name: Run smoke tests
-              env:
-                  DASH_TEST_HEADLESS: true
-                  DASH_TEST_PROCESSES: 1
               run: |
                   xvfb-run -a python run_tests.py --smoke
 
@@ -277,9 +262,6 @@ jobs:
                   pip install -r tests/requirements.txt
 
             - name: Run compatibility tests
-              env:
-                  DASH_TEST_HEADLESS: true
-                  DASH_TEST_PROCESSES: 1
               run: |
                   # Run basic tests with different browsers
                   xvfb-run -a python -m pytest tests/test_basic_functionality.py::TestBasicFunctionality::test_grid_renders -v

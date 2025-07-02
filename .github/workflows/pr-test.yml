@@ -42,16 +42,10 @@ jobs:
                   pip install -r tests/requirements.txt
 
             - name: Run fast tests
-              env:
-                  DASH_TEST_HEADLESS: true
-                  DASH_TEST_PROCESSES: 1
               run: |
                   xvfb-run -a python run_tests.py --fast
 
             - name: Run smoke tests
-              env:
-                  DASH_TEST_HEADLESS: true
-                  DASH_TEST_PROCESSES: 1
               run: |
                   xvfb-run -a python run_tests.py --smoke
 

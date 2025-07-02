@@ -80,17 +80,11 @@ jobs:
 
             - name: Run all tests including slow ones (Linux/macOS)
               if: runner.os != 'Windows'
-              env:
-                  DASH_TEST_HEADLESS: true
-                  DASH_TEST_PROCESSES: 1
               run: |
                   xvfb-run -a python run_tests.py --all --coverage --report
 
             - name: Run all tests including slow ones (Windows)
               if: runner.os == 'Windows'
-              env:
-                  DASH_TEST_HEADLESS: true
-                  DASH_TEST_PROCESSES: 1
               run: |
                   python run_tests.py --all --coverage --report
 
@@ -136,9 +130,6 @@ jobs:
                   pip install psutil memory-profiler
 
             - name: Run stress tests with monitoring
-              env:
-                  DASH_TEST_HEADLESS: true
-                  DASH_TEST_PROCESSES: 1
               run: |
                   # Start system monitoring
                   sar -u -r 1 > system-stats.log &
@@ -193,8 +184,6 @@ jobs:
 
             - name: Run tests with ${{ matrix.browser }}
               env:
-                  DASH_TEST_HEADLESS: true
-                  DASH_TEST_PROCESSES: 1
                   DASH_TEST_BROWSER: ${{ matrix.browser }}
               run: |
                   xvfb-run -a python run_tests.py --fast --report

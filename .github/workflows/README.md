@@ -57,8 +57,6 @@ This directory contains automated CI/CD workflows for the DashReactGrid project.
 
 The workflows use these environment variables for optimization:
 
-- `DASH_TEST_HEADLESS=true` - Run browsers in headless mode
-- `DASH_TEST_PROCESSES=1` - Control browser process count
 
 ## Speed Optimizations
 
@@ -66,10 +64,9 @@ The workflows use these environment variables for optimization:
 All workflows are optimized for speed:
 
 1. **Headless Mode**: All browser tests run headless (~2x faster)
-2. **Parallel Execution**: Tests run in parallel using pytest-xdist
-3. **Smart Caching**: Dependencies are cached between runs
-4. **Selective Testing**: PR tests exclude slow performance tests
-5. **Matrix Optimization**: Strategic exclusion of redundant combinations
+2. **Smart Caching**: Dependencies are cached between runs
+3. **Selective Testing**: PR tests exclude slow performance tests
+4. **Matrix Optimization**: Strategic exclusion of redundant combinations
 
 ### Caching Strategy
 - **pip dependencies**: Cached by OS, Python version, and requirements hash
@@ -201,5 +198,4 @@ python run_tests.py --all --coverage --report
 ```bash
 # For debugging
 export DASH_TEST_HEADLESS=false  # Show browser UI
-export DASH_TEST_PROCESSES=4     # Increase parallelism
 ```

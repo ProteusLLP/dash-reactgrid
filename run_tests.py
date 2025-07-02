@@ -65,61 +65,82 @@ def check_dependencies():
 
 def run_basic_tests(parallel=False):
     """Run basic functionality tests."""
-    cmd = ["python", "-m", "pytest", "tests/test_basic_functionality.py", "-v"]
+    cmd = [
+        "python",
+        "-m",
+        "pytest",
+        "tests/test_basic_functionality.py",
+        "-v",
+        "--headless",
+    ]
     if parallel:
-        cmd.extend(["-n", "auto"])
+        print("⚠️  Warning: Parallel execution disabled for Dash tests (port conflicts)")
     return run_command(cmd, "Running basic functionality tests")
 
 
 def run_dropdown_tests(parallel=False):
     """Run dropdown functionality tests."""
-    cmd = ["python", "-m", "pytest", "tests/test_dropdown_functionality.py", "-v"]
+    cmd = [
+        "python",
+        "-m",
+        "pytest",
+        "tests/test_dropdown_functionality.py",
+        "-v",
+        "--headless",
+    ]
     if parallel:
-        cmd.extend(["-n", "auto"])
+        print("⚠️  Warning: Parallel execution disabled for Dash tests (port conflicts)")
     return run_command(cmd, "Running dropdown functionality tests")
 
 
 def run_performance_tests(include_slow=False, parallel=False):
     """Run performance tests."""
-    cmd = ["python", "-m", "pytest", "tests/test_performance.py", "-v"]
+    cmd = ["python", "-m", "pytest", "tests/test_performance.py", "-v", "--headless"]
     if not include_slow:
         cmd.extend(["-m", "not slow"])
     if parallel:
-        cmd.extend(["-n", "auto"])
+        print("⚠️  Warning: Parallel execution disabled for Dash tests (port conflicts)")
     return run_command(cmd, "Running performance tests")
 
 
 def run_paste_tests(parallel=False):
     """Run paste functionality tests."""
-    cmd = ["python", "-m", "pytest", "tests/test_paste_functionality.py", "-v"]
+    cmd = [
+        "python",
+        "-m",
+        "pytest",
+        "tests/test_paste_functionality.py",
+        "-v",
+        "--headless",
+    ]
     if parallel:
-        cmd.extend(["-n", "auto"])
+        print("⚠️  Warning: Parallel execution disabled for Dash tests (port conflicts)")
     return run_command(cmd, "Running paste functionality tests")
 
 
 def run_edge_case_tests(parallel=False):
     """Run edge case tests."""
-    cmd = ["python", "-m", "pytest", "tests/test_edge_cases.py", "-v"]
+    cmd = ["python", "-m", "pytest", "tests/test_edge_cases.py", "-v", "--headless"]
     if parallel:
-        cmd.extend(["-n", "auto"])
+        print("⚠️  Warning: Parallel execution disabled for Dash tests (port conflicts)")
     return run_command(cmd, "Running edge case tests")
 
 
 def run_integration_tests(parallel=False):
     """Run integration tests."""
-    cmd = ["python", "-m", "pytest", "tests/test_integration.py", "-v"]
+    cmd = ["python", "-m", "pytest", "tests/test_integration.py", "-v", "--headless"]
     if parallel:
-        cmd.extend(["-n", "auto"])
+        print("⚠️  Warning: Parallel execution disabled for Dash tests (port conflicts)")
     return run_command(cmd, "Running integration tests")
 
 
 def run_all_tests(include_slow=False, parallel=False):
     """Run all tests."""
-    cmd = ["python", "-m", "pytest", "tests/", "-v"]
+    cmd = ["python", "-m", "pytest", "tests/", "-v", "--headless"]
     if not include_slow:
         cmd.extend(["-m", "not slow"])
     if parallel:
-        cmd.extend(["-n", "auto"])
+        print("⚠️  Warning: Parallel execution disabled for Dash tests (port conflicts)")
     return run_command(cmd, "Running complete test suite")
 
 
@@ -139,7 +160,7 @@ def run_with_coverage(include_slow=False, parallel=False):
     if not include_slow:
         cmd.extend(["-m", "not slow"])
     if parallel:
-        cmd.extend(["-n", "auto"])
+        print("⚠️  Warning: Parallel execution disabled for Dash tests (port conflicts)")
 
     exit_code = run_command(cmd, "Running tests with coverage")
 
@@ -155,16 +176,13 @@ def run_pattern_tests(pattern, parallel=False):
     """Run tests matching a pattern."""
     cmd = ["python", "-m", "pytest", "tests/", "-v", "-k", pattern]
     if parallel:
-        cmd.extend(["-n", "auto"])
+        print("⚠️  Warning: Parallel execution disabled for Dash tests (port conflicts)")
     return run_command(cmd, f"Running tests matching pattern: {pattern}")
 
 
 def run_fast_tests():
-    """Run tests quickly (headless + parallel + no slow tests)."""
+    """Run tests quickly (headless + no slow tests)."""
     # Set environment variables for fast execution
-    os.environ["DASH_TEST_HEADLESS"] = "true"
-    os.environ["DASH_TEST_PROCESSES"] = "1"
-
     cmd = [
         "python",
         "-m",
@@ -173,24 +191,22 @@ def run_fast_tests():
         "-v",
         "-m",
         "not slow",
-        "-n",
-        "auto",
         "--tb=short",
+        "--headless",
     ]
-    return run_command(cmd, "Running fast tests (headless + parallel + no slow tests)")
+    return run_command(cmd, "Running fast tests (headless + no slow tests)")
 
 
 def run_headless_tests(include_slow=False, parallel=False):
     """Run tests in headless mode."""
     # Set environment variables for headless mode
-    os.environ["DASH_TEST_HEADLESS"] = "true"
-    os.environ["DASH_TEST_PROCESSES"] = "1"
 
-    cmd = ["python", "-m", "pytest", "tests/", "-v"]
+    cmd = ["python", "-m", "pytest", "tests/", "-v", "--headless"]
     if not include_slow:
         cmd.extend(["-m", "not slow"])
+    # Note: Parallel execution disabled for Dash tests due to port conflicts
     if parallel:
-        cmd.extend(["-n", "auto"])
+        print("⚠️  Warning: Parallel execution disabled for Dash tests (port conflicts)")
 
     return run_command(cmd, "Running tests in headless mode")
 
@@ -198,8 +214,6 @@ def run_headless_tests(include_slow=False, parallel=False):
 def run_smoke_tests():
     """Run a minimal smoke test to check basic functionality."""
     # Set environment variables for fast execution
-    os.environ["DASH_TEST_HEADLESS"] = "true"
-    os.environ["DASH_TEST_PROCESSES"] = "1"
 
     cmd = [
         "python",
@@ -251,7 +265,8 @@ Examples:
   python run_tests.py --pattern dropdown  # Run dropdown-related tests
   python run_tests.py --smoke             # Quick smoke test
   python run_tests.py --report            # Generate HTML report
-  python run_tests.py --parallel          # Run tests in parallel
+
+Note: Parallel execution is disabled for Dash tests due to port conflicts.
         """,
     )
 
@@ -288,13 +303,13 @@ Examples:
     parser.add_argument(
         "--parallel",
         action="store_true",
-        help="Run tests in parallel (requires pytest-xdist)",
+        help="Attempt parallel execution (WARNING: causes issues with Dash tests)",
     )
 
     parser.add_argument(
         "--fast",
         action="store_true",
-        help="Run tests in fast mode (headless, parallel, no slow tests)",
+        help="Run tests in fast mode (headless, no slow tests)",
     )
 
     parser.add_argument(

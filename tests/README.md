@@ -63,14 +63,11 @@ pytest tests/
 # Run all tests in headless mode (faster)
 DASH_TEST_HEADLESS=true pytest tests/
 
-# Run tests in parallel (faster)
-pytest tests/ -n auto
-
 # Run tests excluding slow ones (faster)
 pytest tests/ -m "not slow"
 
 # Combine for fastest execution
-DASH_TEST_HEADLESS=true pytest tests/ -n auto -m "not slow"
+DASH_TEST_HEADLESS=true pytest tests/ -m "not slow"
 
 # Run specific test file
 pytest tests/test_basic_functionality.py
@@ -80,6 +77,8 @@ pytest tests/ -m "dropdown"
 
 # Run with coverage
 pytest tests/ --cov=dash_reactgrid --cov-report=html
+
+Note: Parallel execution with pytest-xdist is not supported due to port conflicts.
 ```
 
 ### Using the test runner script
@@ -105,14 +104,13 @@ python run_tests.py --coverage
 # Run tests matching a pattern
 python run_tests.py --pattern "dropdown"
 
-# Run tests in parallel
-python run_tests.py --parallel
-
 # Quick smoke test
 python run_tests.py --smoke
 
 # Generate HTML report
 python run_tests.py --report
+
+Note: --parallel option is available but not recommended due to port conflicts.
 ```
 
 ## Test Structure
@@ -195,24 +193,24 @@ The test suite requires:
 For the fastest test execution during development:
 
 ```bash
-# Recommended: Fast mode (headless + parallel + no slow tests)
+# Recommended: Fast mode (headless + no slow tests)
 python run_tests.py --fast
 
 # Alternative: Manual combination
-DASH_TEST_HEADLESS=true pytest tests/ -n auto -m "not slow"
+DASH_TEST_HEADLESS=true pytest tests/ -m "not slow"
 ```
 
 ### Speed Optimization Techniques
 
 1. **Headless Mode**: Tests run ~2x faster without GUI
-2. **Parallel Execution**: Use all CPU cores with `-n auto`
-3. **Skip Slow Tests**: Use `-m "not slow"` to exclude performance tests
-4. **Target Specific Tests**: Run only the tests you're working on
+2. **Skip Slow Tests**: Use `-m "not slow"` to exclude performance tests
+3. **Target Specific Tests**: Run only the tests you're working on
 
 ### Environment Variables
 
 - `DASH_TEST_HEADLESS=true` - Run browsers in headless mode
-- `DASH_TEST_PROCESSES=1` - Control number of browser processes
+
+**Note**: Parallel execution is not supported due to Dash server port conflicts.
 
 ## Browser Testing
 

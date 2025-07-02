@@ -179,16 +179,16 @@ const DashReactGrid = ({
   stickyTopRows,
   stickyBottomRows,
   isExtendable,
-  _selectedCell,
+  selectedCell,
   selectedRange,
   style,
   styleHeader,
   className,
   disableVirtualScrolling,
   setProps,
-  _persistence,
-  _persistence_type,
-  _persisted_props
+  persistence,
+  persistence_type,
+  persisted_props
 }) => {
   // Memoize columns with performance optimization for large datasets
   const columnsMemo = useMemo(() => [...columns], [columns]);
@@ -248,6 +248,16 @@ const DashReactGrid = ({
         changes.forEach(({ rowId, columnId, previousCell, newCell }) => {
           const colIdx = columnLookup.get(columnId);
           if (typeof colIdx === 'number') {
+            // Skip invalid row IDs
+            if (rowId < 0) {
+              return;
+            }
+            
+            // For non-extendable grids, skip rows beyond current boundaries
+            if (!isExtendable && rowId >= maxRowId) {
+              return;
+            }
+            
             if (rowId >= maxRowId && isExtendable) {
               // Add new rows if the pasted data exceeds current rows
               while (newData.length <= rowId) {
@@ -397,14 +407,28 @@ const DashReactGrid = ({
     pastedRows.forEach((row, ri) => {
       const rowId = activeRange.first.row.idx + ri - 1;
 
+      // Skip if rowId is invalid (negative or beyond grid boundaries when not extendable)
+      if (rowId < 0) {
+        return;
+      }
+      
+      // For non-extendable grids, skip rows beyond current grid size
+      if (!isExtendable && rowId >= gridData.length) {
+        return;
+      }
+
       row.forEach((cell, ci) => {
         const colIdx = activeRange.first.column.idx + ci;
+        
+        // Skip if column index exceeds grid boundaries
         if (colIdx >= columnsMemo.length) {
           return;
         }
 
         const column = columnsMemo[colIdx];
-        const prevVal = gridData[rowId]?.[colIdx];
+        
+        // Get previous value safely - handle case where row doesn't exist yet
+        const prevVal = gridData[rowId]?.[colIdx] || null;
         const oldCell = createCell(column, prevVal);
         const coerced = parseToValue(cell.text, column);
         const newCell = createCell(column, coerced);

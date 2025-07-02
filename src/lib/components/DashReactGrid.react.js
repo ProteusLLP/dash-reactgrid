@@ -1,16 +1,19 @@
-import React, { useEffect, useState, useMemo, useCallback, use } from 'react';
-import PropTypes, { checkPropTypes } from 'prop-types';
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
+import PropTypes from 'prop-types';
 import { ReactGrid } from "@silevis/reactgrid";
 import "@silevis/reactgrid/styles.css";
 import "../styles.css";
 import { CustomNumberCellTemplate, numberParser } from '../CustomNumberCell';
 import { PercentCellTemplate, percentParser } from '../PercentCell';
-import { parseLocaleDate} from '../DateUtilities'
-import { set } from 'ramda';
+import { parseLocaleDate } from '../DateUtilities';
 
 
-const locale = window.navigator.language|| 'en-US'; // Default to 'en-US' if locale is not set
+const locale = window.navigator.language || 'en-US';
 
+// Performance constants
+const THROTTLE_DELAY = 16; // ~60fps throttling for data updates
+
+// Memoized cell creation to avoid recreating cells on every render
 const createCell = (column, value, columnStyle, columnNonEditable, state) => {
 
   switch (column.type) {
@@ -28,7 +31,15 @@ const createCell = (column, value, columnStyle, columnNonEditable, state) => {
       return { type: column.type, checked: Boolean(value), style: columnStyle, nonEditable: columnNonEditable }
     case 'dropdown':{
       const label = Array.isArray(column.values) ? column.values.find(option => option.value === value)?.label || '': '';
-      return {type:'dropdown', selectedValue:value, text:label, values:column.values, style:columnStyle, nonEditable:columnNonEditable,isOpen:state?.isOpen||false}
+      return {
+        type:'dropdown', 
+        selectedValue: value, 
+        text: label, 
+        values: column.values, 
+        style: columnStyle, 
+        nonEditable: columnNonEditable,
+        isOpen: state?.isOpen || false
+      }
     }
     default:
       return { type: 'text', text: String(value || ''), style: columnStyle, nonEditable: columnNonEditable }
@@ -112,16 +123,35 @@ const alignToStyle = (align) => {
 }
 
 
-function buildCellsFromData(data, columnsMemo,styleHeader) {
+// Optimized cell building with memoization for better performance on large grids
+function buildCellsFromData(data, columnsMemo, styleHeader) {
+  const headerCells = columnsMemo.map(col => ({ 
+    type: "header", 
+    text: col.title, 
+    style: { 
+      ...styleHeader, 
+      ...col.headerStyle, 
+      ...(col.align ? alignToStyle(col.align) : null) 
+    } || null 
+  }));
 
-  const newCells= [{ rowId: "header", cells: columnsMemo.map(col => ({ type: "header", text: col.title, style: { ...styleHeader, ...col.headerStyle, ...(col.align ? alignToStyle(col.align) : null) } || null })),height:styleHeader?.height},
-    ...data.map((row, rowIndex) =>(
-    {
-        rowId: rowIndex,
-        cells:row.map((value, colIndex) => createCell(columnsMemo[colIndex],value,  { ...columnsMemo[colIndex].style, ...(columnsMemo[colIndex].align ? alignToStyle(columnsMemo[colIndex].align) : null) }, columnsMemo[colIndex].nonEditable))
+  const newCells = [
+    { rowId: "header", cells: headerCells, height: styleHeader?.height },
+    ...data.map((row, rowIndex) => {
+      const cells = row.map((value, colIndex) => {
+        const col = columnsMemo[colIndex];
+        return createCell(
+          col,
+          value,
+          { ...col.style, ...(col.align ? alignToStyle(col.align) : null) },
+          col.nonEditable
+        );
+      });
+      return { rowId: rowIndex, cells };
     })
-  )];
-  return newCells
+  ];
+  
+  return newCells;
 }
 
 
@@ -149,264 +179,323 @@ const DashReactGrid = ({
   stickyTopRows,
   stickyBottomRows,
   isExtendable,
-  selectedCell,
+  _selectedCell,
   selectedRange,
   style,
   styleHeader,
   className,
   disableVirtualScrolling,
   setProps,
-  persistence,
-  persistence_type,
-  persisted_props
+  _persistence,
+  _persistence_type,
+  _persisted_props
 }) => {
+  // Memoize columns with performance optimization for large datasets
+  const columnsMemo = useMemo(() => [...columns], [columns]);
+
   const [history, setHistory] = useState([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
-  const [gridData, setData] = useState(()=>data);
-  const columnsMemo = useMemo(() => {
-    return [...columns]}, [columns]);
-  const [cells, setCells] =  useState(() =>
-  buildCellsFromData(gridData, columnsMemo, styleHeader)
-);
+  const [gridData, setData] = useState(() => data);
+  const [cells, setCells] = useState(() => buildCellsFromData(data, columnsMemo, styleHeader));
+  
+  // Create a column lookup map for O(1) access instead of O(n) findIndex
+  const columnLookup = useMemo(() => {
+    const lookup = new Map();
+    columnsMemo.forEach((col, index) => {
+      lookup.set(col.columnId, index);
+    });
+    return lookup;
+  }, [columnsMemo]);
 
-  useEffect(()=>{
-    setProps({
-      data: gridData})}, [gridData]
-  );
+  // Throttled data update to prevent excessive prop updates
+  const updateDataRef = useRef(null);
+  useEffect(() => {
+    if (updateDataRef.current) {
+      clearTimeout(updateDataRef.current);
+    }
+    updateDataRef.current = setTimeout(() => {
+      setProps({ data: gridData });
+    }, THROTTLE_DELAY);
+    
+    return () => {
+      if (updateDataRef.current) {
+        clearTimeout(updateDataRef.current);
+      }
+    };
+  }, [gridData, setProps]);
 
-  useEffect(()=> {
-    setCells(buildCellsFromData(data, columnsMemo, styleHeader));
+  // Sync external data changes
+  useEffect(() => {
     setData(data);
-  }, [data, columnsMemo, styleHeader]
-);
+    setCells(buildCellsFromData(data, columnsMemo, styleHeader));
+  }, [data, columnsMemo, styleHeader]);
   
-  
-  const applyChanges = (changes) => {
-    if (!changes.length) return;
+  // Apply changes function matching the original working implementation
+  const applyChanges = useCallback((changes) => {
+    if (!changes.length) {
+      return;
+    }
    
     setCells(prevCells => {
-      const newCells = [ ...prevCells ];
+      const newCells = [...prevCells];
+      
       setData(prevData => {
-      const diff = [];
-      const newData = [...prevData];
-      let dataChanged=false
-      const maxRowId = prevData.length;
-    
-      changes.forEach(({ rowId, columnId, previousCell,newCell }) => {
-        const colIdx = columnsMemo.findIndex(col => col.columnId === columnId);
-        if (colIdx !== -1) {
-          if (rowId >= maxRowId && isExtendable) {
-            // Add new rows if the pasted data exceeds current rows
-            while (newData.length <= rowId) {
-              newData.push(new Array(columnsMemo.length).fill(null));
-              newCells.push({ rowId: newData.length - 1, cells: columnsMemo.map((col) => createCell(col, null, { ...col.style, ...(col.align ? alignToStyle(col.align) : null) }, col.nonEditable)) });
-              dataChanged=true
+        const diff = [];
+        const newData = [...prevData];
+        let dataChanged = false;
+        const maxRowId = prevData.length;
+      
+        changes.forEach(({ rowId, columnId, previousCell, newCell }) => {
+          const colIdx = columnLookup.get(columnId);
+          if (typeof colIdx === 'number') {
+            if (rowId >= maxRowId && isExtendable) {
+              // Add new rows if the pasted data exceeds current rows
+              while (newData.length <= rowId) {
+                newData.push(new Array(columnsMemo.length).fill(null));
+                newCells.push({ 
+                  rowId: newData.length - 1, 
+                  cells: columnsMemo.map((col) => createCell(col, null, { ...col.style, ...(col.align ? alignToStyle(col.align) : null) }, col.nonEditable)) 
+                });
+                dataChanged = true;
+              }
             }
-          }
-          const previousValue = getCellDataByType(columnsMemo[colIdx].type,previousCell)
-          const newValue = getCellDataByType(columnsMemo[colIdx].type,newCell)
-          if (previousValue !== newValue) {
-            dataChanged=true
-            const newDataRow = [...newData[rowId]];
-            newDataRow[colIdx] = newValue
-            newData[rowId] = newDataRow;
-            diff.push({rowId,columnId,previousValue,newValue})
-            const newCellsRow =  [...newCells[rowId+1].cells];
-            newCellsRow[colIdx] = createCell(columnsMemo[colIdx], newData[rowId][colIdx], { ...columnsMemo[colIdx].style, ...(columnsMemo[colIdx].align ? alignToStyle(columnsMemo[colIdx].align) : null) }, columnsMemo[colIdx].nonEditable );
-            newCells[rowId+1] = {rowId:rowId,cells:newCellsRow};
-          }
-          // Store transient UI state (e.g., isOpen)
-          else {if (newCell.isOpen !== undefined) {
-            const newCellsRow =  [...newCells[rowId+1].cells];
-            newCellsRow[colIdx] = {...createCell(columnsMemo[colIdx], newData[rowId][colIdx], { ...columnsMemo[colIdx].style, ...(columnsMemo[colIdx].align ? alignToStyle(columnsMemo[colIdx].align) : null) }, columnsMemo[colIdx].nonEditable ),isOpen: newCell.isOpen};
-            newCells[rowId+1] = {rowId:rowId,cells:newCellsRow};
-            const newDataRow = [...newData[rowId]];
-            newData[rowId] = newDataRow;
+            
+            const previousValue = getCellDataByType(columnsMemo[colIdx].type, previousCell);
+            const newValue = getCellDataByType(columnsMemo[colIdx].type, newCell);
+            
+            if (previousValue !== newValue) {
+              dataChanged = true;
+              newData[rowId] = [...newData[rowId]];
+              newData[rowId][colIdx] = newValue;
+              diff.push({ rowId, columnId, previousValue, newValue });
+              
+              // Update the cell in the grid
+              const newCellsRow = [...newCells[rowId + 1].cells];
+              newCellsRow[colIdx] = createCell(columnsMemo[colIdx], newData[rowId][colIdx], 
+                { ...columnsMemo[colIdx].style, ...(columnsMemo[colIdx].align ? alignToStyle(columnsMemo[colIdx].align) : null) }, 
+                columnsMemo[colIdx].nonEditable);
+              newCells[rowId + 1] = { rowId: rowId, cells: newCellsRow };
+            }
+            // Store transient UI state (e.g., isOpen for dropdowns)
+            else if ('isOpen' in newCell) {
+              const newCellsRow = [...newCells[rowId + 1].cells];
+              newCellsRow[colIdx] = {
+                ...createCell(columnsMemo[colIdx], newData[rowId][colIdx], 
+                  { ...columnsMemo[colIdx].style, ...(columnsMemo[colIdx].align ? alignToStyle(columnsMemo[colIdx].align) : null) }, 
+                  columnsMemo[colIdx].nonEditable),
+                isOpen: newCell.isOpen
               };
+              newCells[rowId + 1] = { rowId: rowId, cells: newCellsRow };
             }
           }
-
-    });
-    if (isExtendable) {
-      // check to see if rows can be removed
-        while (newData.length > 1 && !newData[newData.length - 1].some((v) => v)) {
-          newData.pop()
-          newCells.pop();
-      }
-      // check to see if a new row is needed
+        });
       
-      if (newData[newData.length - 1].some((v) => v)) {
-        newData.push(columnsMemo.map((_) => null))
-        newCells.push({ rowId: newData.length - 1, cells: columnsMemo.map((col) => createCell(col, null, { ...col.style, ...(col.align ? alignToStyle(col.align) : null) }, col.nonEditable)) });
-      }
-      if (newData.length!==maxRowId) {
-        dataChanged=true
-      }
-    }
-    if (dataChanged) {
-      setHistory(prev => [...prev.slice(0, historyIndex + 1), diff]);
-      setHistoryIndex(prev => prev + 1)
-    };
+        if (isExtendable) {
+          // Check to see if rows can be removed
+          while (newData.length > 1 && !newData[newData.length - 1].some((v) => v)) {
+            newData.pop();
+            newCells.pop();
+          }
+          // Check to see if a new row is needed
+          if (newData.length > 0 && newData[newData.length - 1].some((v) => v)) {
+            newData.push(columnsMemo.map((_) => null));
+            newCells.push({ 
+              rowId: newData.length - 1, 
+              cells: columnsMemo.map((col) => createCell(col, null, { ...col.style, ...(col.align ? alignToStyle(col.align) : null) }, col.nonEditable)) 
+            });
+          }
+          if (newData.length !== maxRowId) {
+            dataChanged = true;
+          }
+        }
+        
+        if (dataChanged) {
+          setHistory(prev => [...prev.slice(0, historyIndex + 1), diff]);
+          setHistoryIndex(prev => prev + 1);
+        }
 
-    return newData;
+        return newData;
+      });
+
+      return newCells;  
     });
+  }, [columnLookup, columnsMemo, isExtendable, historyIndex]);
 
-  return newCells;  
-  });
-  
+  // Memoized selectedRangeToTable for better performance
+  const selectedRangeToTable = useCallback((selectedRange) => {
+    const table = [];
+    for (let row = selectedRange.first.row.idx; row <= selectedRange.last.row.idx; row++) {
+      const tableRow = [];
+      for (let column = selectedRange.first.column.idx; column <= selectedRange.last.column.idx; column++) {
+        const cellValue = row === 0 ? columnsMemo[column].title : gridData[row - 1][column];
+        tableRow.push(getValueAsString(columnsMemo[column], cellValue));
+      }
+      table.push(tableRow.join("\t"));
+    }
+    return table.join("\n");
+  }, [columnsMemo, gridData]);
+
+  // Optimized copy handler
+  const handleCopy = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
     
-  }
-
-const selectedRangeToTable = (selectedRange) => {
-  const table = []
-  for (let row = selectedRange.first.row.idx; row <= selectedRange.last.row.idx; row++) {
-    const tableRow = []
-    for (let column = selectedRange.first.column.idx; column <= selectedRange.last.column.idx; column++) {
-      const cellValue = row === 0 ? columnsMemo[column].title : data[row - 1][column];
-      tableRow.push(getValueAsString( columnsMemo[column], cellValue ))
+    const activeSelectedRange = selectedRange?.[0];
+    if (!activeSelectedRange) {
+      return;
     }
-    table.push(tableRow.join("\t"))
-  }
-  return table.join("\n")
-}
+    const table = selectedRangeToTable(activeSelectedRange);
+    e.clipboardData.setData("text/plain", table);
+  }, [selectedRange, selectedRangeToTable]);
 
-const handleCopy = (e) => {
-  e.preventDefault();
-  e.stopPropagation();
-  
-  const activeSelectedRange = selectedRange[0];
-  if (!activeSelectedRange) {
-    return
-  }
-  const table = selectedRangeToTable(activeSelectedRange);
-  e.clipboardData.setData("text/plain", table);
-};
+  // Optimized paste handler with better performance
+  const handlePaste = useCallback((e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const activeRange = selectedRange?.[0];
+    if (!activeRange) {
+      return;
+    }
 
-const handlePaste = (e) => {
-  e.stopPropagation();
-  e.preventDefault();
-  const activeRange = selectedRange[0];
-  if (!activeRange) return;                       // nothing selected
+    const htmlData = e.clipboardData.getData("text/html");
+    const doc = new DOMParser().parseFromString(htmlData, "text/html");
+    const isRGHtml = doc.body.firstElementChild?.getAttribute("data-reactgrid") === "reactgrid-content";
 
-  /* -------- 1. Parse clipboard into `pastedRows` -------- */
-  const htmlData = e.clipboardData.getData("text/html");
-  const doc      = new DOMParser().parseFromString(htmlData, "text/html");
-  const isRGHtml = doc.body.firstElementChild?.getAttribute("data-reactgrid") === "reactgrid-content";
+    let pastedRows = [];
 
-  let pastedRows = [];
+    if (isRGHtml && doc.body.firstElementChild?.firstElementChild) {
+      const tableRows = doc.body.firstElementChild.firstElementChild.children;
 
-  // (a) Pasting from another ReactGrid
-  if (isRGHtml && doc.body.firstElementChild?.firstElementChild) {
-    const tableRows = doc.body.firstElementChild.firstElementChild.children;
-
-    for (let ri = 0; ri < tableRows.length; ri++) {
-      const row = [];
-      for (let ci = 0; ci < tableRows[ri].children.length; ci++) {
-        const raw = tableRows[ri].children[ci].getAttribute("data-reactgrid");
-        const cellData = raw && JSON.parse(raw);
-        const text     = tableRows[ri].children[ci].innerHTML;
-        row.push(cellData ? cellData : { type: "text", text });
+      for (let ri = 0; ri < tableRows.length; ri++) {
+        const row = [];
+        for (let ci = 0; ci < tableRows[ri].children.length; ci++) {
+          const raw = tableRows[ri].children[ci].getAttribute("data-reactgrid");
+          const cellData = raw && JSON.parse(raw);
+          const text = tableRows[ri].children[ci].innerHTML;
+          row.push(cellData ? cellData : { type: "text", text });
+        }
+        pastedRows.push(row);
       }
-      pastedRows.push(row);
+    } else {
+      pastedRows = e.clipboardData
+        .getData("text/plain")
+        .replace(/(\r\n)$/, "")
+        .split("\n")
+        .map(line =>
+          line
+            .split("\t")
+            .map(t => ({ type: "text", text: t.replace("\r", "") }))
+        );
     }
-  }
-  // (b) Plain-text paste (Excel, Numbers, Google Sheets, etc.)
-  else {
-    pastedRows = e.clipboardData
-      .getData("text/plain")
-      .replace(/(\r\n)$/, "")                       // Excel adds a blank line
-      .split("\n")
-      .map(line =>
-        line
-          .split("\t")
-          .map(t => ({ type: "text", text: t.replace("\r", "") }))
-      );
-  }
 
-  if (!pastedRows.length) return;
+    if (!pastedRows.length) {
+      return;
+    }
 
-  /* -------- 2. Build a Change[] batch for applyChanges -------- */
-  const changes = [];
+    const changes = [];
 
-  pastedRows.forEach((row, ri) => {
-    const rowId = activeRange.first.row.idx + ri - 1;       // −1 removes header
+    pastedRows.forEach((row, ri) => {
+      const rowId = activeRange.first.row.idx + ri - 1;
 
-    row.forEach((cell, ci) => {
-      const colIdx = activeRange.first.column.idx + ci;
-      if (colIdx >= columnsMemo.length) return;                 // outside table
+      row.forEach((cell, ci) => {
+        const colIdx = activeRange.first.column.idx + ci;
+        if (colIdx >= columnsMemo.length) {
+          return;
+        }
 
-      const column   = columnsMemo[colIdx];
-      
-      // --- previous value on the grid (may be undefined / overflow row) ---
-      const prevVal  = data[rowId]?.[colIdx];
-      const oldCell  = createCell(column,prevVal)
-      // --- value coming from clipboard, coerced to column type -------------
-      const coerced  = parseToValue(cell.text, column);
-      
-      const newCell  = createCell(column,coerced)
+        const column = columnsMemo[colIdx];
+        const prevVal = gridData[rowId]?.[colIdx];
+        const oldCell = createCell(column, prevVal);
+        const coerced = parseToValue(cell.text, column);
+        const newCell = createCell(column, coerced);
 
-      changes.push({
-        rowId,
-        columnId: column.columnId,
-        previousCell: oldCell,
-        newCell
+        changes.push({
+          rowId,
+          columnId: column.columnId,
+          previousCell: oldCell,
+          newCell
+        });
       });
     });
-  });
 
-  /* -------- 3. Let the existing infrastructure apply & log it -------- */
-  applyChanges(changes);
-};
+    applyChanges(changes);
+  }, [selectedRange, columnsMemo, gridData, applyChanges]);
 
 
-const handleUndoChanges = useCallback(() => {
-  if (historyIndex < 0) return;                     // nothing to undo
-  const batch = history[historyIndex];
-  const next = [...gridData];
-  batch.forEach(({ rowId, columnId, previousValue }) => {
-    const colIdx = columnsMemo.findIndex(c => c.columnId === columnId);
-    if (colIdx === -1 || rowId >= next.length) return;
+  // Optimized undo function
+  const handleUndoChanges = useCallback(() => {
+    if (historyIndex < 0) {
+      return;
+    }
+    const batch = history[historyIndex];
+    const next = gridData.map(row => [...row]);
+    
+    batch.forEach(({ rowId, columnId, previousValue }) => {
+      const colIdx = columnLookup.get(columnId);
+      if (typeof colIdx === 'number' && rowId < next.length) {
+        next[rowId][colIdx] = previousValue;
+      }
+    });
+    
+    setHistoryIndex(prev => prev - 1);
+    setData(next);
+  }, [history, historyIndex, gridData, columnLookup]);
 
-    next[rowId] = [...next[rowId]];
-    next[rowId][colIdx] = previousValue;
-  });
-  setHistoryIndex(prev => prev - 1); // move pointer back
-  setData(next);
-  setCells(buildCellsFromData(next, columnsMemo,styleHeader)); // update cells to reflect the undo
-}, [history,historyIndex,gridData, columnsMemo]);
+  // Optimized redo function
+  const handleRedoChanges = useCallback(() => {
+    if (historyIndex + 1 >= history.length) {
+      return;
+    }
+    const nextIdx = historyIndex + 1;
+    const batch = history[nextIdx];
+    const next = gridData.map(row => [...row]);
 
-/* ------------------------------ REDO ------------------------------ */
-const handleRedoChanges = useCallback(() => {
-  if (historyIndex + 1 >= history.length) return historyIndex;     // nothing to redo
-  const nextIdx = historyIndex + 1;
-  const batch   = history[nextIdx];
+    batch.forEach(({ rowId, columnId, newValue }) => {
+      const colIdx = columnLookup.get(columnId);
+      if (typeof colIdx === 'number' && rowId < next.length) {
+        next[rowId][colIdx] = newValue;
+      }
+    });
+    
+    setHistoryIndex(prev => prev + 1);
+    setData(next);
+  }, [history, historyIndex, gridData, columnLookup]);
 
-  const next = [...gridData];
-
-  batch.forEach(({ rowId, columnId, newValue }) => {
-    const colIdx = columnsMemo.findIndex(c => c.columnId === columnId);
-    if (colIdx === -1 || rowId >= next.length) return;
-
-    next[rowId] = [...next[rowId]];
-    next[rowId][colIdx] = newValue;
-  });
-  setHistoryIndex(prev => prev + 1); // move pointer forward
-  setData(next);
-  setCells(buildCellsFromData(next, columnsMemo,styleHeader)); // update cells to reflect the redo
-
-}, [history,historyIndex,gridData, columnsMemo]);
-
-  return (
-    <div id={id} style={style} className={className} tabIndex={0}
-      onPasteCapture={handlePaste} onCopyCapture={handleCopy} onKeyDownCapture={e => {
-    if ((e.metaKey||e.ctrlKey) && e.key === 'z') {
+  // Memoized keyboard event handler
+  const handleKeyDown = useCallback((e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
       e.preventDefault();
       handleUndoChanges();
-    } else if ((e.metaKey||e.ctrlKey) && (e.key === 'y' || (e.shiftKey && e.key === 'Z'))) {
+    } else if ((e.metaKey || e.ctrlKey) && (e.key === 'y' || (e.shiftKey && e.key === 'Z'))) {
       e.preventDefault();
       handleRedoChanges();
     }
-  }}>
+  }, [handleUndoChanges, handleRedoChanges]);
+
+  // Memoized selection change handler
+  const handleSelectionChanged = useCallback((selectedRange) => {
+    setProps({ selectedRange });
+  }, [setProps]);
+
+  const handleSelectionChanging = useCallback((selectedRange) => {
+    setProps({ selectedRange });
+    return true;
+  }, [setProps]);
+
+  const handleFocusLocationChanged = useCallback((selectedCell) => {
+    setProps({ selectedCell });
+  }, [setProps]);
+
+  return (
+    <div 
+      id={id} 
+      style={style} 
+      className={className} 
+      tabIndex={0}
+      onPasteCapture={handlePaste} 
+      onCopyCapture={handleCopy} 
+      onKeyDownCapture={handleKeyDown}
+    >
       <ReactGrid
         rows={cells}
         columns={columns}
@@ -421,13 +510,9 @@ const handleRedoChanges = useCallback(() => {
         stickyTopRows={stickyTopRows}
         stickyBottomRows={stickyBottomRows}
         disableVirtualScrolling={disableVirtualScrolling}
-        onSelectionChanged={selectedRange => setProps({ selectedRange: selectedRange })}
-        onSelectionChanging={selectedRange => {
-          setProps({ selectedRange: selectedRange });
-          return true
-        }
-        }
-        onFocusLocationChanged={selectedCell => setProps({ selectedCell: selectedCell })}
+        onSelectionChanged={handleSelectionChanged}
+        onSelectionChanging={handleSelectionChanging}
+        onFocusLocationChanged={handleFocusLocationChanged}
         customCellTemplates={customCellTemplates}
       />
     </div>

@@ -25,7 +25,7 @@ def run_command(cmd, description=""):
     """Run a command and return the exit code."""
     if description:
         print(f"\n🔄 {description}")
-    
+
     print(f"Running: {' '.join(cmd)}")
     try:
         result = subprocess.run(cmd, check=False)
@@ -41,11 +41,9 @@ def run_command(cmd, description=""):
 def check_dependencies():
     """Check if all required dependencies are installed."""
     print("🔍 Checking dependencies...")
-    
-    required_packages = [
-        "dash", "pytest", "selenium", "dash_reactgrid"
-    ]
-    
+
+    required_packages = ["dash", "pytest", "selenium", "dash_reactgrid"]
+
     missing_packages = []
     for package in required_packages:
         try:
@@ -54,13 +52,13 @@ def check_dependencies():
         except ImportError:
             print(f"  ❌ {package}")
             missing_packages.append(package)
-    
+
     if missing_packages:
         print(f"\n❌ Missing packages: {missing_packages}")
         print("Please install them with:")
         print("  pip install -r tests/requirements.txt")
         return False
-    
+
     print("✅ All dependencies satisfied")
     return True
 
@@ -128,25 +126,28 @@ def run_all_tests(include_slow=False, parallel=False):
 def run_with_coverage(include_slow=False, parallel=False):
     """Run tests with coverage reporting."""
     cmd = [
-        "python", "-m", "pytest", "tests/",
+        "python",
+        "-m",
+        "pytest",
+        "tests/",
         "--cov=dash_reactgrid",
         "--cov-report=html:htmlcov",
         "--cov-report=term-missing",
         "--cov-report=xml",
-        "-v"
+        "-v",
     ]
     if not include_slow:
         cmd.extend(["-m", "not slow"])
     if parallel:
         cmd.extend(["-n", "auto"])
-    
+
     exit_code = run_command(cmd, "Running tests with coverage")
-    
+
     if exit_code == 0:
         print("\n📊 Coverage report generated:")
         print("  - HTML: htmlcov/index.html")
         print("  - XML: coverage.xml")
-    
+
     return exit_code
 
 
@@ -163,13 +164,18 @@ def run_fast_tests():
     # Set environment variables for fast execution
     os.environ["DASH_TEST_HEADLESS"] = "true"
     os.environ["DASH_TEST_PROCESSES"] = "1"
-    
+
     cmd = [
-        "python", "-m", "pytest", "tests/",
+        "python",
+        "-m",
+        "pytest",
+        "tests/",
         "-v",
-        "-m", "not slow",
-        "-n", "auto",
-        "--tb=short"
+        "-m",
+        "not slow",
+        "-n",
+        "auto",
+        "--tb=short",
     ]
     return run_command(cmd, "Running fast tests (headless + parallel + no slow tests)")
 
@@ -179,13 +185,13 @@ def run_headless_tests(include_slow=False, parallel=False):
     # Set environment variables for headless mode
     os.environ["DASH_TEST_HEADLESS"] = "true"
     os.environ["DASH_TEST_PROCESSES"] = "1"
-    
+
     cmd = ["python", "-m", "pytest", "tests/", "-v"]
     if not include_slow:
         cmd.extend(["-m", "not slow"])
     if parallel:
         cmd.extend(["-n", "auto"])
-    
+
     return run_command(cmd, "Running tests in headless mode")
 
 
@@ -194,13 +200,15 @@ def run_smoke_tests():
     # Set environment variables for fast execution
     os.environ["DASH_TEST_HEADLESS"] = "true"
     os.environ["DASH_TEST_PROCESSES"] = "1"
-    
+
     cmd = [
-        "python", "-m", "pytest",
+        "python",
+        "-m",
+        "pytest",
         "tests/test_basic_functionality.py::TestBasicFunctionality::test_grid_renders",
         "tests/test_dropdown_functionality.py::TestDropdownFunctionality::test_dropdown_cell_renders",
         "-v",
-        "--tb=short"
+        "--tb=short",
     ]
     return run_command(cmd, "Running smoke tests (basic functionality check)")
 
@@ -208,18 +216,22 @@ def run_smoke_tests():
 def generate_test_report():
     """Generate a comprehensive test report."""
     cmd = [
-        "python", "-m", "pytest", "tests/",
+        "python",
+        "-m",
+        "pytest",
+        "tests/",
         "--html=test_report.html",
         "--self-contained-html",
         "-v",
-        "-m", "not slow"
+        "-m",
+        "not slow",
     ]
-    
+
     exit_code = run_command(cmd, "Generating test report")
-    
+
     if exit_code == 0:
         print("\n📋 Test report generated: test_report.html")
-    
+
     return exit_code
 
 
@@ -240,77 +252,65 @@ Examples:
   python run_tests.py --smoke             # Quick smoke test
   python run_tests.py --report            # Generate HTML report
   python run_tests.py --parallel          # Run tests in parallel
-        """
+        """,
     )
-    
+
     parser.add_argument(
         "--suite",
         choices=[
-            "basic", "dropdown", "performance", "paste", 
-            "edge", "integration", "all"
+            "basic",
+            "dropdown",
+            "performance",
+            "paste",
+            "edge",
+            "integration",
+            "all",
         ],
-        help="Specific test suite to run"
+        help="Specific test suite to run",
     )
-    
+
     parser.add_argument(
-        "--all",
-        action="store_true",
-        help="Run all tests including slow ones"
+        "--all", action="store_true", help="Run all tests including slow ones"
     )
-    
+
     parser.add_argument(
-        "--coverage",
-        action="store_true",
-        help="Run tests with coverage reporting"
+        "--coverage", action="store_true", help="Run tests with coverage reporting"
     )
-    
+
+    parser.add_argument("--pattern", help="Run tests matching this pattern")
+
+    parser.add_argument("--smoke", action="store_true", help="Run quick smoke test")
+
     parser.add_argument(
-        "--pattern",
-        help="Run tests matching this pattern"
+        "--report", action="store_true", help="Generate HTML test report"
     )
-    
-    parser.add_argument(
-        "--smoke",
-        action="store_true",
-        help="Run quick smoke test"
-    )
-    
-    parser.add_argument(
-        "--report",
-        action="store_true",
-        help="Generate HTML test report"
-    )
-    
+
     parser.add_argument(
         "--parallel",
         action="store_true",
-        help="Run tests in parallel (requires pytest-xdist)"
+        help="Run tests in parallel (requires pytest-xdist)",
     )
-    
+
     parser.add_argument(
         "--fast",
         action="store_true",
-        help="Run tests in fast mode (headless, parallel, no slow tests)"
+        help="Run tests in fast mode (headless, parallel, no slow tests)",
     )
-    
+
     parser.add_argument(
-        "--headless",
-        action="store_true",
-        help="Run tests in headless browser mode"
+        "--headless", action="store_true", help="Run tests in headless browser mode"
     )
-    
+
     parser.add_argument(
-        "--skip-deps",
-        action="store_true",
-        help="Skip dependency check"
+        "--skip-deps", action="store_true", help="Skip dependency check"
     )
-    
+
     args = parser.parse_args()
-    
+
     # Check dependencies unless skipped
     if not args.skip_deps and not check_dependencies():
         return 1
-    
+
     # Determine what to run
     if args.smoke:
         exit_code = run_smoke_tests()
@@ -336,13 +336,13 @@ Examples:
         exit_code = run_integration_tests(args.parallel)
     else:  # Default or --suite all
         exit_code = run_all_tests(args.all, args.parallel)
-    
+
     # Print summary
     if exit_code == 0:
         print("\n✅ All tests passed!")
     else:
         print(f"\n❌ Tests failed with exit code: {exit_code}")
-    
+
     return exit_code
 
 

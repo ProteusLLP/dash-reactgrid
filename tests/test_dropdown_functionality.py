@@ -56,21 +56,23 @@ def dropdown_app():
     ]
 
     app = Dash(__name__)
-    app.layout = html.Div([
-        dash_reactgrid.DashReactGrid(
-            id=GRID_ID,
-            data=data,
-            columns=columns,
-            enableFillHandle=True,
-            enableRangeSelection=True,
-        ),
-        html.Div(id=OUTPUT_ID),
-        html.Div(id=DEBUG_ID),
-    ])
+    app.layout = html.Div(
+        [
+            dash_reactgrid.DashReactGrid(
+                id=GRID_ID,
+                data=data,
+                columns=columns,
+                enableFillHandle=True,
+                enableRangeSelection=True,
+            ),
+            html.Div(id=OUTPUT_ID),
+            html.Div(id=DEBUG_ID),
+        ]
+    )
 
     @app.callback(
         [Output(OUTPUT_ID, "children"), Output(DEBUG_ID, "children")],
-        Input(GRID_ID, "data")
+        Input(GRID_ID, "data"),
     )
     def update_output(data):
         return json.dumps(data), f"Data updated: {len(data)} rows"
@@ -98,14 +100,16 @@ def single_dropdown_app():
     data = [["option_a"]]
 
     app = Dash(__name__)
-    app.layout = html.Div([
-        dash_reactgrid.DashReactGrid(
-            id=GRID_ID,
-            data=data,
-            columns=columns,
-        ),
-        html.Div(id=OUTPUT_ID),
-    ])
+    app.layout = html.Div(
+        [
+            dash_reactgrid.DashReactGrid(
+                id=GRID_ID,
+                data=data,
+                columns=columns,
+            ),
+            html.Div(id=OUTPUT_ID),
+        ]
+    )
 
     @app.callback(Output(OUTPUT_ID, "children"), Input(GRID_ID, "data"))
     def update_output(data):
@@ -176,7 +180,7 @@ class TestDropdownBasicFunctionality:
                 # Check if data updated
                 updated_output = dash_duo.find_element(f"#{OUTPUT_ID}").text
                 updated_data = json.loads(updated_output)
-                
+
                 # Data should have changed
                 if updated_data != initial_data:
                     assert updated_data[0][0] == "option_b"
@@ -184,18 +188,20 @@ class TestDropdownBasicFunctionality:
                     pytest.skip("Dropdown selection did not update data")
             else:
                 # Fallback: use keyboard navigation
-                ActionChains(dash_duo.driver).send_keys(Keys.ARROW_DOWN).send_keys(Keys.ENTER).perform()
+                ActionChains(dash_duo.driver).send_keys(Keys.ARROW_DOWN).send_keys(
+                    Keys.ENTER
+                ).perform()
                 time.sleep(0.5)
-                
+
                 updated_output = dash_duo.find_element(f"#{OUTPUT_ID}").text
                 updated_data = json.loads(updated_output)
-                
+
                 # Check if update occurred
                 if updated_data != initial_data:
                     assert True  # Some update occurred
                 else:
                     pytest.skip("Dropdown keyboard interaction failed")
-                    
+
         except Exception as e:
             pytest.skip(f"Dropdown interaction test failed: {e}")
 
@@ -256,14 +262,16 @@ class TestDropdownDataIntegrity:
         ]
 
         app = Dash(__name__)
-        app.layout = html.Div([
-            dash_reactgrid.DashReactGrid(
-                id=GRID_ID,
-                data=[[""]],  # Empty dropdown value
-                columns=columns,
-            ),
-            html.Div(id=OUTPUT_ID),
-        ])
+        app.layout = html.Div(
+            [
+                dash_reactgrid.DashReactGrid(
+                    id=GRID_ID,
+                    data=[[""]],  # Empty dropdown value
+                    columns=columns,
+                ),
+                html.Div(id=OUTPUT_ID),
+            ]
+        )
 
         @app.callback(Output(OUTPUT_ID, "children"), Input(GRID_ID, "data"))
         def update_output(data):
@@ -291,14 +299,16 @@ class TestDropdownDataIntegrity:
         ]
 
         app = Dash(__name__)
-        app.layout = html.Div([
-            dash_reactgrid.DashReactGrid(
-                id=GRID_ID,
-                data=[["invalid_value"]],  # Invalid dropdown value
-                columns=columns,
-            ),
-            html.Div(id=OUTPUT_ID),
-        ])
+        app.layout = html.Div(
+            [
+                dash_reactgrid.DashReactGrid(
+                    id=GRID_ID,
+                    data=[["invalid_value"]],  # Invalid dropdown value
+                    columns=columns,
+                ),
+                html.Div(id=OUTPUT_ID),
+            ]
+        )
 
         @app.callback(Output(OUTPUT_ID, "children"), Input(GRID_ID, "data"))
         def update_output(data):
@@ -324,8 +334,7 @@ class TestDropdownPerformance:
         """Test dropdown performance with many options."""
         # Create dropdown with 100 options
         large_values = [
-            {"value": f"option_{i}", "label": f"Option {i}"}
-            for i in range(100)
+            {"value": f"option_{i}", "label": f"Option {i}"} for i in range(100)
         ]
 
         columns = [
@@ -338,14 +347,16 @@ class TestDropdownPerformance:
         ]
 
         app = Dash(__name__)
-        app.layout = html.Div([
-            dash_reactgrid.DashReactGrid(
-                id=GRID_ID,
-                data=[["option_0"]],
-                columns=columns,
-            ),
-            html.Div(id=OUTPUT_ID),
-        ])
+        app.layout = html.Div(
+            [
+                dash_reactgrid.DashReactGrid(
+                    id=GRID_ID,
+                    data=[["option_0"]],
+                    columns=columns,
+                ),
+                html.Div(id=OUTPUT_ID),
+            ]
+        )
 
         @app.callback(Output(OUTPUT_ID, "children"), Input(GRID_ID, "data"))
         def update_output(data):
@@ -384,14 +395,16 @@ class TestDropdownPerformance:
         data = [[f"Item {i}", "cat1"] for i in range(50)]
 
         app = Dash(__name__)
-        app.layout = html.Div([
-            dash_reactgrid.DashReactGrid(
-                id=GRID_ID,
-                data=data,
-                columns=columns,
-            ),
-            html.Div(id=OUTPUT_ID),
-        ])
+        app.layout = html.Div(
+            [
+                dash_reactgrid.DashReactGrid(
+                    id=GRID_ID,
+                    data=data,
+                    columns=columns,
+                ),
+                html.Div(id=OUTPUT_ID),
+            ]
+        )
 
         @app.callback(Output(OUTPUT_ID, "children"), Input(GRID_ID, "data"))
         def update_output(data):

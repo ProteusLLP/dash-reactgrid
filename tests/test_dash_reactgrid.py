@@ -5,6 +5,7 @@ from dash import Dash, html, Output, Input
 import dash.testing.wait as wait
 import dash_reactgrid  # replace with actual import
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.action_chains import ActionChains
 
 GRID_ID = "grid"
 OUTPUT_ID = "output"
@@ -65,8 +66,10 @@ def test_edit_text_cell(dash_duo, app):
     dash_duo.start_server(app)
     cell = dash_duo.find_element(f"{path}[data-cell-colIdx='0'][data-cell-rowIdx='1']")
     cell.click()
-    dash_duo.find_element("body").send_keys("world")
-    dash_duo.find_element("body").send_keys("\ue007")  # Enter
+    actions = ActionChains(dash_duo.driver)
+    actions.send_keys("world")
+    actions.send_keys("\ue007")
+    actions.perform()  # Enter
     time.sleep(0.5)
     assert "world" in dash_duo.find_element("div.reactgrid").text
     assert "world" in dash_duo.find_element(f"#{OUTPUT_ID}").text

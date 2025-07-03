@@ -170,8 +170,6 @@ class TestCellEditing:
         # Use ActionChains for more reliable key handling in Dash 3.0
         actions = ActionChains(dash_duo.driver)
 
-        # Type the text with proper timing
-        actions = ActionChains(dash_duo.driver)
         actions.send_keys(text_to_type)
         actions.perform()
         time.sleep(0.2)
@@ -211,6 +209,7 @@ class TestCellEditing:
         # Press Enter to confirm
         actions = ActionChains(dash_duo.driver)
         actions.send_keys(Keys.ENTER)
+        actions.perform()
 
         # Wait for update and verify
         time.sleep(0.5)

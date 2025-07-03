@@ -164,12 +164,22 @@ class TestCellEditing:
         )
         cell.click()
 
-        # Clear and type new text
-        ActionChains(dash_duo.driver).key_down(Keys.CONTROL).send_keys("a").key_up(
-            Keys.CONTROL
-        ).perform()
-        dash_duo.driver.switch_to.active_element.send_keys("New Text")
-        dash_duo.driver.switch_to.active_element.send_keys(Keys.ENTER)
+        # Clear existing content and type new text using ActionChains
+        text_to_type = "New Text"
+
+        # Use ActionChains for more reliable key handling in Dash 3.0
+        actions = ActionChains(dash_duo.driver)
+
+        # Type the text with proper timing
+        actions = ActionChains(dash_duo.driver)
+        actions.send_keys(text_to_type)
+        actions.perform()
+        time.sleep(0.2)
+
+        # Press Enter to confirm
+        actions = ActionChains(dash_duo.driver)
+        actions.send_keys(Keys.ENTER)
+        actions.perform()
 
         # Wait for update and verify
         time.sleep(0.5)
@@ -187,12 +197,20 @@ class TestCellEditing:
         )
         cell.click()
 
-        # Clear and type new number
-        ActionChains(dash_duo.driver).key_down(Keys.CONTROL).send_keys("a").key_up(
-            Keys.CONTROL
-        ).perform()
-        dash_duo.driver.switch_to.active_element.send_keys("999")
-        dash_duo.driver.switch_to.active_element.send_keys(Keys.ENTER)
+        # Clear existing content and type new number using ActionChains
+        text_to_type = "999"
+
+        # Use ActionChains for more reliable key handling in Dash 3.0
+        actions = ActionChains(dash_duo.driver)
+
+        # Type the text with proper timing
+        actions = ActionChains(dash_duo.driver)
+        actions.send_keys(text_to_type)
+        actions.perform()
+
+        # Press Enter to confirm
+        actions = ActionChains(dash_duo.driver)
+        actions.send_keys(Keys.ENTER)
 
         # Wait for update and verify
         time.sleep(0.5)
@@ -304,12 +322,21 @@ class TestDataValidation:
         )
         cell.click()
 
-        # Try to enter invalid text
-        ActionChains(dash_duo.driver).key_down(Keys.CONTROL).send_keys("a").key_up(
-            Keys.CONTROL
-        ).perform()
-        dash_duo.driver.switch_to.active_element.send_keys("invalid_text")
-        dash_duo.driver.switch_to.active_element.send_keys(Keys.ENTER)
+        # Clear existing content and type invalid text using ActionChains
+        text_to_type = "invalid_text"
+
+        # Use ActionChains for more reliable key handling in Dash 3.0
+        actions = ActionChains(dash_duo.driver)
+
+        # Type the text with proper timing
+        actions = ActionChains(dash_duo.driver)
+        actions.send_keys(text_to_type)
+        actions.perform()
+
+        # Press Enter to confirm
+        actions = ActionChains(dash_duo.driver)
+        actions.send_keys(Keys.ENTER)
+        actions.perform()
 
         # Wait and check that original value is preserved or null
         time.sleep(0.5)
@@ -329,11 +356,19 @@ class TestDataValidation:
         )
         cell.click()
 
-        ActionChains(dash_duo.driver).key_down(Keys.CONTROL).send_keys("a").key_up(
-            Keys.CONTROL
-        ).perform()
-        dash_duo.driver.switch_to.active_element.send_keys(Keys.DELETE)
-        dash_duo.driver.switch_to.active_element.send_keys(Keys.ENTER)
+        # Clear the cell content using ActionChains
+        actions = ActionChains(dash_duo.driver)
+
+        # Press Delete to clear
+        actions = ActionChains(dash_duo.driver)
+        actions.send_keys(Keys.DELETE)
+        actions.perform()
+        time.sleep(0.1)
+
+        # Press Enter to confirm
+        actions = ActionChains(dash_duo.driver)
+        actions.send_keys(Keys.ENTER)
+        actions.perform()
 
         # Wait and verify empty value
         time.sleep(0.5)

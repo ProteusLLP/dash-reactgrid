@@ -61,13 +61,8 @@ python run_tests.py --all
 pytest tests/
 
 # Run all tests in headless mode (faster)
-DASH_TEST_HEADLESS=true pytest tests/
-
 # Run tests excluding slow ones (faster)
 pytest tests/ -m "not slow"
-
-# Combine for fastest execution
-DASH_TEST_HEADLESS=true pytest tests/ -m "not slow"
 
 # Run specific test file
 pytest tests/test_basic_functionality.py

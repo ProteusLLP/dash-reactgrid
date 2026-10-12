@@ -118,7 +118,10 @@ const ReactGridDataHandler = (props) => {
           openDropdown !== null && openDropdown.rowId === rowId && openDropdown.columnId === column.columnId,
         )
         const marks = [cell.className, !applies && 'rg-cell-na', rowId === GHOST_ROW_ID && 'rg-ghost']
-        return { ...cell, className: marks.filter(Boolean).join(' ') }
+        // ReactGrid appends "open" or "closed" to a dropdown's classes with
+        // no space, so they end in one.
+        const space = cell.type === 'dropdown' ? ' ' : ''
+        return { ...cell, className: marks.filter(Boolean).join(' ') + space }
       })
     })
     const headerRow = {

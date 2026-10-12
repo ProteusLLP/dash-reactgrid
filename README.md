@@ -24,7 +24,8 @@ A server can replay them against the rows it mounted, so edits never depend
 on the order the grid shows. With `rowIds`:
 
 - `isExtendable` shows a blank row after the data; typing or pasting into it
-  adds rows (ids starting `new-`), filled first from `newRow`.
+  adds rows (ids starting `new-`), filled first from `newRow`. Its cells
+  have the class `rg-ghost`.
 - Right-clicking a selection offers "Delete rows".
 - `selectedRowIds` holds the rows the selection covers.
 

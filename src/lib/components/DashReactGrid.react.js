@@ -117,7 +117,8 @@ const ReactGridDataHandler = (props) => {
           !applies || isLocked(rowId, column.columnId, column),
           openDropdown !== null && openDropdown.rowId === rowId && openDropdown.columnId === column.columnId,
         )
-        return applies ? cell : { ...cell, className: `${cell.className || ''} rg-cell-na` }
+        const marks = [cell.className, !applies && 'rg-cell-na', rowId === GHOST_ROW_ID && 'rg-ghost']
+        return { ...cell, className: marks.filter(Boolean).join(' ') }
       })
     })
     const headerRow = {

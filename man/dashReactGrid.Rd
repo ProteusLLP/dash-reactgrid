@@ -11,26 +11,39 @@
 
 \usage{
 dashReactGrid(id=NULL, className=NULL, columns=NULL, data=NULL,
-disableVirtualScrolling=NULL, enableColumnSelection=NULL,
-enableFillHandle=NULL, enableRangeSelection=NULL,
-enableRowSelection=NULL, highlights=NULL, isExtendable=NULL,
-persisted_props=NULL, persistence=NULL,
-persistence_type=NULL, selectedCell=NULL,
-stickyBottomRows=NULL, stickyLeftColumns=NULL,
-stickyRightColumns=NULL, stickyTopRows=NULL, style=NULL,
-styleHeader=NULL)
+disableVirtualScrolling=NULL, edits=NULL,
+enableColumnSelection=NULL, enableFillHandle=NULL,
+enableRangeSelection=NULL, enableRowSelection=NULL,
+hiddenColumns=NULL, highlights=NULL, isExtendable=NULL,
+lockedCells=NULL, newRow=NULL, persisted_props=NULL,
+persistence=NULL, persistence_type=NULL, readOnly=NULL,
+rowIds=NULL, selectedCell=NULL, selectedRange=NULL,
+selectedRowIds=NULL, stickyBottomRows=NULL,
+stickyLeftColumns=NULL, stickyRightColumns=NULL,
+stickyTopRows=NULL, style=NULL, styleHeader=NULL)
 }
 
 \arguments{
-\item{id}{Character. The ID used to identify this component in Dash callbacks.}
+\item{id}{Character | named list. The ID used to identify this component in Dash callbacks.}
 
 \item{className}{Character. }
 
-\item{columns}{Logical | numeric | character | named list | unnamed list. A label that will be printed when this component is rendered.}
+\item{columns}{Logical | numeric | character | named list | unnamed list. The columns: `columnId`, `title`, `type` (text, number, percent,
+dropdown, checkbox, date or time), and optionally `width`, `align`,
+`style`, `headerStyle`, `formatOptions` (Intl.NumberFormat options),
+`values` (a dropdown's options), `nonEditable`, `className` (every cell
+also has `rg-col-<columnId>`) and
+`editableWhen` (rules on the row's other values, see `rulesHold`; a
+cell whose rules fail is locked and has the class `rg-cell-na`).}
 
-\item{data}{Logical | numeric | character | named list | unnamed list. The value displayed in the input.}
+\item{data}{Logical | numeric | character | named list | unnamed list. The rows, each an array of values in column order.}
 
 \item{disableVirtualScrolling}{Logical. }
+
+\item{edits}{Named list. The edits behind the latest change to `data` (read only): `seq`, which
+increases with every change, and `edits`, each one of
+`{kind: "cell", rowId, columnId, value}`, `{kind: "add", rowId}` or
+`{kind: "remove", rowIds}`.}
 
 \item{enableColumnSelection}{Logical. }
 
@@ -40,18 +53,35 @@ styleHeader=NULL)
 
 \item{enableRowSelection}{Logical. }
 
+\item{hiddenColumns}{Unnamed list. The ids of columns not to show; their values stay in `data`.}
+
 \item{highlights}{Logical | numeric | character | named list | unnamed list. }
 
-\item{isExtendable}{Logical. Whether the table automatically adds extra rows}
+\item{isExtendable}{Logical. Whether the table shows a blank row after its data, which becomes a new
+row once the user types or pastes into it.}
 
-\item{persisted_props}{List of a value equal to: 'columns', 'data]'s. }
+\item{lockedCells}{Unnamed list. Cells the user cannot edit, as `[rowId, columnId]` pairs.}
 
-\item{persistence}{Logical | character | numeric. Dash-assigned callback that should be called to report property changes
-to Dash, to make them available for callbacks.}
+\item{newRow}{Unnamed list | named list. The values a row the user adds starts with: an array in column order, or
+an object by column id. Blank if omitted.}
+
+\item{persisted_props}{List of a value equal to: 'columns', 'data's. }
+
+\item{persistence}{Logical | character | numeric. }
 
 \item{persistence_type}{A value equal to: 'local', 'session', 'memory'. }
 
+\item{readOnly}{Logical. Whether every cell is locked, no row can be added and none deleted.}
+
+\item{rowIds}{Unnamed list. An id per row of `data`. Given, edits name rows by these ids, rows the
+user adds get ids starting `new-`, and rows can be deleted from the
+context menu. Omitted, rows are named by position.}
+
 \item{selectedCell}{Logical | numeric | character | named list | unnamed list. }
+
+\item{selectedRange}{Logical | numeric | character | named list | unnamed list. }
+
+\item{selectedRowIds}{Unnamed list. The ids of the rows the selection covers (read only).}
 
 \item{stickyBottomRows}{Numeric. }
 

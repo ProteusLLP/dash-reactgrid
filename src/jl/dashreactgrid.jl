@@ -8,22 +8,42 @@ export dashreactgrid
 A DashReactGrid component.
 
 Keyword arguments:
-- `id` (String; optional): The ID used to identify this component in Dash callbacks.
+- `id` (String | Dict; optional): The ID used to identify this component in Dash callbacks.
 - `className` (String; optional)
-- `columns` (Bool | Real | String | Dict | Array; required): A label that will be printed when this component is rendered.
-- `data` (Bool | Real | String | Dict | Array; required): The value displayed in the input.
+- `columns` (Bool | Real | String | Dict | Array; required): The columns: `columnId`, `title`, `type` (text, number, percent,
+dropdown, checkbox, date or time), and optionally `width`, `align`,
+`style`, `headerStyle`, `formatOptions` (Intl.NumberFormat options),
+`values` (a dropdown's options), `nonEditable`, `className` (every cell
+also has `rg-col-<columnId>`) and
+`editableWhen` (rules on the row's other values, see `rulesHold`; a
+cell whose rules fail is locked and has the class `rg-cell-na`).
+- `data` (Bool | Real | String | Dict | Array; required): The rows, each an array of values in column order.
 - `disableVirtualScrolling` (Bool; optional)
+- `edits` (Dict; optional): The edits behind the latest change to `data` (read only): `seq`, which
+increases with every change, and `edits`, each one of
+`{kind: "cell", rowId, columnId, value}`, `{kind: "add", rowId}` or
+`{kind: "remove", rowIds}`.
 - `enableColumnSelection` (Bool; optional)
 - `enableFillHandle` (Bool; optional)
 - `enableRangeSelection` (Bool; optional)
 - `enableRowSelection` (Bool; optional)
+- `hiddenColumns` (Array; optional): The ids of columns not to show; their values stay in `data`.
 - `highlights` (Bool | Real | String | Dict | Array; optional)
-- `isExtendable` (Bool; optional): Whether the table automatically adds extra rows
-- `persisted_props` (Array of a value equal to: 'columns', 'data]'s; optional)
-- `persistence` (Bool | String | Real; optional): Dash-assigned callback that should be called to report property changes
-to Dash, to make them available for callbacks.
+- `isExtendable` (Bool; optional): Whether the table shows a blank row after its data, which becomes a new
+row once the user types or pastes into it.
+- `lockedCells` (Array; optional): Cells the user cannot edit, as `[rowId, columnId]` pairs.
+- `newRow` (Array | Dict; optional): The values a row the user adds starts with: an array in column order, or
+an object by column id. Blank if omitted.
+- `persisted_props` (Array of a value equal to: 'columns', 'data's; optional)
+- `persistence` (Bool | String | Real; optional)
 - `persistence_type` (a value equal to: 'local', 'session', 'memory'; optional)
+- `readOnly` (Bool; optional): Whether every cell is locked, no row can be added and none deleted.
+- `rowIds` (Array; optional): An id per row of `data`. Given, edits name rows by these ids, rows the
+user adds get ids starting `new-`, and rows can be deleted from the
+context menu. Omitted, rows are named by position.
 - `selectedCell` (Bool | Real | String | Dict | Array; optional)
+- `selectedRange` (Bool | Real | String | Dict | Array; optional)
+- `selectedRowIds` (Array; optional): The ids of the rows the selection covers (read only).
 - `stickyBottomRows` (Real; optional)
 - `stickyLeftColumns` (Real; optional)
 - `stickyRightColumns` (Real; optional)
@@ -32,7 +52,7 @@ to Dash, to make them available for callbacks.
 - `styleHeader` (Dict; optional)
 """
 function dashreactgrid(; kwargs...)
-        available_props = Symbol[:id, :className, :columns, :data, :disableVirtualScrolling, :enableColumnSelection, :enableFillHandle, :enableRangeSelection, :enableRowSelection, :highlights, :isExtendable, :persisted_props, :persistence, :persistence_type, :selectedCell, :stickyBottomRows, :stickyLeftColumns, :stickyRightColumns, :stickyTopRows, :style, :styleHeader]
+        available_props = Symbol[:id, :className, :columns, :data, :disableVirtualScrolling, :edits, :enableColumnSelection, :enableFillHandle, :enableRangeSelection, :enableRowSelection, :hiddenColumns, :highlights, :isExtendable, :lockedCells, :newRow, :persisted_props, :persistence, :persistence_type, :readOnly, :rowIds, :selectedCell, :selectedRange, :selectedRowIds, :stickyBottomRows, :stickyLeftColumns, :stickyRightColumns, :stickyTopRows, :style, :styleHeader]
         wild_props = Symbol[]
         return Component("dashreactgrid", "DashReactGrid", "dash_reactgrid", available_props, wild_props; kwargs...)
 end

@@ -7,6 +7,46 @@ Get started with:
 2. Run `python usage.py`
 3. Visit http://localhost:8050 in your web browser
 
+## Editing with stable row ids
+
+Give `rowIds` (one per row of `data`) and the grid reports every change as
+edits that name rows by id, in the read-only `edits` property:
+
+```python
+{"seq": 4, "edits": [
+    {"kind": "add", "rowId": "new-k3j9x0"},
+    {"kind": "cell", "rowId": "new-k3j9x0", "columnId": "name", "value": "Banks"},
+    {"kind": "remove", "rowIds": ["2"]},
+]}
+```
+
+A server can replay them against the rows it mounted, so edits never depend
+on the order the grid shows. With `rowIds`:
+
+- `isExtendable` shows a blank row after the data; typing or pasting into it
+  adds rows (ids starting `new-`), filled first from `newRow`. Its cells
+  have the class `rg-ghost`.
+- Right-clicking a selection offers "Delete rows".
+- `selectedRowIds` holds the rows the selection covers.
+
+Other properties:
+
+- `readOnly` locks every cell; `lockedCells` locks `[rowId, columnId]` pairs.
+- `hiddenColumns` hides columns by id; their values stay in `data`.
+- A column's `editableWhen` rules lock its cells unless the row's other values
+  allow them (`{"columnId": "type", "in": ["bond"]}`,
+  `{"columnId": "has_credit", "truthy": true}`); such cells get `rg-cell-na`.
+- Column types: `text`, `number`, `percent`, `dropdown` (with `values`),
+  `checkbox`, `date` and `time`. `formatOptions` are `Intl.NumberFormat`
+  options.
+- Every cell carries the class `rg-col-<columnId>`.
+- Pasted text without a `%` goes into a percent column as a fraction (`0.35`
+  is 35%), as Excel and this grid copy values; `35%` is 35% too.
+- Ctrl+Z and Ctrl+Y undo and redo cell edits.
+
+The data model (`src/lib/model.js`) has no React in it; test it with
+`npm run test:js`.
+
 ## Contributing
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md)

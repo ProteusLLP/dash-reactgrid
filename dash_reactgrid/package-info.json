@@ -1,6 +1,6 @@
 {
   "name": "dash_reactgrid",
-  "version": "0.0.19",
+  "version": "0.1.0",
   "description": "Dash component wrapping the ReactGrid library",
   "repository": {
     "type": "git",
@@ -16,6 +16,7 @@
     "validate-init": "python _validate_init.py",
     "prepublishOnly": "npm run validate-init",
     "build:js": "webpack --mode production",
+    "test:js": "node --experimental-detect-module --test src/lib/__tests__/",
     "build:backends": "dash-generate-components ./src/lib/components dash_reactgrid -p package-info.json --r-prefix '' --jl-prefix '' --ignore \\.test\\.",
     "build:backends-activated": "(. venv/bin/activate || venv\\scripts\\activate && npm run build:py_and_r)",
     "build": "npm run build:js && npm run build:backends",
@@ -28,7 +29,7 @@
     "ramda": "^0.29.1"
   },
   "devDependencies": {
-    "@babel/core": "^7.22.1",
+    "@babel/core": "^7.29.6",
     "@babel/plugin-proposal-object-rest-spread": "^7.20.7",
     "@babel/preset-env": "^7.22.2",
     "@babel/preset-react": "^7.22.3",
@@ -38,7 +39,7 @@
     "babel-loader": "^9.1.2",
     "copyfiles": "^2.1.1",
     "css-loader": "^6.8.1",
-    "eslint": "^6.0.1",
+    "eslint": "^9.32.0",
     "eslint-config-prettier": "^6.0.0",
     "eslint-plugin-import": "^2.18.0",
     "eslint-plugin-react": "^7.14.2",
@@ -50,9 +51,9 @@
     "styled-jsx": "^5.1.2",
     "ts-loader": "^9.4.4",
     "typescript": "^5.2.2",
-    "webpack": "^5.96.1",
+    "webpack": "^5.105.0",
     "webpack-cli": "^5.1.1",
-    "webpack-dev-server": "^4.15.0"
+    "webpack-dev-server": "^6.0.0"
   },
   "engines": {
     "node": ">=8.11.0",

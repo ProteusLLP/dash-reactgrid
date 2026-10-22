@@ -11,16 +11,17 @@
 
 \usage{
 dashReactGrid(id=NULL, className=NULL, columns=NULL, data=NULL,
-disableVirtualScrolling=NULL, edits=NULL,
-enableColumnSelection=NULL, enableFillHandle=NULL,
-enableRangeSelection=NULL, enableRowSelection=NULL,
-hiddenColumns=NULL, highlights=NULL, isExtendable=NULL,
-lockedCells=NULL, newRow=NULL, persisted_props=NULL,
-persistence=NULL, persistence_type=NULL, readOnly=NULL,
-rowIds=NULL, selectedCell=NULL, selectedRange=NULL,
-selectedRowIds=NULL, stickyBottomRows=NULL,
-stickyLeftColumns=NULL, stickyRightColumns=NULL,
-stickyTopRows=NULL, style=NULL, styleHeader=NULL)
+disableVirtualScrolling=NULL, dropdownMenuPortal=NULL,
+edits=NULL, enableColumnSelection=NULL,
+enableFillHandle=NULL, enableRangeSelection=NULL,
+enableRowSelection=NULL, hiddenColumns=NULL,
+highlights=NULL, isExtendable=NULL, lockedCells=NULL,
+newRow=NULL, persisted_props=NULL, persistence=NULL,
+persistence_type=NULL, readOnly=NULL, rowIds=NULL,
+selectedCell=NULL, selectedRange=NULL, selectedRowIds=NULL,
+stickyBottomRows=NULL, stickyLeftColumns=NULL,
+stickyRightColumns=NULL, stickyTopRows=NULL, style=NULL,
+styleHeader=NULL)
 }
 
 \arguments{
@@ -39,6 +40,12 @@ cell whose rules fail is locked and has the class `rg-cell-na`).}
 \item{data}{Logical | numeric | character | named list | unnamed list. The rows, each an array of values in column order.}
 
 \item{disableVirtualScrolling}{Logical. }
+
+\item{dropdownMenuPortal}{Logical. Whether dropdown menus render in a portal on the page body, with fixed
+positioning, rather than inside their cell. Turn it on when the grid sits
+in something that clips or scrolls, such as a card or the grid's own
+scroll area, so menus can extend past its edges and show above nearby
+content. Off by default, which keeps ReactGrid's own dropdown.}
 
 \item{edits}{Named list. The edits behind the latest change to `data` (read only): `seq`, which
 increases with every change, and `edits`, each one of

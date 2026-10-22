@@ -5,3 +5,38 @@
 .reactgrid-content .rg-pane .rg-cell {
   color: black
 }
+
+/* A dropdown menu in a portal (dropdownMenuPortal) sits on the page body, out
+   of reach of ReactGrid's styles, which are scoped to the grid. These repeat
+   them for the portal. react-select positions the menu itself. */
+.drg-dropdown-menu-portal .rg-dropdown-menu {
+  color: #000000;
+  background-color: #ffffff;
+  border-radius: 4px;
+  box-shadow: 0px 0px 7px rgba(0, 0, 0, 0.5);
+  box-sizing: border-box;
+  white-space: nowrap;
+}
+
+.drg-dropdown-menu-portal .rg-dropdown-option {
+  padding: 0.3em 0.5em;
+  min-height: 1.5em;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.drg-dropdown-menu-portal .rg-dropdown-option.selected::before {
+  content: "\2713";
+  padding-right: 0.2em;
+}
+
+.drg-dropdown-menu-portal .rg-dropdown-option.focused {
+  color: black;
+  background-color: #e2ebfe;
+}
+
+.drg-dropdown-menu-portal .rg-dropdown-option.disabled {
+  color: #999999;
+  cursor: default;
+}

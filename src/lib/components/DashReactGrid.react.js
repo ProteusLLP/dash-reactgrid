@@ -5,6 +5,7 @@ import "@silevis/reactgrid/styles.css";
 import "../styles.css"
 import { CustomNumberCellTemplate, numberParser } from '../CustomNumberCell';
 import { PercentCellTemplate, percentParser } from '../PercentCell';
+import { PortalDropdownCellTemplate } from '../PortalDropdownCell';
 import {
   GHOST_ROW_ID,
   applyChanges,
@@ -24,6 +25,9 @@ import {
 const locale = window.navigator.language
 const parsers = { number: numberParser, percent: percentParser }
 const customCellTemplates = { 'percent': new PercentCellTemplate(), 'customnumber': new CustomNumberCellTemplate() }
+// With dropdownMenuPortal, dropdown menus render on the page body instead of
+// inside their cell, so clipping or scrolling ancestors cannot cut them off.
+const portalCellTemplates = { ...customCellTemplates, 'dropdown': new PortalDropdownCellTemplate() }
 const DELETE_ROWS_OPTION = "deleteRows"
 const NO_HISTORY = { changes: [], index: -1 }
 
@@ -117,7 +121,12 @@ const ReactGridDataHandler = (props) => {
           !applies || isLocked(rowId, column.columnId, column),
           openDropdown !== null && openDropdown.rowId === rowId && openDropdown.columnId === column.columnId,
         )
-        const marks = [cell.className, !applies && 'rg-cell-na', rowId === GHOST_ROW_ID && 'rg-ghost']
+        const marks = [
+          cell.className,
+          !applies && 'rg-cell-na',
+          !cell.nonEditable && 'rg-cell-editable',
+          rowId === GHOST_ROW_ID && 'rg-ghost',
+        ]
         // ReactGrid appends "open" or "closed" to a dropdown's classes with
         // no space, so they end in one.
         const space = cell.type === 'dropdown' ? ' ' : ''
@@ -321,7 +330,7 @@ const ReactGridDataHandler = (props) => {
   const onSelectionChanged = useCallback((ranges) => latest.current.handleSelectionChanged(ranges), [])
   const onFocusLocationChanged = useCallback((location) => latest.current.handleFocus(location), [])
 
-  const { enableFillHandle, enableRangeSelection, enableRowSelection, enableColumnSelection, disableVirtualScrolling } = props
+  const { enableFillHandle, enableRangeSelection, enableRowSelection, enableColumnSelection, disableVirtualScrolling, dropdownMenuPortal } = props
   const grid = useMemo(() => (
     <ReactGrid rows={rows} columns={columns} onCellsChanged={onCellsChanged}
       onFocusLocationChanged={onFocusLocationChanged}
@@ -334,12 +343,13 @@ const ReactGridDataHandler = (props) => {
       stickyRightColumns={sticky.right}
       stickyTopRows={sticky.top}
       stickyBottomRows={sticky.bottom}
-      customCellTemplates={customCellTemplates}
+      customCellTemplates={dropdownMenuPortal ? portalCellTemplates : customCellTemplates}
       onSelectionChanged={onSelectionChanged}
       disableVirtualScrolling={disableVirtualScrolling}
     />
   ), [rows, columns, readOnly, highlights, sticky.left, sticky.right, sticky.top, sticky.bottom,
-    enableFillHandle, enableRangeSelection, enableRowSelection, enableColumnSelection, disableVirtualScrolling])
+    enableFillHandle, enableRangeSelection, enableRowSelection, enableColumnSelection, disableVirtualScrolling,
+    dropdownMenuPortal])
 
   return (
     <div onPasteCapture={handlePaste} onCopy={handleCopy} onKeyDownCapture={handleKeyDown}>
@@ -359,6 +369,7 @@ DashReactGrid.defaultProps = {
   readOnly: false,
   className: null,
   disableVirtualScrolling: true,
+  dropdownMenuPortal: false,
   persistence_type: 'local',
   persisted_props: ['columns', 'data'],
 };
@@ -376,7 +387,9 @@ DashReactGrid.propTypes = {
    * `values` (a dropdown's options), `nonEditable`, `className` (every cell
    * also has `rg-col-<columnId>`) and
    * `editableWhen` (rules on the row's other values, see `rulesHold`; a
-   * cell whose rules fail is locked and has the class `rg-cell-na`).
+   * cell whose rules fail is locked and has the class `rg-cell-na`). A cell
+   * the user can edit has the class `rg-cell-editable`, tinted light blue;
+   * set `--drg-editable-cell-color` to change the tint.
    */
   columns: PropTypes.any.isRequired,
 
@@ -449,6 +462,14 @@ DashReactGrid.propTypes = {
   styleHeader: PropTypes.object,
   className: PropTypes.string,
   disableVirtualScrolling: PropTypes.bool,
+  /**
+   * Whether dropdown menus render in a portal on the page body, with fixed
+   * positioning, rather than inside their cell. Turn it on when the grid sits
+   * in something that clips or scrolls, such as a card or the grid's own
+   * scroll area, so menus can extend past its edges and show above nearby
+   * content. Off by default, which keeps ReactGrid's own dropdown.
+   */
+  dropdownMenuPortal: PropTypes.bool,
   persistence: PropTypes.oneOfType(
     [PropTypes.bool, PropTypes.string, PropTypes.number]
   ),

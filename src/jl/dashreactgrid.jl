@@ -16,9 +16,16 @@ dropdown, checkbox, date or time), and optionally `width`, `align`,
 `values` (a dropdown's options), `nonEditable`, `className` (every cell
 also has `rg-col-<columnId>`) and
 `editableWhen` (rules on the row's other values, see `rulesHold`; a
-cell whose rules fail is locked and has the class `rg-cell-na`).
+cell whose rules fail is locked and has the class `rg-cell-na`). A cell
+the user can edit has the class `rg-cell-editable`, tinted light blue;
+set `--drg-editable-cell-color` to change the tint.
 - `data` (Bool | Real | String | Dict | Array; required): The rows, each an array of values in column order.
 - `disableVirtualScrolling` (Bool; optional)
+- `dropdownMenuPortal` (Bool; optional): Whether dropdown menus render in a portal on the page body, with fixed
+positioning, rather than inside their cell. Turn it on when the grid sits
+in something that clips or scrolls, such as a card or the grid's own
+scroll area, so menus can extend past its edges and show above nearby
+content. Off by default, which keeps ReactGrid's own dropdown.
 - `edits` (Dict; optional): The edits behind the latest change to `data` (read only): `seq`, which
 increases with every change, and `edits`, each one of
 `{kind: "cell", rowId, columnId, value}`, `{kind: "add", rowId}` or
@@ -52,7 +59,7 @@ context menu. Omitted, rows are named by position.
 - `styleHeader` (Dict; optional)
 """
 function dashreactgrid(; kwargs...)
-        available_props = Symbol[:id, :className, :columns, :data, :disableVirtualScrolling, :edits, :enableColumnSelection, :enableFillHandle, :enableRangeSelection, :enableRowSelection, :hiddenColumns, :highlights, :isExtendable, :lockedCells, :newRow, :persisted_props, :persistence, :persistence_type, :readOnly, :rowIds, :selectedCell, :selectedRange, :selectedRowIds, :stickyBottomRows, :stickyLeftColumns, :stickyRightColumns, :stickyTopRows, :style, :styleHeader]
+        available_props = Symbol[:id, :className, :columns, :data, :disableVirtualScrolling, :dropdownMenuPortal, :edits, :enableColumnSelection, :enableFillHandle, :enableRangeSelection, :enableRowSelection, :hiddenColumns, :highlights, :isExtendable, :lockedCells, :newRow, :persisted_props, :persistence, :persistence_type, :readOnly, :rowIds, :selectedCell, :selectedRange, :selectedRowIds, :stickyBottomRows, :stickyLeftColumns, :stickyRightColumns, :stickyTopRows, :style, :styleHeader]
         wild_props = Symbol[]
         return Component("dashreactgrid", "DashReactGrid", "dash_reactgrid", available_props, wild_props; kwargs...)
 end

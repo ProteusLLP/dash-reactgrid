@@ -16,7 +16,9 @@ dropdown, checkbox, date or time), and optionally `width`, `align`,
 `values` (a dropdown's options), `nonEditable`, `className` (every cell
 also has `rg-col-<columnId>`) and
 `editableWhen` (rules on the row's other values, see `rulesHold`; a
-cell whose rules fail is locked and has the class `rg-cell-na`).
+cell whose rules fail is locked and has the class `rg-cell-na`). A cell
+the user can edit has the class `rg-cell-editable`, tinted light blue;
+set `--drg-editable-cell-color` to change the tint.
 - `data` (Bool | Real | String | Dict | Array; required): The rows, each an array of values in column order.
 - `disableVirtualScrolling` (Bool; optional)
 - `dropdownMenuPortal` (Bool; optional): Whether dropdown menus render in a portal on the page body, with fixed

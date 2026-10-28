@@ -121,7 +121,12 @@ const ReactGridDataHandler = (props) => {
           !applies || isLocked(rowId, column.columnId, column),
           openDropdown !== null && openDropdown.rowId === rowId && openDropdown.columnId === column.columnId,
         )
-        const marks = [cell.className, !applies && 'rg-cell-na', rowId === GHOST_ROW_ID && 'rg-ghost']
+        const marks = [
+          cell.className,
+          !applies && 'rg-cell-na',
+          !cell.nonEditable && 'rg-cell-editable',
+          rowId === GHOST_ROW_ID && 'rg-ghost',
+        ]
         // ReactGrid appends "open" or "closed" to a dropdown's classes with
         // no space, so they end in one.
         const space = cell.type === 'dropdown' ? ' ' : ''
@@ -382,7 +387,9 @@ DashReactGrid.propTypes = {
    * `values` (a dropdown's options), `nonEditable`, `className` (every cell
    * also has `rg-col-<columnId>`) and
    * `editableWhen` (rules on the row's other values, see `rulesHold`; a
-   * cell whose rules fail is locked and has the class `rg-cell-na`).
+   * cell whose rules fail is locked and has the class `rg-cell-na`). A cell
+   * the user can edit has the class `rg-cell-editable`, tinted light blue;
+   * set `--drg-editable-cell-color` to change the tint.
    */
   columns: PropTypes.any.isRequired,
 

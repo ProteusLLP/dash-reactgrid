@@ -39,7 +39,9 @@ Keyword arguments:
     `nonEditable`, `className` (every cell also has
     `rg-col-<columnId>`) and `editableWhen` (rules on the row's other
     values, see `rulesHold`; a cell whose rules fail is locked and has
-    the class `rg-cell-na`).
+    the class `rg-cell-na`). A cell the user can edit has the class
+    `rg-cell-editable`, tinted light blue; set
+    `--drg-editable-cell-color` to change the tint.
 
 - data (boolean | number | string | dict | list; required):
     The rows, each an array of values in column order.

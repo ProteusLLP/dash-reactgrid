@@ -6,6 +6,11 @@
   color: black
 }
 
+/* A cell the user can edit, tinted so it stands out from locked ones. */
+.reactgrid-content .rg-pane .rg-cell.rg-cell-editable {
+  background-color: var(--drg-editable-cell-color, #F1F6FD);
+}
+
 /* A dropdown menu in a portal (dropdownMenuPortal) sits on the page body, out
    of reach of ReactGrid's styles, which are scoped to the grid. These repeat
    them for the portal. react-select positions the menu itself. */

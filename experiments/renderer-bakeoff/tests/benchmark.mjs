@@ -7,7 +7,11 @@ import { setTimeout as delay } from "node:timers/promises";
 
 const PORT = 4179;
 const origin = "http://127.0.0.1:" + PORT;
-const server = spawn("npm", ["run", "dev", "--", "--port", String(PORT), "--strictPort"],
+// Launch Vite directly, not through npm: terminating the npm parent leaves
+// the Vite child holding stdout open and can strand the CI job.
+const server = spawn(process.execPath,
+  ["node_modules/vite/bin/vite.js", "--host", "127.0.0.1",
+    "--port", String(PORT), "--strictPort"],
   {stdio: ["ignore", "pipe", "pipe"], env: process.env});
 let output = "";
 server.stdout.on("data", data => output += data);
@@ -96,4 +100,6 @@ try {
 } finally {
   if (browser) await browser.close();
   server.kill("SIGTERM");
+  server.stdout.destroy();
+  server.stderr.destroy();
 }

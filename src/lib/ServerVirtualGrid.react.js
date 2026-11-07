@@ -216,11 +216,11 @@ export const ServerVirtualGrid = (props) => {
     buildVirtualRows({
       columns, descriptors, allColumns, rowCount:virtualRowCount, range,
       page, rowHeight:virtualRowHeight, readOnly:editingBlocked, locked,
-      styleHeader, openDropdown,
+      styleHeader, openDropdown, selection:globalSelection,
     }) : [],
     [valid, columns, descriptors, allColumns, virtualRowCount,
       range.start, range.end, page, virtualRowHeight, editingBlocked, locked,
-      styleHeader, openDropdown]);
+      styleHeader, openDropdown, globalSelection]);
 
   const visibleHighlights = useMemo(() => {
     if (!highlights?.length || !page) return [];
@@ -457,10 +457,38 @@ export const ServerVirtualGrid = (props) => {
       selection.current = ranges;
       const ids = rowsInRanges(ranges).filter(isDataId);
       setProps({selectedRange:ranges,selectedRowIds:ids});
+      if (!shiftPointer.current && page && ranges.length) {
+        const selected = ranges[0];
+        const indices = (selected.rows || []).map((row) =>
+          page.rowIds.indexOf(row.rowId)).filter((i) => i >= 0);
+        if (indices.length) {
+          const firstCol = selected.first.column.idx;
+          const lastCol = selected.last.column.idx;
+          selectGlobal(boundedSelection(
+            range.start + Math.min(...indices),
+            range.start + Math.max(...indices) + 1,
+            Math.min(firstCol,lastCol),Math.max(firstCol,lastCol)+1,
+            virtualRowCount,columns.length,
+          ));
+        }
+      }
     },
     focusChanged: (location) => {
       focused.current=location;
-      if (isDataId(location.rowId)) setProps({selectedCell:location});
+      if (!isDataId(location.rowId)) return;
+      setProps({selectedCell:location});
+      const place=selectionAt(location.rowId,location.columnId);
+      if (!place) return;
+      if (shiftPointer.current && anchor.current) {
+        selectGlobal(extendSelection(
+          anchor.current,place.row,place.col,
+          virtualRowCount,columns.length,
+        ));
+      } else {
+        anchor.current=place;
+        selectGlobal(boundedSelection(place.row,place.row+1,
+          place.col,place.col+1,virtualRowCount,columns.length));
+      }
     },
   };
   const onCellsChanged = useCallback((changes) => latest.current.handleChanges(changes),[]);
@@ -468,52 +496,85 @@ export const ServerVirtualGrid = (props) => {
   const onFocusLocationChanged = useCallback((loc) => latest.current.focusChanged(loc),[]);
 
   const handleCopy = (e) => {
-    if (isCellEditorTarget(e.target)) return;
-    if (!selection.current.length) return;
-    const text = selectionText(rows,selection.current,textOf);
-    if (text === null) return;
-    e.clipboardData.setData("text/plain",text);
+    if (isCellEditorTarget(e.target) || !globalRef.current) return;
     e.preventDefault();
+    e.stopPropagation();
+    if (typeof copyText === "string") {
+      e.clipboardData.setData("text/plain",copyText);
+      setCommandError(null);
+    } else {
+      setCommandError(copyError ||
+        "Preparing selection for clipboard; press Ctrl+C again when ready");
+    }
   };
+
   const handlePaste = (e) => {
     if (isCellEditorTarget(e.target) || editingBlocked) return;
     e.preventDefault();
     e.stopPropagation();
-    if (!page || !selection.current.length) return;
-    const sel=selection.current[0];
-    const changes=[];
-    const text=e.clipboardData.getData("text/plain").replace(/\r?\n$/,"");
-    text.split("\n").forEach((line,ri) => {
-      const row=rows[sel.first.row.idx+ri];
-      if (!row || !isDataId(row.rowId)) return;
-      line.split("\t").forEach((cell,ci) => {
-        const column=columns[sel.first.column.idx+ci];
-        if (!column) return;
-        changes.push({rowId:row.rowId,columnId:column.columnId,
-          value:pastedValue(column,{type:"text",text:cell.replace(/\r$/,"")},parsers)});
-      });
-    });
-    publishChanges(changes);
+    if (!globalRef.current) {
+      setCommandError("Select a destination row and column before pasting");
+      return;
+    }
+    try {
+      const edit=makeRangePaste(
+        e.clipboardData.getData("text/plain"), globalRef.current,
+        columns, virtualRowCount,
+        (column,value) => pastedValue(column,{type:"text",text:value},parsers),
+      );
+      submitOperation([edit]);
+    } catch (error) {
+      setCommandError(error.message);
+    }
+  };
+
+  const clearGlobal = () => {
+    const sel=globalRef.current;
+    if (!sel || editingBlocked) return;
+    const count=sel.end-sel.start;
+    const width=sel.columnEnd-sel.columnStart;
+    if (count>MAX_RANGE_ROWS || count*width>20000) {
+      setCommandError("Select at most 1,000 rows and 20,000 cells to clear");
+      return;
+    }
+    const cols=columns.slice(sel.columnStart,sel.columnEnd);
+    const blanks=cols.map((col)=>col.type==="checkbox"?false:
+      ["number","percent","dropdown","date","time"].includes(col.type)?null:"");
+    submitOperation([{kind:"paste",start:sel.start,
+      columnIds:cols.map(col=>col.columnId),
+      rows:Array.from({length:count},()=>blanks.slice()),
+    }]);
   };
 
   const handleKey = (e) => {
     if (isCellEditorTarget(e.target)) return;
-    if (e.key==="Delete" || e.key==="Backspace") {
-      if (e.ctrlKey || e.metaKey || e.altKey || editingBlocked) return;
-      const selected=selection.current.length ? selection.current :
-        [focusedRange(rows,columns,focused.current)].filter(Boolean);
-      const changes=clearSelectedCells(rows,columns,selected).filter(
-        ({rowId}) => isDataId(rowId));
-      if (changes.length) {
-        e.preventDefault();
-        e.stopPropagation();
-        publishChanges(changes);
+    const modified=(e.ctrlKey || e.metaKey) && !e.altKey;
+    if (modified) {
+      switch(e.key.toLowerCase()) {
+        case "a":
+          e.preventDefault();
+          e.stopPropagation();
+          if (virtualRowCount) {
+            selectGlobal(boundedSelection(0,virtualRowCount,0,columns.length,
+              virtualRowCount,columns.length));
+            selection.current=[];
+          }
+          return;
+        case "z":
+          e.preventDefault();e.stopPropagation();
+          if (e.shiftKey)redoOperation();
+          else undoOperation();
+          return;
+        case "y":
+          e.preventDefault();e.stopPropagation();
+          redoOperation();
+          return;
       }
-    } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase()==="a") {
-      if (!e.shiftKey && !e.altKey) {
-        const selected=selectAllRanges(selection.current,rows,columns,focused.current);
-        if (selected) latest.current.selectionChanged(selected);
-      }
+    }
+    if ((e.key==="Delete" || e.key==="Backspace") &&
+        !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();e.stopPropagation();
+      clearGlobal();
     }
   };
 
@@ -523,6 +584,11 @@ export const ServerVirtualGrid = (props) => {
       onCellsChanged={onCellsChanged}
       onSelectionChanged={onSelectionChanged}
       onFocusLocationChanged={onFocusLocationChanged}
+      onContextMenu={(selectedRowIds,selectedColIds,selectionMode,menuOptions) =>
+        editingBlocked ? menuOptions : [...menuOptions, {
+          id:"deleteVirtualSelection",label:"Delete selected rows",
+          handler: deleteSelection,
+        }]}
       highlights={visibleHighlights}
       stickyTopRows={1}
       stickyLeftColumns={props.stickyLeftColumns || 0}
@@ -552,6 +618,8 @@ export const ServerVirtualGrid = (props) => {
       onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
       onCopy={handleCopy} onPasteCapture={handlePaste}
       onKeyDownCapture={handleKey}
+      onPointerDownCapture={(e) => {shiftPointer.current=e.shiftKey;}}
+      onPointerUpCapture={() => {shiftPointer.current=false;}}
       style={{height:virtualViewportHeight,overflowY:"auto",overflowX:"auto"}}>
       {grid}
     </div>

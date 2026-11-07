@@ -38,3 +38,34 @@ jobs:
         run: python3 tests/test_virtual_operations_browser.py
       - name: Test server virtualization with durable sparse edits
         run: python3 tests/test_virtual_reliable_browser.py
+
+  # Build the real Dash distribution served to browsers. This job is limited
+  # to the trusted same-repository branch for this feature. It runs only after
+  # all unit, database and Chrome tests pass, and makes no change when the
+  # committed bundle already matches the source.
+  sync-distribution:
+    if: github.event_name == 'pull_request' && github.head_ref == 'feat/virtual-grid-structural-clipboard-undo' && github.event.pull_request.head.repo.full_name == github.repository
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install production build dependencies
+        run: npm ci --legacy-peer-deps
+      - name: Generate the distributable JavaScript bundle
+        run: npm run build:js
+      - name: Commit rebuilt Dash JavaScript assets if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add dash_reactgrid/dash_reactgrid.min.js dash_reactgrid/dash_reactgrid.min.js.map
+          if ! git diff --cached --quiet; then
+            git commit -m "build: sync Dash browser bundle for virtual grid"
+            git push origin "HEAD:${{ github.head_ref }}"
+          fi

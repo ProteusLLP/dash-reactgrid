@@ -4,7 +4,7 @@ from pathlib import Path
 from dash import Dash, Input, Output, html, no_update
 from flask import Response, request, abort, stream_with_context
 from dash_reactgrid import DashReactGrid
-from examples.virtual_grid_store import VirtualGridStore
+from tests.fixtures.sqlite_virtual_backend import VirtualGridStore
 
 PORT=int(os.environ.get("VIRTUAL_RELIABLE_PORT","8063"))
 DB=Path(os.environ["VIRTUAL_RELIABLE_DB"])

@@ -26,3 +26,7 @@ jobs:
         run: node --experimental-detect-module scripts/benchmark-large-grid.mjs
       - name: Test transactional Python edit backend
         run: python3 -m unittest discover -s tests -p test_sparse_edit_server.py -v
+      - name: Install Dash and Selenium browser testing
+        run: python3 -m pip install "dash>=3,<5" "selenium>=4,<5"
+      - name: Test real-browser sparse edit and ACK
+        run: python3 tests/test_sparse_browser.py

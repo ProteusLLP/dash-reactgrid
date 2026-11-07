@@ -64,6 +64,7 @@ test("only unchanged rows are reused, and opening a dropdown rebuilds just that 
   assert.equal(open.rows[1].cells[3].isOpen, true);
   const changed = render({
     data: [data[0], ["Bob", 100, 0.1, "closed", false]],
+    openDropdown: { rowId: "r1", columnId: "status" },
     previous: open.cache,
   });
   assert.strictEqual(changed.rows[1], open.rows[1]);

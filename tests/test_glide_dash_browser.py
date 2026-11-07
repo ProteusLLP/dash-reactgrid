@@ -19,6 +19,7 @@ from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
+from selenium.common.exceptions import TimeoutException
 
 ROOT = Path(__file__).resolve().parents[1]
 PORT = 8077
@@ -133,7 +134,23 @@ class GlideDashBrowserTests(unittest.TestCase):
         def valid(_):
             rows=self.state(grid).get("data")
             return isinstance(rows,list) and len(rows)>row and rows[row][column]==value
-        self.waiter.until(valid)
+        try:
+            self.waiter.until(valid)
+        except TimeoutException:
+            self.diagnostic(grid, f"Expected data[{row}][{column}]={value!r}")
+            raise
+
+    def diagnostic(self,grid,context):
+        focus=self.driver.execute_script("""
+            const e=document.activeElement;
+            return {tag:e?.tagName, cls:e?.className,
+              value:e?.value, outer:e?.outerHTML?.slice(0,500),
+              portal:!!document.getElementById('portal'),
+              activeInGrid:!!e?.closest('#'+arguments[0])};
+        """,grid)
+        print("GLIDE DIAGNOSTIC",context,
+            json.dumps({"active":focus,"state":self.state(grid)},default=str)[:3000],
+            flush=True)
 
     def synthetic_clipboard(self,grid,kind,text="",html=None):
         return self.driver.execute_script("""
@@ -235,7 +252,7 @@ class GlideDashBrowserTests(unittest.TestCase):
         self.chord(Keys.CONTROL,"a")
         copied=self.synthetic_clipboard("source","copy")
         self.assertTrue(copied["prevented"])
-        self.assertIn('A "quoted"',copied["text"])
+        self.assertIn('A ""quoted""',copied["text"])  # Correct Excel-escaped TSV
 
     def test_15_paged_grid_preserves_metadata(self):
         self.click("paged","label",0)
@@ -256,6 +273,7 @@ class GlideDashBrowserTests(unittest.TestCase):
         self.type("9.5")
         self.chord(Keys.ENTER)
         self.waiter.until(lambda _: self.state("numeric").get("data") and
+            self.state("numeric")["data"].get("__dash_reactgrid_ndarray__")==1 or
             float(self.state("numeric")["data"][0][0])==9.5)
 
 

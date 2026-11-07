@@ -482,6 +482,11 @@ export const ServerVirtualGrid = (props) => {
         }
       }
     },
+    contextMenu: (selectedRowIds,selectedColIds,selectionMode,menuOptions) =>
+      editingBlocked ? menuOptions : [...(menuOptions || []), {
+        id:"deleteVirtualSelection",label:"Delete selected rows",
+        handler: deleteSelection,
+      }],
     focusChanged: (location) => {
       focused.current=location;
       if (!isDataId(location.rowId)) return;
@@ -503,12 +508,15 @@ export const ServerVirtualGrid = (props) => {
   const onCellsChanged = useCallback((changes) => latest.current.handleChanges(changes),[]);
   const onSelectionChanged = useCallback((ranges) => latest.current.selectionChanged(ranges),[]);
   const onFocusLocationChanged = useCallback((loc) => latest.current.focusChanged(loc),[]);
+  const onContextMenu = useCallback((...args) => latest.current.contextMenu(...args),[]);
 
   const handleCopy = (e) => {
     if (isCellEditorTarget(e.target) || !globalRef.current) return;
     e.preventDefault();
     e.stopPropagation();
-    if (typeof copyText === "string") {
+    if (reliable.pending > 0) {
+      setCommandError("Save pending edits before copying a server range");
+    } else if (typeof copyText === "string") {
       e.clipboardData.setData("text/plain",copyText);
       setCommandError(null);
     } else {
@@ -593,11 +601,7 @@ export const ServerVirtualGrid = (props) => {
       onCellsChanged={onCellsChanged}
       onSelectionChanged={onSelectionChanged}
       onFocusLocationChanged={onFocusLocationChanged}
-      onContextMenu={(selectedRowIds,selectedColIds,selectionMode,menuOptions) =>
-        editingBlocked ? menuOptions : [...menuOptions, {
-          id:"deleteVirtualSelection",label:"Delete selected rows",
-          handler: deleteSelection,
-        }]}
+      onContextMenu={onContextMenu}
       highlights={visibleHighlights}
       stickyTopRows={1}
       stickyLeftColumns={props.stickyLeftColumns || 0}
@@ -610,7 +614,7 @@ export const ServerVirtualGrid = (props) => {
       customCellTemplates={dropdownMenuPortal ? portalTemplates : customCellTemplates}
     />
   ) : null,
-  [rows,columns,onCellsChanged,onSelectionChanged,onFocusLocationChanged,
+  [rows,columns,onCellsChanged,onSelectionChanged,onFocusLocationChanged,onContextMenu,
    visibleHighlights,props.stickyLeftColumns,props.stickyRightColumns,
    props.enableRangeSelection,props.enableRowSelection,props.enableColumnSelection,
    props.enableFillHandle,editingBlocked,dropdownMenuPortal]);
@@ -639,7 +643,8 @@ export const ServerVirtualGrid = (props) => {
         {globalSelection ? selectedCount.toLocaleString() + " rows selected" :
           virtualRowCount.toLocaleString() + " rows"}
       </span>
-      <button type="button" disabled={typeof copyText !== "string"}
+      <button type="button" disabled={typeof copyText !== "string" ||
+        reliable.pending > 0}
         onClick={copySelection}>Copy selection</button>
       {exportUrl && <a href={exportUrl} download>Download selected CSV</a>}
       {!readOnly && props.transmitSparseEdits && <>

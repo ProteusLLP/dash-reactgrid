@@ -143,7 +143,7 @@ Keyword arguments:
 - virtualData (dict; optional):
     Server response {datasetId, requestId, start, rowIds, data} containing exactly the requested rows, or a matching {error}.
 
-- rowPageSize (number; optional):
+- renderer (a value equal to 'reactgrid', 'glide'; default 'reactgrid'):\n    Experimental Glide canvas renderer; server-virtual mode still uses ReactGrid.\n\n- rowPageSize (number; optional):
     Maximum data rows rendered in a page. Use e.g. 250 for very large
     tables. Clipboard operations and selections are page-local.
 
@@ -181,6 +181,7 @@ Keyword arguments:
         data: typing.Optional[typing.Any] = None,
         rowIds: typing.Optional[typing.Sequence] = None,
         rowPageSize: typing.Optional[NumberType] = None,
+        renderer: typing.Optional[Literal['reactgrid', 'glide']] = None,
         virtualRowCount: typing.Optional[NumberType] = None,
         virtualDatasetId: typing.Optional[str] = None,
         virtualRowHeight: typing.Optional[NumberType] = None,
@@ -223,9 +224,9 @@ Keyword arguments:
         persisted_props: typing.Optional[typing.Sequence[Literal["columns", "data"]]] = None,
         **kwargs
     ):
-        self._prop_names = ['id', 'className', 'columns', 'data', 'disableVirtualScrolling', 'dropdownMenuPortal', 'edits', 'editAck', 'editDatasetId', 'enableColumnSelection', 'enableFillHandle', 'enableRangeSelection', 'enableRowSelection', 'hiddenColumns', 'highlights', 'isExtendable', 'lockedCells', 'newRow', 'persisted_props', 'persistence', 'persistence_type', 'readOnly', 'rowIds', 'rowPageSize', 'virtualRowCount', 'virtualDatasetId', 'virtualRowHeight', 'virtualWindowSize', 'virtualViewportHeight', 'virtualRequest', 'virtualData', 'virtualRangeRequest', 'virtualRangeData', 'virtualSelection', 'virtualExportUrl', 'selectedCell', 'transmitSparseEdits', 'selectedRange', 'selectedRowIds', 'stickyBottomRows', 'stickyLeftColumns', 'stickyRightColumns', 'stickyTopRows', 'style', 'styleHeader']
+        self._prop_names = ['renderer', 'id', 'className', 'columns', 'data', 'disableVirtualScrolling', 'dropdownMenuPortal', 'edits', 'editAck', 'editDatasetId', 'enableColumnSelection', 'enableFillHandle', 'enableRangeSelection', 'enableRowSelection', 'hiddenColumns', 'highlights', 'isExtendable', 'lockedCells', 'newRow', 'persisted_props', 'persistence', 'persistence_type', 'readOnly', 'rowIds', 'rowPageSize', 'virtualRowCount', 'virtualDatasetId', 'virtualRowHeight', 'virtualWindowSize', 'virtualViewportHeight', 'virtualRequest', 'virtualData', 'virtualRangeRequest', 'virtualRangeData', 'virtualSelection', 'virtualExportUrl', 'selectedCell', 'transmitSparseEdits', 'selectedRange', 'selectedRowIds', 'stickyBottomRows', 'stickyLeftColumns', 'stickyRightColumns', 'stickyTopRows', 'style', 'styleHeader']
         self._valid_wildcard_attributes =            []
-        self.available_properties = ['id', 'className', 'columns', 'data', 'disableVirtualScrolling', 'dropdownMenuPortal', 'edits', 'editAck', 'editDatasetId', 'enableColumnSelection', 'enableFillHandle', 'enableRangeSelection', 'enableRowSelection', 'hiddenColumns', 'highlights', 'isExtendable', 'lockedCells', 'newRow', 'persisted_props', 'persistence', 'persistence_type', 'readOnly', 'rowIds', 'rowPageSize', 'virtualRowCount', 'virtualDatasetId', 'virtualRowHeight', 'virtualWindowSize', 'virtualViewportHeight', 'virtualRequest', 'virtualData', 'virtualRangeRequest', 'virtualRangeData', 'virtualSelection', 'virtualExportUrl', 'selectedCell', 'transmitSparseEdits', 'selectedRange', 'selectedRowIds', 'stickyBottomRows', 'stickyLeftColumns', 'stickyRightColumns', 'stickyTopRows', 'style', 'styleHeader']
+        self.available_properties = ['renderer', 'id', 'className', 'columns', 'data', 'disableVirtualScrolling', 'dropdownMenuPortal', 'edits', 'editAck', 'editDatasetId', 'enableColumnSelection', 'enableFillHandle', 'enableRangeSelection', 'enableRowSelection', 'hiddenColumns', 'highlights', 'isExtendable', 'lockedCells', 'newRow', 'persisted_props', 'persistence', 'persistence_type', 'readOnly', 'rowIds', 'rowPageSize', 'virtualRowCount', 'virtualDatasetId', 'virtualRowHeight', 'virtualWindowSize', 'virtualViewportHeight', 'virtualRequest', 'virtualData', 'virtualRangeRequest', 'virtualRangeData', 'virtualSelection', 'virtualExportUrl', 'selectedCell', 'transmitSparseEdits', 'selectedRange', 'selectedRowIds', 'stickyBottomRows', 'stickyLeftColumns', 'stickyRightColumns', 'stickyTopRows', 'style', 'styleHeader']
         self.available_wildcard_properties =            []
         _explicit_args = kwargs.pop('_explicit_args')
         _locals = locals()

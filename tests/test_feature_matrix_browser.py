@@ -388,7 +388,8 @@ class FeatureMatrixChromeTests(unittest.TestCase):
         self.assertTrue(result["prevented"])
         self.waiter.until(lambda _: len(self.state("matrix")["data"]) == 3)
         self.assertEqual(self.state("matrix")["data"][-1][0], "New row")
-        self.assertEqual(self.state("matrix")["data"][-1][9], "")
+        self.assertNotEqual(self.state("matrix")["data"][-1][9], "Forbidden")
+        self.assertIsNone(self.state("matrix")["data"][-1][9])
 
     def test_excel_clipboard_paste_respects_types_locks_and_edit_rules(self):
         self.press("a")

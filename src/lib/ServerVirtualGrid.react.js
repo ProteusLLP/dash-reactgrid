@@ -212,15 +212,22 @@ export const ServerVirtualGrid = (props) => {
     return () => window.clearInterval(timer);
   }, [loading, loadError, range.start, range.end, requestWindow]);
 
+  // Changing only the focused cell must not rebuild ReactGrid rows during
+  // a double-click: that would unmount its active cell editor.
+  const visualSelection = globalSelection &&
+    ((globalSelection.end - globalSelection.start) *
+     (globalSelection.columnEnd - globalSelection.columnStart) > 1)
+    ? globalSelection : null;
+
   const rows = useMemo(() => valid && columns.length && virtualRowCount > 0 ?
     buildVirtualRows({
       columns, descriptors, allColumns, rowCount:virtualRowCount, range,
       page, rowHeight:virtualRowHeight, readOnly:editingBlocked, locked,
-      styleHeader, openDropdown, selection:globalSelection,
+      styleHeader, openDropdown, selection:visualSelection,
     }) : [],
     [valid, columns, descriptors, allColumns, virtualRowCount,
       range.start, range.end, page, virtualRowHeight, editingBlocked, locked,
-      styleHeader, openDropdown, globalSelection]);
+      styleHeader, openDropdown, visualSelection]);
 
   const visibleHighlights = useMemo(() => {
     if (!highlights?.length || !page) return [];

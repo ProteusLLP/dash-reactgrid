@@ -2,7 +2,7 @@
 import os
 from dash import Dash, Input, Output, html
 from dash_reactgrid import DashReactGrid
-from examples.stateless_virtual_callbacks import window_response
+from dash_reactgrid.stateless_virtual import window_response
 
 PORT = int(os.environ.get("VIRTUAL_BROWSER_PORT", "8061"))
 TOTAL_ROWS = 100_000

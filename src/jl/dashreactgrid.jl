@@ -45,7 +45,21 @@ an object by column id. Blank if omitted.
 - `persistence` (Bool | String | Real; optional)
 - `persistence_type` (a value equal to: 'local', 'session', 'memory'; optional)
 - `readOnly` (Bool; optional): Whether every cell is locked, no row can be added and none deleted.
-- `rowIds` (Array; optional): An id per row of `data`. Given, edits name rows by these ids, rows the
+- `editAck` (Dict; optional): Server ACK for a committed sparse edit batch.
+- `editDatasetId` (String; optional): Stable dataset identifier required in sparse mode.
+- `transmitSparseEdits` (Bool; optional): Publish only edits to Dash; changes remain in browser memory.
+- `virtualRowCount` (optional): Total number of logical rows supplied by the server. Setting a nonnegative integer enables continuous server-side virtualization.
+- `virtualDatasetId` (optional): Stable identity of the ordered server dataset; change when sorting, filtering or rebuilding rows to invalidate cached windows.
+- `virtualRowHeight` (optional): Fixed row height in pixels, default 25.
+- `virtualWindowSize` (optional): Target number of rows to request on each scroll window, default 120.
+- `virtualViewportHeight` (optional): Scrollable grid height in pixels, default 420.
+- `virtualRequest` (optional): Browser request {datasetId, requestId, start, end}, with zero-based start inclusive and end exclusive.
+- `virtualRangeRequest` (optional): Read-only absolute-range clipboard request containing datasetId, requestId, start, end, columnStart, columnEnd.
+- `virtualRangeData` (optional): Server response echoing clipboard request boundaries with text or error.
+- `virtualSelection` (optional): Compact absolute selection with half-open row/column indices, including unloaded rows.
+- `virtualExportUrl` (optional): Optional app-provided authenticated URL for streaming selected rows as CSV.
+- `virtualData` (optional): Server response {datasetId, requestId, start, rowIds, data} containing exactly the requested rows, or a matching {error}.
+- `rowPageSize` (Real; optional): Maximum data rows displayed per page for very large tables.\n- `rowIds` (Array; optional): An id per row of `data`. Given, edits name rows by these ids, rows the
 user adds get ids starting `new-`, and rows can be deleted from the
 context menu. Omitted, rows are named by position.
 - `selectedCell` (Bool | Real | String | Dict | Array; optional)
@@ -59,7 +73,7 @@ context menu. Omitted, rows are named by position.
 - `styleHeader` (Dict; optional)
 """
 function dashreactgrid(; kwargs...)
-        available_props = Symbol[:id, :className, :columns, :data, :disableVirtualScrolling, :dropdownMenuPortal, :edits, :enableColumnSelection, :enableFillHandle, :enableRangeSelection, :enableRowSelection, :hiddenColumns, :highlights, :isExtendable, :lockedCells, :newRow, :persisted_props, :persistence, :persistence_type, :readOnly, :rowIds, :selectedCell, :selectedRange, :selectedRowIds, :stickyBottomRows, :stickyLeftColumns, :stickyRightColumns, :stickyTopRows, :style, :styleHeader]
+        available_props = Symbol[:id, :className, :columns, :data, :disableVirtualScrolling, :dropdownMenuPortal, :edits, :editAck, :editDatasetId, :enableColumnSelection, :enableFillHandle, :enableRangeSelection, :enableRowSelection, :hiddenColumns, :highlights, :isExtendable, :lockedCells, :newRow, :persisted_props, :persistence, :persistence_type, :readOnly, :rowIds, :rowPageSize, :virtualRowCount, :virtualDatasetId, :virtualRowHeight, :virtualWindowSize, :virtualViewportHeight, :virtualRequest, :virtualData, :virtualRangeRequest, :virtualRangeData, :virtualSelection, :virtualExportUrl, :selectedCell, :transmitSparseEdits, :selectedRange, :selectedRowIds, :stickyBottomRows, :stickyLeftColumns, :stickyRightColumns, :stickyTopRows, :style, :styleHeader]
         wild_props = Symbol[]
         return Component("dashreactgrid", "DashReactGrid", "dash_reactgrid", available_props, wild_props; kwargs...)
 end

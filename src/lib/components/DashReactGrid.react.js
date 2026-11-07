@@ -6,6 +6,9 @@ import "../styles.css"
 import { CustomNumberCellTemplate, numberParser } from '../CustomNumberCell';
 import { PercentCellTemplate, percentParser } from '../PercentCell';
 import { PortalDropdownCellTemplate } from '../PortalDropdownCell';
+import { ServerVirtualGrid } from '../ServerVirtualGrid.react';
+import { compileGridColumns, buildGridRows, pageBounds, canPasteOnPage } from '../gridRows';
+import { useReliableGrid } from '../useReliableGrid';
 import {
   GHOST_ROW_ID,
   applyChanges,
@@ -14,13 +17,15 @@ import {
   optionsOf,
   pastedValue,
   removeRows,
-  rowIdsOf,
+  rowIndexesOf,
   rowsInRanges,
   rulesHold,
   stickyCounts,
   textOf,
   valueOf,
 } from '../model';
+import { clearSelectedCells, focusedRange, isCellEditorTarget, pasteStartRow, selectAllRanges, selectionText } from '../keyboard';
+import { parseClipboardTsv } from '../virtualOperations';
 
 const locale = window.navigator.language
 const parsers = { number: numberParser, percent: percentParser }
@@ -31,44 +36,16 @@ const portalCellTemplates = { ...customCellTemplates, 'dropdown': new PortalDrop
 const DELETE_ROWS_OPTION = "deleteRows"
 const NO_HISTORY = { changes: [], index: -1 }
 
-const alignToStyle = (align) => {
-  switch (align) {
-    case "left": return { "justifyContent": "flex-start" };
-    case "center": return { "justifyContent": "center" };
-    case "right": return { "justifyContent": "flex-end" };
-  }
-  return null
-}
-
 const isMacOs = () => window.navigator.appVersion.indexOf("Mac") !== -1;
-
-/** The ReactGrid cell showing one value of a column. */
-const createCell = (column, value, style, locked, isOpen) => {
-  const base = { style, nonEditable: locked, className: [column.className, columnClass(column.columnId)].filter(Boolean).join(' ') }
-  switch (column.type) {
-    case 'number':
-      return { ...base, type: 'customnumber', value: value ?? NaN, format: new Intl.NumberFormat(locale, { ...column.formatOptions }) }
-    case 'percent':
-      return { ...base, type: 'percent', value: value ?? NaN, format: new Intl.NumberFormat(locale, { ...column.formatOptions, style: "percent" }) }
-    case 'dropdown':
-      return { ...base, type: 'dropdown', selectedValue: value ?? undefined, values: optionsOf(column), isOpen, isDisabled: locked }
-    case 'checkbox':
-      return { ...base, type: 'checkbox', checked: Boolean(value) }
-    case 'date':
-      return { ...base, type: 'date', date: value ? new Date(value) : undefined, format: new Intl.DateTimeFormat(locale, { ...column.formatOptions }) }
-    case 'time':
-      return { ...base, type: 'time', time: value ? new Date(value) : undefined, format: new Intl.DateTimeFormat(locale, { ...column.formatOptions }) }
-    default:
-      return { ...base, type: 'text', text: value == null ? '' : String(value) }
-  }
-}
 
 const DashReactGrid = props => {
   const { id, style, className } = props;
   // ReactGrid ignores a class name, so it goes on the container.
   return (
     <div id={typeof id === 'object' ? JSON.stringify(id) : id} style={style} className={className || undefined}>
-      <ReactGridDataHandler {...props} />
+      {Number.isSafeInteger(props.virtualRowCount) && props.virtualRowCount >= 0
+        ? <ServerVirtualGrid {...props} />
+        : <ReactGridDataHandler {...props} />}
     </div>
   );
 }
@@ -84,96 +61,122 @@ const ReactGridDataHandler = (props) => {
   const allColumnIds = allColumns.map((column) => column.columnId)
 
   const tracked = Array.isArray(rowIds)
-  const table = useMemo(() => ({ data, rowIds: rowIdsOf(data, rowIds) }), [data, rowIds])
-  const extendable = isExtendable && !readOnly
+  const transmitSparseEdits = Boolean(props.transmitSparseEdits)
+  const sync = useReliableGrid({
+    enabled: transmitSparseEdits, id: props.id,
+    datasetId: props.editDatasetId, editAck: props.editAck,
+    data, rowIds, columns: allColumns, newRow, setProps,
+  })
+  const { table, tableRef } = sync
+  const editingBlocked = readOnly || Boolean(sync.error)
+  const extendable = isExtendable && !editingBlocked
   const columnIds = columns.map((column) => column.columnId)
+  const displayedColumnIndex = useMemo(
+    () => new Map(columnIds.map((id, idx) => [id, idx])), [columns],
+  )
+  const allColumnIndex = useMemo(
+    () => new Map(allColumnIds.map((id, idx) => [id, idx])), [allColumns],
+  )
+  const [requestedPage, setRequestedPage] = useState(0)
+  const [pageInput, setPageInput] = useState("1")
+  const pageSize = Number.isInteger(props.rowPageSize) && props.rowPageSize > 0 ? props.rowPageSize : null
+  const bounds = pageBounds(table.data.length, pageSize, requestedPage)
+  const { page, count: pageCount, start: pageStart, end: pageEnd } = bounds
+  useEffect(() => {
+    if (requestedPage !== page) {
+      setRequestedPage(page)
+      setPageInput(String(page + 1))
+    }
+  }, [requestedPage, page])
+  const showGhost = extendable && (!pageSize || page === pageCount - 1)
+  const renderColumns = useMemo(() => compileGridColumns(columns, allColumns, locale), [columns, allColumns])
+  const rowCache = useRef(null)
 
   const [openDropdown, setOpenDropdown] = useState(null)
   const [history, setHistory] = useState(NO_HISTORY)
   const selection = useRef(null)
-  const sequence = useRef(0)
+  const focused = useRef(null)
 
   // The server sends new columns only when it remounts the table, which
   // starts a new history; the grid's own changes never touch them.
   useEffect(() => setHistory(NO_HISTORY), [allColumns])
+  // An authoritative server replacement invalidates local undo history.
+  // In normal mode, data changes on every edit and must NOT reset history.
+  useEffect(() => {
+    if (transmitSparseEdits) setHistory(NO_HISTORY)
+  }, [data, rowIds, transmitSparseEdits])
 
   const locked = useMemo(
     () => new Set((lockedCells || []).map(([rowId, columnId]) => `${rowId}\u0000${columnId}`)),
     [lockedCells],
   )
   const isLocked = (rowId, columnId, column) =>
-    readOnly || Boolean(column.nonEditable) || locked.has(`${rowId}\u0000${columnId}`)
+    editingBlocked || Boolean(column.nonEditable) || locked.has(`${rowId}\u0000${columnId}`)
 
-  // The rows are rebuilt only when what they show changes. Dash re-renders
-  // the grid for every property it sets, such as the selection on a click;
-  // handing ReactGrid new rows then can drop keys typed into a cell.
+  // Only pass the current page to ReactGrid: its cell-matrix builder touches
+  // every cell, even when it has virtual DOM scrolling enabled.
   const rows = useMemo(() => {
-    const columnsStyle = columns.map((column) => ({ ...alignToStyle(column.align), ...column.style }))
-    /** A row's cells, with columns whose rules fail locked and marked. */
-    const createRow = (rowId, values, ruleValues = values) => ({
-      rowId,
-      cells: columns.map((column, col) => {
-        const applies = rulesHold(column, ruleValues, allColumnIds)
-        const cell = createCell(
-          column,
-          values[allColumnIds.indexOf(column.columnId)],
-          columnsStyle[col],
-          !applies || isLocked(rowId, column.columnId, column),
-          openDropdown !== null && openDropdown.rowId === rowId && openDropdown.columnId === column.columnId,
-        )
-        const marks = [
-          cell.className,
-          !applies && 'rg-cell-na',
-          !cell.nonEditable && 'rg-cell-editable',
-          rowId === GHOST_ROW_ID && 'rg-ghost',
-        ]
-        // ReactGrid appends "open" or "closed" to a dropdown's classes with
-        // no space, so they end in one.
-        const space = cell.type === 'dropdown' ? ' ' : ''
-        return { ...cell, className: marks.filter(Boolean).join(' ') + space }
-      })
-    })
-    const headerRow = {
-      rowId: "header",
-      cells: columns.map((column) => ({
-        type: "header",
-        text: column.title,
-        style: { ...styleHeader, ...column.headerStyle, ...alignToStyle(column.align) },
-      })),
-      height: styleHeader?.height
-    }
-    return [
-      headerRow,
-      ...table.data.map((values, idx) => createRow(table.rowIds[idx], values)),
-      ...(extendable ? [createRow(GHOST_ROW_ID, blankRow(allColumns, null), blankRow(allColumns, newRow))] : []),
-    ]
-  }, [allColumns, columns, table, newRow, locked, readOnly, styleHeader, extendable, openDropdown])
+    const validCache = rowCache.current &&
+      rowCache.current.descriptors === renderColumns &&
+      rowCache.current.locked === locked &&
+      rowCache.current.readOnly === editingBlocked &&
+      rowCache.current.newRow === newRow &&
+      rowCache.current.styleHeader === styleHeader;
+    const built = buildGridRows({
+      columns, descriptors: renderColumns, allColumns,
+      data: table.data.slice(pageStart, pageEnd),
+      rowIds: table.rowIds.slice(pageStart, pageEnd),
+      newRow, readOnly: editingBlocked, locked, styleHeader, showGhost, openDropdown,
+      previous: validCache ? rowCache.current.cache : null,
+    });
+    rowCache.current = {
+      descriptors: renderColumns, locked, readOnly: editingBlocked, newRow, styleHeader,
+      cache: built.cache,
+    };
+    return built.rows;
+  }, [columns, renderColumns, allColumns, table, pageStart, pageEnd,
+    newRow, locked, editingBlocked, styleHeader, showGhost, openDropdown]);
+
+  // Highlights may reference rows on other pages. Passing them directly
+  // makes ReactGrid reject them as inconsistent with its current cell matrix.
+  const pageHighlights = useMemo(() => {
+    if (!pageSize || !highlights?.length) return highlights
+    const ids = new Set(rows.map((row) => row.rowId))
+    const visible = new Set(columnIds)
+    return highlights.filter((highlight) =>
+      ids.has(highlight.rowId) && visible.has(highlight.columnId))
+  }, [highlights, pageSize, rows, columns])
 
   // ReactGrid fails when nothing is left to scroll, as when every column of
   // a one-column table is sticky, so at least one row and column scroll.
   const sticky = stickyCounts(props, columns.length, rows.length)
 
-  /** Publish a new table and the edits that made it. */
-  const publish = (next) => {
-    if (next.edits.length === 0) return
-    sequence.current += 1
-    const update = { data: next.data, edits: { seq: sequence.current, edits: next.edits } }
-    if (tracked) update.rowIds = next.rowIds
-    setProps(update)
-  }
+  /** Commit a batch only if it was persisted to the reliable outbox. */
+  const publish = (next) => sync.publish(next, tracked)
 
   /** Apply value changes, remembering cell edits for undo. */
   const change = (changes, remember = true) => {
-    const next = applyChanges(table, changes, { columns: allColumns, newRow })
-    publish(next)
+    if (editingBlocked) return
+    const currentTable = tableRef.current
+    const next = applyChanges(currentTable, changes, { columns: allColumns, newRow })
+    if (!publish(next)) return
+    if (pageSize && next.edits.some((edit) => edit.kind === "add") &&
+        next.data.length > (page + 1) * pageSize) {
+      const last = Math.floor((next.data.length - 1) / pageSize)
+      setRequestedPage(last)
+      setPageInput(String(last + 1))
+      selection.current = null
+      focused.current = null
+    }
     if (next.edits.some((edit) => edit.kind !== "cell")) {
       // Undo restores values, not rows, so a new row starts a new history.
       setHistory(NO_HISTORY)
     } else if (remember && next.edits.length) {
+      const rowIndex = rowIndexesOf(currentTable.rowIds)
       const step = next.edits.map((edit) => ({
         rowId: edit.rowId,
         columnId: edit.columnId,
-        before: table.data[table.rowIds.indexOf(edit.rowId)][allColumnIds.indexOf(edit.columnId)] ?? null,
+        before: currentTable.data[rowIndex.get(edit.rowId)][allColumnIndex.get(edit.columnId)] ?? null,
         after: edit.value,
       }))
       setHistory({ changes: [...history.changes.slice(0, history.index + 1), step], index: history.index + 1 })
@@ -183,7 +186,7 @@ const ReactGridDataHandler = (props) => {
   const handleChanges = (cellChanges) => {
     const changes = []
     cellChanges.forEach((cellChange) => {
-      const column = columns[columnIds.indexOf(cellChange.columnId)]
+      const column = columns[displayedColumnIndex.get(cellChange.columnId)]
       if (!column) return
       if (cellChange.newCell.type === 'dropdown') {
         const opened = cellChange.newCell.isOpen
@@ -221,21 +224,22 @@ const ReactGridDataHandler = (props) => {
           return raw ? JSON.parse(raw) : { type: "text", text: td.innerHTML };
         }))
     }
-    return clipboard.getData("text/plain")
-      .replace(/\r?\n$/, '') // Excel ends its copy with a newline
-      .split("\n")
-      .map((line) => line.split("\t").map((text) => ({ type: "text", text: text.replace('\r', '') })))
+    return parseClipboardTsv(clipboard.getData("text/plain"))
+      .map((line) => line.map((text) => ({ type: "text", text })))
   }
 
   const handlePaste = (e) => {
+    if (isCellEditorTarget(e.target)) return
     e.stopPropagation()
     e.preventDefault()
     const ranges = selection.current
-    if (readOnly || !ranges || !ranges.length) return
+    if (editingBlocked || !ranges || !ranges.length) return
     const first = ranges[0].first
     const changes = []
     clipboardCells(e.clipboardData).forEach((cells, ri) => {
-      const position = first.row.idx - 1 + ri // -1 for the header row
+      const position = pageStart + pasteStartRow(ranges[0]) + ri // the header is not a data row
+      // Do not silently modify data on a page the user cannot see.
+      if (!canPasteOnPage(position, bounds, pageSize)) return
       let rowId
       if (position < table.data.length) {
         rowId = table.rowIds[position]
@@ -258,18 +262,10 @@ const ReactGridDataHandler = (props) => {
   }
 
   const handleCopy = (e) => {
-    const ranges = selection.current
-    if (!ranges || !ranges.length) return
-    const range = ranges[0]
-    const lines = []
-    for (let row = range.first.row.idx; row <= range.last.row.idx; row++) {
-      const cells = []
-      for (let column = range.first.column.idx; column <= range.last.column.idx; column++) {
-        cells.push(textOf(rows[row].cells[column]))
-      }
-      lines.push(cells.join("\t"))
-    }
-    e.clipboardData.setData("text/plain", lines.join("\n"))
+    if (isCellEditorTarget(e.target)) return
+    const text = selectionText(rows, selection.current, textOf)
+    if (text === null) return
+    e.clipboardData.setData("text/plain", text)
     e.preventDefault()
   }
 
@@ -279,7 +275,7 @@ const ReactGridDataHandler = (props) => {
   }
 
   const handleContextMenu = (selectedRowIds, selectedColIds, selectionMode, menuOptions, selectedRanges) => {
-    if (!tracked || readOnly) return menuOptions
+    if (!tracked || editingBlocked) return menuOptions
     const removing = []
     selectedRanges.forEach((range) => range.forEach(({ rowId }) => {
       if (rowId !== "header" && rowId !== GHOST_ROW_ID && !removing.includes(rowId)) removing.push(rowId)
@@ -291,8 +287,7 @@ const ReactGridDataHandler = (props) => {
         id: DELETE_ROWS_OPTION,
         label: removing.length === 1 ? "Delete row" : `Delete ${removing.length} rows`,
         handler: () => {
-          publish(removeRows(table, removing))
-          setHistory(NO_HISTORY)
+          if (publish(removeRows(tableRef.current, removing))) setHistory(NO_HISTORY)
         },
       },
     ]
@@ -301,9 +296,30 @@ const ReactGridDataHandler = (props) => {
   // Caught before ReactGrid, which swallows the keys it handles itself.
   // While a cell is being typed in, its own input undoes the typing.
   const handleKeyDown = (e) => {
-    if (e.target && e.target.classList && e.target.classList.contains("rg-input") && e.target.type !== "checkbox") return
+    if (isCellEditorTarget(e.target)) return
+    if (!e.ctrlKey && !e.metaKey && !e.altKey && (e.key === "Delete" || e.key === "Backspace")) {
+      // Handle clearing here instead of relying on ReactGrid's last-row
+      // behaviour. The blank extension row is never a data edit.
+      const ranges = selection.current?.length ? selection.current :
+        [focusedRange(rows, columns, focused.current)].filter(Boolean)
+      const changes = editingBlocked ? [] : clearSelectedCells(rows, columns, ranges)
+      if (changes.length) {
+        e.preventDefault()
+        e.stopPropagation()
+        change(changes)
+      }
+      return
+    }
     if ((!isMacOs() && e.ctrlKey) || e.metaKey) {
       switch (e.key.toLowerCase()) {
+        case "a":
+          if (!e.shiftKey && !e.altKey) {
+            // ReactGrid selects the entire matrix without notifying onSelectionChanged.
+            // Keep our clipboard selection and Dash's selectedRange in sync.
+            const ranges = selectAllRanges(selection.current, rows, columns, focused.current)
+            if (ranges) handleSelectionChanged(ranges)
+          }
+          return; // let ReactGrid update its own selection and highlight
         case "z":
           e.preventDefault();
           handleUndo();
@@ -323,7 +339,10 @@ const ReactGridDataHandler = (props) => {
     handleChanges,
     handleContextMenu,
     handleSelectionChanged,
-    handleFocus: (location) => setProps({ selectedCell: location }),
+    handleFocus: (location) => {
+      focused.current = location
+      setProps({ selectedCell: location })
+    },
   }
   const onCellsChanged = useCallback((changes) => latest.current.handleChanges(changes), [])
   const onContextMenu = useCallback((...args) => latest.current.handleContextMenu(...args), [])
@@ -332,13 +351,13 @@ const ReactGridDataHandler = (props) => {
 
   const { enableFillHandle, enableRangeSelection, enableRowSelection, enableColumnSelection, disableVirtualScrolling, dropdownMenuPortal } = props
   const grid = useMemo(() => (
-    <ReactGrid rows={rows} columns={columns} onCellsChanged={onCellsChanged}
+    <ReactGrid key={pageSize ? `page-${page}` : 'all'} rows={rows} columns={columns} onCellsChanged={onCellsChanged}
       onFocusLocationChanged={onFocusLocationChanged}
-      enableFillHandle={enableFillHandle && !readOnly}
+      enableFillHandle={enableFillHandle && !editingBlocked}
       enableRangeSelection={enableRangeSelection}
       enableRowSelection={enableRowSelection}
       enableColumnSelection={enableColumnSelection}
-      onContextMenu={onContextMenu} highlights={highlights}
+      onContextMenu={onContextMenu} highlights={pageHighlights}
       stickyLeftColumns={sticky.left}
       stickyRightColumns={sticky.right}
       stickyTopRows={sticky.top}
@@ -347,13 +366,58 @@ const ReactGridDataHandler = (props) => {
       onSelectionChanged={onSelectionChanged}
       disableVirtualScrolling={disableVirtualScrolling}
     />
-  ), [rows, columns, readOnly, highlights, sticky.left, sticky.right, sticky.top, sticky.bottom,
+  ), [rows, columns, editingBlocked, pageHighlights, sticky.left, sticky.right, sticky.top, sticky.bottom,
     enableFillHandle, enableRangeSelection, enableRowSelection, enableColumnSelection, disableVirtualScrolling,
-    dropdownMenuPortal])
+    dropdownMenuPortal, pageSize, page])
+
+  const goToPage = (requested) => {
+    if (!Number.isFinite(requested)) {
+      setPageInput(String(page + 1))
+      return
+    }
+    const next = pageBounds(table.data.length, pageSize, Math.trunc(requested)).page
+    setRequestedPage(next)
+    setPageInput(String(next + 1))
+    selection.current = null
+    focused.current = null
+    setProps({ selectedRange: [], selectedRowIds: [], selectedCell: null })
+  }
 
   return (
     <div onPasteCapture={handlePaste} onCopy={handleCopy} onKeyDownCapture={handleKeyDown}>
       {grid}
+      {transmitSparseEdits && (
+        <div className="drg-sync-status" role="status" aria-live="polite">
+          {sync.error ? (
+            <>
+              <span className="drg-sync-error">{sync.error}. {sync.pending} pending batch(es) retained.</span>
+              {sync.pending > 0 && <button type="button" onClick={sync.retryFailed}>Retry sending</button>}
+            </>
+          ) : sync.pending > 0 ? (
+            <span>{sync.pending} unacknowledged edit batch(es); retrying automatically</span>
+          ) : (
+            <span>All edits acknowledged</span>
+          )}
+        </div>
+      )}
+      {pageSize && pageCount > 1 && (
+        <nav className="drg-pager" aria-label="Grid pages">
+          <button type="button" disabled={page === 0} onClick={() => goToPage(page - 1)}>Previous</button>
+          <span>Rows {pageStart + 1}-{pageEnd} of {table.data.length}</span>
+          <label>Page <input type="number" min="1" max={pageCount}
+            aria-label="Grid page number" value={pageInput}
+            onChange={(event) => setPageInput(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.stopPropagation()
+                goToPage(Number(pageInput) - 1)
+              }
+            }}/></label>
+          <button type="button" onClick={() => goToPage(Number(pageInput) - 1)}>Go</button>
+          <span>of {pageCount}</span>
+          <button type="button" disabled={page === pageCount - 1} onClick={() => goToPage(page + 1)}>Next</button>
+        </nav>
+      )}
     </div>
   )
 }
@@ -369,6 +433,21 @@ DashReactGrid.defaultProps = {
   readOnly: false,
   className: null,
   disableVirtualScrolling: true,
+  rowPageSize: null,
+  virtualRowCount: null,
+  virtualDatasetId: null,
+  virtualRowHeight: 25,
+  virtualWindowSize: 120,
+  virtualViewportHeight: 420,
+  virtualRequest: null,
+  virtualData: null,
+  virtualRangeRequest: null,
+  virtualRangeData: null,
+  virtualSelection: null,
+  virtualExportUrl: null,
+  transmitSparseEdits: false,
+  editDatasetId: null,
+  editAck: null,
   dropdownMenuPortal: false,
   persistence_type: 'local',
   persisted_props: ['columns', 'data'],
@@ -462,6 +541,74 @@ DashReactGrid.propTypes = {
   styleHeader: PropTypes.object,
   className: PropTypes.string,
   disableVirtualScrolling: PropTypes.bool,
+  /**
+   * Optional maximum data rows shown on one page, e.g. 250. ReactGrid
+   * creates a cell matrix for all supplied rows even with virtual scrolling.
+   * Paging bounds that work for very large datasets; page selection and
+   * clipboard operations refer only to the current page.
+   * The whole data array is still transferred to Dash on edits.
+   */
+  rowPageSize: PropTypes.number,
+  /**
+   * Server-backed continuous virtualization: provide the total number of
+   * logical rows; set data=[] and omit rowIds. The client requests bounded
+   * row windows through virtualRequest and receives them in virtualData.
+   * Supplying a nonnegative integer enables virtual mode instead of paging.
+   */
+  virtualRowCount: PropTypes.number,
+  /**
+   * Stable identifier of the ordered server dataset. Change it when the
+   * sort, filter, contents or revision changes to invalidate cached windows.
+   */
+  virtualDatasetId: PropTypes.string,
+  /** Fixed height in pixels of each data row, default 25. */
+  virtualRowHeight: PropTypes.number,
+  /** Approximate number of rows fetched per request, default 120. */
+  virtualWindowSize: PropTypes.number,
+  /** Height in pixels of the scrollable viewport, default 420. */
+  virtualViewportHeight: PropTypes.number,
+  /**
+   * Read-only row request {datasetId, requestId, start, end}. Start inclusive,
+   * end exclusive. Return exactly end-start rows from the backend.
+   */
+  virtualRequest: PropTypes.object,
+  /**
+   * Server response {datasetId, requestId, start, rowIds, data} or
+   * {datasetId, requestId, start, error}. Must echo the request identity.
+   */
+  virtualData: PropTypes.object,
+  /**
+   * Read-only request for preparing clipboard text across unloaded rows:
+   * {datasetId,requestId,start,end,columnStart,columnEnd}.
+   */
+  virtualRangeRequest: PropTypes.object,
+  /**
+   * Server response echoing virtualRangeRequest and containing text or error.
+   * Clipboards are limited to a bounded range; large selections use export.
+   */
+  virtualRangeData: PropTypes.object,
+  /** Compact absolute-index selection, not an array of every selected row. */
+  virtualSelection: PropTypes.object,
+  /** Application-provided URL for authenticated streamed CSV exports. */
+  virtualExportUrl: PropTypes.string,
+  /**
+   * When true, publish only {edits: {seq, edits}} through setProps.
+   * The changed table is retained locally in the browser, including new
+   * and deleted rows, and is replaced only by an external data/rowIds
+   * update. Default false publishes full data as before.
+   */
+  transmitSparseEdits: PropTypes.bool,
+  /**
+   * Stable identifier for the authoritative dataset. Required in sparse mode
+   * to recover pending batches across reloads without cross-dataset replay.
+   */
+  editDatasetId: PropTypes.string,
+  /**
+   * Authoritative server acknowledgement returned from a Dash callback:
+   * {datasetId, streamId, seq, status: "ok" | "retry" | "error" | "conflict", message?}.
+   * Only status "ok" removes the head batch from the durable outbox.
+   */
+  editAck: PropTypes.object,
   /**
    * Whether dropdown menus render in a portal on the page body, with fixed
    * positioning, rather than inside their cell. Turn it on when the grid sits

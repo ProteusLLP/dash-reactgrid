@@ -166,6 +166,32 @@ class FeatureMatrixChromeTests(unittest.TestCase):
             # through its onBlur handler by moving focus outside the grid.
             self.driver.find_element(By.TAG_NAME, "h3").click()
 
+    def test_numeric_character_focus_diagnostics(self):
+        self.cell("matrix", "amount", 1).click()
+        self.driver.execute_script("""
+          window.klog=[];
+          for (const type of ['focusin','focusout','keydown','input','change']) {
+            document.addEventListener(type,(e)=>{
+              const tag=e.target.tagName;
+              if(tag!=='INPUT')return;
+              window.klog.push([type,e.key,e.target.className,
+                e.target.value,document.activeElement?.className]);
+            },true);
+          }
+        """)
+        for ch in "31.25":
+            ActionChains(self.driver).send_keys(ch).perform()
+            time.sleep(.08)
+            snap = self.driver.execute_script("""
+              return {
+                active:document.activeElement?.outerHTML.slice(0,350),
+                editor:document.querySelector('#matrix .rg-celleditor')?.outerHTML.slice(0,450),
+                log:window.klog.splice(0,100),
+              }
+            """)
+            print("NUMERIC CHARACTER",repr(ch),snap,
+                  "stored", self.state("matrix")["data"][1][1],flush=True)
+
     def test_keyboard_typing_navigation_diagnostics(self):
         """Exercise the Excel workflow using physical Chrome key events."""
         cases = [

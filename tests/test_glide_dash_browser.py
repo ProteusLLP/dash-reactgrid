@@ -122,7 +122,8 @@ class GlideDashBrowserTests(unittest.TestCase):
             "readonly":["protected"],
             "numeric":["n0","n1"],
         }
-        if grid in ids and not (grid=="matrix" and column=="flag"):
+        # The copy-only source fixture has no source-state callback/output.
+        if grid in ids and grid!="source" and not (grid=="matrix" and column=="flag"):
             expected={"rowId":ids[grid][row],"columnId":column}
             # Genuine keyboard entry requires a focused cell. CDP's pointer
             # events return before Glide's selection event / Dash callback.

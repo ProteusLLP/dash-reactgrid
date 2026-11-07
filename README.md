@@ -7,6 +7,39 @@ Get started with:
 2. Run `python usage.py`
 3. Visit http://localhost:8050 in your web browser
 
+## Very large tables
+
+ReactGrid 4.1.x builds an internal cell matrix for every supplied cell,
+including when virtual scrolling is enabled. For 100k rows or millions of
+cells, **use `rowPageSize=250`** to limit that work. The grid displays page
+controls (previous/next and direct page navigation). Row IDs and edits still
+refer to the original dataset, including edits on later pages. The extension
+row appears only on the last page; selection, copying, filling and pasting are
+confined to the current page (pasting beyond the last page is still allowed on
+extendable tables). Page navigation clears the previous selection.
+
+```python
+DashReactGrid(
+    id="large-table",
+    columns=columns,
+    data=rows,
+    rowIds=row_ids,
+    rowPageSize=250,
+    disableVirtualScrolling=False,
+)
+```
+
+The renderer now shares number/date formatters and dropdown options across
+cells in each column. Edits use copy-on-write and only clone changed rows.
+For smaller grids, `disableVirtualScrolling=False` can reduce DOM overhead,
+although it does not reduce ReactGrid's internal cell matrix.
+
+**Limitations:** Dash still transfers the entire `data` property to the client
+and publishes it again on edits, so this is not server-side paging. For
+million-cell data, the next step is a sparse edit-only callback protocol and
+server-provided page data. Clipboard copy-all across pages, global select-all,
+and fast cross-page search would need dedicated operations.
+
 ## Editing with stable row ids
 
 Give `rowIds` (one per row of `data`) and the grid reports every change as

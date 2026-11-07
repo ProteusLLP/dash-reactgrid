@@ -1,5 +1,33 @@
 # Dash ReactGrid
 
+## Python column definitions and header tooltips
+
+Use `Column` to create JSON-compatible column definitions with Python-style
+parameter names. `Column` inherits from `dict`, so it works directly in
+`DashReactGrid(columns=...)`, in Dash callbacks and alongside plain dictionaries.
+
+```python
+from dash_reactgrid import Column, DashReactGrid
+
+columns = [
+    Column("name", "Name", tooltip="Customer name", width=180),
+    Column("amount", "Amount", type="number", tooltip="Amount in GBP",
+           align="right", format_options={"maximumFractionDigits": 2}),
+    Column("status", "Status", type="dropdown", values=["Open", "Closed"],
+           header_style={"fontWeight": "bold"}, non_editable=False),
+]
+grid = DashReactGrid(columns=columns, data=[["Alpha", 100.25, "Open"]])
+```
+
+The optional `tooltip` key also works in existing column dictionaries, for
+example `{"columnId": "name", "title": "Name", "type": "text",
+ "tooltip": "Customer name"}`. Hovering over the header label shows the
+browser’s native tooltip. Headers with no tooltip remain unchanged. Both
+ordinary grids and server-virtualized grids support this field. Other
+Python options include `style`, `header_style`, `format_options`, `values`,
+`editable_when`, `class_name`, `non_editable`, `align` and `width`. Call
+`column.to_dict()` if an ordinary dictionary is needed.
+
 Dash ReactGrid is a Dash component library.
 
 Get started with:

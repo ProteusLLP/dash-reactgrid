@@ -9,6 +9,7 @@ import dash as _dash
 # noinspection PyUnresolvedReferences
 from ._imports_ import *
 from ._imports_ import __all__
+from .column import Column
 from .numpy_data import encode_numpy_data, decode_numpy_data, install_numpy_support
 
 # Keep the generated component class and its Dash registration intact.
@@ -89,3 +90,5 @@ _css_dist = []
 for _component in __all__:
     setattr(locals()[_component], '_js_dist', _js_dist)
     setattr(locals()[_component], '_css_dist', _css_dist)
+
+__all__ = __all__ + ['Column']

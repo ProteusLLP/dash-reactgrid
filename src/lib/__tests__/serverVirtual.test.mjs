@@ -144,3 +144,16 @@ test("large logical scroll heights are bounded for browser CSS pixel limits",()=
   assert.throws(()=>virtualRowWindow(0,-1),/nonnegative/);
   assert.throws(()=>virtualRowWindow(0,100,0),/positive/);
 });
+
+test("virtualized header retains tooltip metadata", () => {
+  const columns = [{...cols[0], tooltip:"Full name"}, cols[1], cols[2]];
+  const descriptors = compileGridColumns(columns, columns, "en-GB");
+  const range = virtualRowWindow(0, 2, 25, 20, 200);
+  const rows = buildVirtualRows({
+    columns, descriptors, allColumns:columns, rowCount:2, range,
+    page:{rowIds:["a","b"],data:[["valid",1,true],["other",2,false]]},
+    rowHeight:25, readOnly:false, locked:new Set(),
+  });
+  assert.equal(rows[0].cells[0].tooltip, "Full name");
+  assert.equal(rows[0].cells[1].tooltip, undefined);
+});

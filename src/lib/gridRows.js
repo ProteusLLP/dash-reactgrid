@@ -119,6 +119,7 @@ export const buildGridRows = ({
     cells: columns.map((column) => ({
       type: "header",
       text: column.title,
+      ...(typeof column.tooltip === "string" && column.tooltip ? { tooltip: column.tooltip } : {}),
       style: { ...styleHeader, ...column.headerStyle, ...alignStyle(column.align) },
     })),
     height: styleHeader?.height,

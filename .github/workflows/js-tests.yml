@@ -38,6 +38,8 @@ jobs:
         run: python3 -m unittest discover -s tests -p test_virtual_grid_store.py -v
       - name: Install Dash and Selenium browser testing
         run: python3 -m pip install "dash>=3,<5" "selenium>=4,<5" "numpy>=1.23,<3"
+      - name: Test Python column helper
+        run: python3 -m unittest tests.test_column -v
       - name: Test NumPy binary grid transport and callbacks
         run: python3 -m unittest tests.test_numpy_data -v
       - name: Test Python column and stateless callback contracts

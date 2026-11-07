@@ -13,8 +13,10 @@ from dash_reactgrid.stateless_virtual import window_response
 PORT = int(os.environ.get("GRID_MATRIX_BROWSER_PORT", "8065"))
 
 MATRIX_COLUMNS = [
-    {"columnId": "text", "title": "Text", "type": "text", "width": 160},
-    {"columnId": "amount", "title": "Amount", "type": "number", "width": 120},
+    {"columnId": "text", "title": "Text", "type": "text", "width": 160,
+     "tooltip": "A free-form text value"},
+    {"columnId": "amount", "title": "Amount", "type": "number", "width": 120,
+     "tooltip": "Amount in pounds"},
     {"columnId": "custom", "title": "Custom", "type": "customnumber", "width": 100},
     {"columnId": "percent", "title": "Percent", "type": "percent", "width": 110},
     {"columnId": "choice", "title": "Choice", "type": "dropdown", "width": 145,
@@ -51,7 +53,8 @@ TARGET_DATA = [
 PAGE_DATA = [[f"Page row {i}", i] for i in range(11)]
 
 VIRTUAL_REVIEW_COLUMNS = [
-    {"columnId": "label", "title": "Label", "type": "text", "width": 160},
+    {"columnId": "label", "title": "Label", "type": "text", "width": 160,
+     "tooltip": "Server-backed label"},
     {"columnId": "day", "title": "Date", "type": "date", "width": 140},
     {"columnId": "clock", "title": "Time", "type": "time", "width": 140},
 ]

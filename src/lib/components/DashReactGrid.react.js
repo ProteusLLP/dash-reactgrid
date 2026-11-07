@@ -461,7 +461,8 @@ DashReactGrid.propTypes = {
   /**
    * The columns: `columnId`, `title`, `type` (text, number, percent,
    * dropdown, checkbox, date or time), and optionally `width`, `align`,
-   * `style`, `headerStyle`, `formatOptions` (Intl.NumberFormat options),
+   * `style`, `headerStyle`, `tooltip` (hover text for the header),
+   * `formatOptions` (Intl.NumberFormat options),
    * `values` (a dropdown's options), `nonEditable`, `className` (every cell
    * also has `rg-col-<columnId>`) and
    * `editableWhen` (rules on the row's other values, see `rulesHold`; a

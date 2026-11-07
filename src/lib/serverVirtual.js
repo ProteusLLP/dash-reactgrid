@@ -6,6 +6,7 @@
  * height while ReactGrid builds cells only for the current row interval.
  */
 import { blankRow } from "./model.js";
+import { buildGridRows } from "./gridRows.js";
 
 export const VIRTUAL_SPACER_TOP = "__drg_virtual_spacer_top__";
 export const VIRTUAL_SPACER_BOTTOM = "__drg_virtual_spacer_bottom__";
@@ -63,54 +64,41 @@ export const addViewportCache = (cache, key, response, limit = 4) => {
 };
 
 export const buildVirtualRows = ({
-  columns, descriptors, rowCount, range, page, rowHeight,
+  columns, descriptors, allColumns, rowCount, range, page, rowHeight,
   readOnly, locked, styleHeader, openDropdown,
 }) => {
-  const header = {
-    rowId: "header",
-    height: styleHeader?.height || DEFAULT_VIRTUAL_ROW_HEIGHT,
-    cells: columns.map((column) => ({
-      type: "header", text: column.title,
-      style: { ...styleHeader, ...column.headerStyle },
-    })),
-  };
   const spacer = (id, height) => ({
     rowId: id,
     height,
     cells: columns.map(() => ({ type: "text", text: "", nonEditable: true,
       className: "rg-virtual-spacer" })),
   });
-  const rows = [header];
-  // Spacer height follows the *physical* scrollbar scale. With very large
-  // counts ReactGrid's own scroll geometry must use the same scale.
+
+  const loaded = Boolean(page);
+  const rangeSize = range.end - range.start;
+  const data = loaded ? page.data : Array.from({length:rangeSize}, () => blankRow(allColumns, null));
+  const ids = loaded ? page.rowIds :
+    Array.from({length:rangeSize}, (_,i) => VIRTUAL_LOADING_PREFIX + (range.start+i));
+  const built = buildGridRows({
+    columns, descriptors, allColumns, data, rowIds:ids,
+    readOnly, locked, styleHeader, showGhost:false, openDropdown,
+  });
+  // For blank rows, mark everything noneditable. A missing response must
+  // never appear as real blank data that users can overwrite.
   const scale = rowCount * rowHeight > MAX_BROWSER_SCROLL_PX
     ? MAX_BROWSER_SCROLL_PX / (rowCount * rowHeight) : 1;
+  const rows = [built.rows[0]];
   const topHeight = range.start * rowHeight * scale;
   if (topHeight > 0) rows.push(spacer(VIRTUAL_SPACER_TOP, topHeight));
-  for (let i = range.start; i < range.end; i++) {
-    const offset = i - range.start;
-    const present = Boolean(page);
-    const id = present ? page.rowIds[offset] : VIRTUAL_LOADING_PREFIX + i;
-    const values = present ? page.data[offset] : blankRow(columns, null);
-    const cells = descriptors.map((render) => {
-      const { column } = render;
-      const lockedCell = !present || readOnly || Boolean(column.nonEditable) ||
-        locked.has(String(id) + "\u0000" + String(column.columnId));
-      const value = values[render.index];
-      const base = { nonEditable: lockedCell, style: render.style,
-        className: [render.className, present ? "rg-cell-editable" : "rg-virtual-loading"].join(" ") };
-      if (column.type === "number") return { ...base, type: "customnumber", value: value ?? NaN, format: render.format };
-      if (column.type === "percent") return { ...base, type: "percent", value: value ?? NaN, format: render.format };
-      if (column.type === "checkbox") return { ...base, type: "checkbox", checked: Boolean(value) };
-      if (column.type === "dropdown") return {
-        ...base, type: "dropdown", selectedValue: value ?? undefined,
-        values: render.values, isDisabled: lockedCell,
-        isOpen: openDropdown?.rowId === id && openDropdown?.columnId === column.columnId,
-      };
-      return { ...base, type: "text", text: present ? (value == null ? "" : String(value)) :
-        (render.index === 0 ? "Loading…" : "") };
+  for (let i=0;i<rangeSize;i++) {
+    const rendered = built.rows[i+1];
+    rows.push({
+      ...rendered, height: rowHeight * scale,
+      cells: loaded ? rendered.cells : rendered.cells.map((cell,j) => ({
+        type:"text", text:j===0 ? "Loading…" : "", nonEditable:true,
+        className:"rg-virtual-loading",
+      })),
     });
-    rows.push({ rowId: id, height: rowHeight * scale, cells });
   }
   const bottomHeight = (rowCount - range.end) * rowHeight * scale;
   if (bottomHeight > 0) rows.push(spacer(VIRTUAL_SPACER_BOTTOM, bottomHeight));

@@ -18,7 +18,15 @@ MAX_COPY_BYTES = 1_000_000
 
 
 class VirtualGridStore(SparseGridStore):
-    def __init__(self, path, dataset_id, columns, new_row=None):
+    def __init__(self, path, dataset_id, columns, new_row=None,
+                 read_only=False, locked_cells=None):
+        self.read_only = bool(read_only)
+        self.column_definitions = {
+            c["columnId"]: c for c in columns if isinstance(c, dict)
+        }
+        self.locked_cells = {
+            (row_key(row_id), col_id) for row_id,col_id in (locked_cells or [])
+        }
         super().__init__(path, dataset_id, columns, new_row)
         with closing(self.connect()) as db, db:
             names = {x[1] for x in db.execute("PRAGMA table_info(applied_batches)")}
@@ -33,6 +41,22 @@ class VirtualGridStore(SparseGridStore):
             return db.execute(
                 "SELECT revision FROM datasets WHERE dataset_id=?", (self.dataset_id,)
             ).fetchone()[0]
+
+    def _assert_can_edit(self, row_id, columns, current_values):
+        if self.read_only:
+            raise ValueError("The dataset is read-only")
+        for column_id in columns:
+            meta=self.column_definitions.get(column_id, {})
+            if meta.get("nonEditable") or (row_key(row_id),column_id) in self.locked_cells:
+                raise ValueError("A selected cell is locked: " + str(column_id))
+            for rule in meta.get("editableWhen", []):
+                if rule.get("columnId") not in self.columns:
+                    raise ValueError("Invalid editableWhen column")
+                value=current_values[self.columns.index(rule["columnId"])]
+                if "in" in rule and value not in rule["in"]:
+                    raise ValueError("Cell edit rules reject the selected row")
+                if "truthy" in rule and bool(value)!=rule["truthy"]:
+                    raise ValueError("Cell edit rules reject the selected row")
 
     def _count(self, db):
         return db.execute("SELECT COUNT(*) FROM grid_rows WHERE dataset_id=?",
@@ -49,6 +73,8 @@ class VirtualGridStore(SparseGridStore):
         row_id = row_key(row_id)
         if not isinstance(position, int) or isinstance(position, bool) or not 0 <= position <= self._count(db):
             raise ValueError("Row insertion is outside the dataset")
+        if self.read_only:
+            raise ValueError("The dataset is read-only")
         if not isinstance(values, list) or len(values) != len(self.columns):
             raise ValueError("Inserted row has the wrong number of values")
         # Unique row IDs are enforced by the database primary key.
@@ -59,6 +85,8 @@ class VirtualGridStore(SparseGridStore):
         return {"kind":"remove", "rowIds":[json.loads(row_id)]}
 
     def _remove(self, db, ids):
+        if self.read_only:
+            raise ValueError("The dataset is read-only")
         if not isinstance(ids,list) or not ids or len(ids)>MAX_BATCH_ROWS:
             raise ValueError("Row deletion exceeds the permitted batch size")
         unique=list(dict.fromkeys(row_key(x) for x in ids))
@@ -118,6 +146,7 @@ class VirtualGridStore(SparseGridStore):
         updates=[]
         for (row_id,position,values_json),new_values in zip(entries,data):
             values=json.loads(values_json)
+            self._assert_can_edit(json.loads(row_id),cols,values)
             previous.append([values[i] for i in indexes])
             for i,v in zip(indexes,new_values):
                 values[i]=v
@@ -148,6 +177,7 @@ class VirtualGridStore(SparseGridStore):
                                (self.dataset_id,key)).fetchone()
             if current is None:raise ValueError("An edited row has been deleted")
             data=json.loads(current[0])
+            self._assert_can_edit(rid,cols,data)
             before.append([data[i] for i in indexes])
             for i,v in zip(indexes,updated):data[i]=v
             updates.append((canonical(data),self.dataset_id,key))

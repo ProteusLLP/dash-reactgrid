@@ -243,6 +243,12 @@ class FeatureMatrixChromeTests(unittest.TestCase):
         self.cell("paged", "label", 0).click()
         self.chord(Keys.CONTROL, Keys.ARROW_DOWN)
         self.expect_focus("paged", "p10", "label")
+        self.chord(Keys.CONTROL, Keys.SHIFT, Keys.ARROW_UP)
+        self.waiter.until(lambda _: self.state("paged").get("selectedRowIds") ==
+            [f"p{i}" for i in range(11)])
+        copied = self.copy("paged", "label", 0)
+        self.assertEqual(copied["plain"],
+            "\\n".join(f"Page row {i}" for i in range(11)).replace("\\n", "\n"))
         self.chord(Keys.CONTROL, Keys.ARROW_UP)
         self.expect_focus("paged", "p0", "label")
 
@@ -255,6 +261,25 @@ class FeatureMatrixChromeTests(unittest.TestCase):
         self.waiter.until(lambda _: len(self.driver.find_elements(
             By.CSS_SELECTOR, "#review-virtual .rg-virtual-selected"
         )) >= 2)
+
+    def test_server_virtual_fill_down_uses_sparse_range_command(self):
+        self.cell("review-virtual", "label", 0).click()
+        self.chord(Keys.CONTROL, Keys.SHIFT, Keys.ARROW_DOWN)
+        self.chord(Keys.CONTROL, "d")
+
+        def emitted():
+            try:
+                batch = json.loads(self.driver.find_element(
+                    By.ID, "review-virtual-edits").text)
+                return batch.get("edits") == [{
+                    "kind": "paste", "start": 1,
+                    "columnIds": ["label"],
+                    "rows": [["Existing"]],
+                }]
+            except (ValueError, AttributeError):
+                return False
+
+        self.waiter.until(lambda _: emitted())
 
     def test_direct_typing_and_arrow_navigation_all_text_numeric_percent(self):
         cases = [

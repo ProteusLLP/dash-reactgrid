@@ -102,7 +102,12 @@ export class CustomNumberCellTemplate {
             onKeyDown={(e) => {
                 // Direct typing uses Excel's entry mode: arrows save and move.
                 // Editing opened with a pointer/Enter retains input caret keys.
-                if (this.directTyping && isPlainArrow(e)) return;
+                if (this.directTyping && (isPlainArrow(e) || e.key === "Tab" || e.key === "Enter")) {
+                    onCellChanged(this.getCompatibleCell({
+                        ...cell, value: numberParser.parse(e.currentTarget.value),
+                    }), false);
+                    return;
+                }
 
                 if (nativeEditorShortcut(e)) {
                     e.stopPropagation();

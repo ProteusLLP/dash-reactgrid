@@ -177,6 +177,8 @@ class FeatureMatrixChromeTests(unittest.TestCase):
               self.driver.execute_script("""
                 return {
                   active: document.activeElement?.outerHTML.slice(0,250),
+                  value: document.activeElement?.value,
+                  caret: document.activeElement?.selectionStart,
                   editor: document.querySelector(arguments[0]+' .rg-celleditor')?.innerHTML.slice(0,320),
                   hidden: document.querySelector(arguments[0]+' .rg-hidden-element')?.outerHTML.slice(0,150),
                 };

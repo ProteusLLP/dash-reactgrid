@@ -24,7 +24,10 @@ export class ExcelTextCellTemplate extends TextCellTemplate {
     const original = content.props.onKeyDown;
     return React.cloneElement(content, {
       onKeyDown: (event) => {
-        if (this.directTyping && isPlainArrow(event)) return;
+        if (this.directTyping && (isPlainArrow(event) || event.key === "Enter" || event.key === "Tab")) {
+          onCellChanged(this.getCompatibleCell({ ...cell, text: event.currentTarget.value }), false);
+          return;
+        }
         original?.(event);
       },
     });
@@ -63,7 +66,10 @@ const entryInput = (template, cell, convert, onCellChanged) => {
           template.cancelEntry = true;
           return;
         }
-        if (isPlainArrow(event) || event.key === "Tab" || event.key === "Enter") return;
+        if (isPlainArrow(event) || event.key === "Tab" || event.key === "Enter") {
+          changed(event.currentTarget.value, false);
+          return;
+        }
         event.stopPropagation();
       }}
       onCopy={(event) => event.stopPropagation()}

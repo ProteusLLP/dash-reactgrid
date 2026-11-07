@@ -442,6 +442,10 @@ DashReactGrid.defaultProps = {
   virtualViewportHeight: 420,
   virtualRequest: null,
   virtualData: null,
+  virtualRangeRequest: null,
+  virtualRangeData: null,
+  virtualSelection: null,
+  virtualExportUrl: null,
   transmitSparseEdits: false,
   editDatasetId: null,
   editAck: null,
@@ -574,6 +578,20 @@ DashReactGrid.propTypes = {
    * {datasetId, requestId, start, error}. Must echo the request identity.
    */
   virtualData: PropTypes.object,
+  /**
+   * Read-only request for preparing clipboard text across unloaded rows:
+   * {datasetId,requestId,start,end,columnStart,columnEnd}.
+   */
+  virtualRangeRequest: PropTypes.object,
+  /**
+   * Server response echoing virtualRangeRequest and containing text or error.
+   * Clipboards are limited to a bounded range; large selections use export.
+   */
+  virtualRangeData: PropTypes.object,
+  /** Compact absolute-index selection, not an array of every selected row. */
+  virtualSelection: PropTypes.object,
+  /** Application-provided URL for authenticated streamed CSV exports. */
+  virtualExportUrl: PropTypes.string,
   /**
    * When true, publish only {edits: {seq, edits}} through setProps.
    * The changed table is retained locally in the browser, including new

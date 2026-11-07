@@ -66,6 +66,7 @@ export const ServerVirtualGrid = (props) => {
   const [fromInput, setFromInput] = useState("1");
   const [toInput, setToInput] = useState("1");
   const [commandError, setCommandError] = useState(null);
+  const [historyError, setHistoryError] = useState(null);
   const [copyText, setCopyText] = useState(null);
   const [copyError, setCopyError] = useState(null);
   const copyCounter = useRef(0);
@@ -120,7 +121,7 @@ export const ServerVirtualGrid = (props) => {
   const pendingStructure = Boolean(reliable.outbox?.queue.some((batch) =>
     batch.edits.some((edit) => !["cell", "paste"].includes(edit.kind))));
   const editingBlocked = readOnly || !props.transmitSparseEdits ||
-    Boolean(reliable.error) || pendingStructure;
+    Boolean(reliable.error) || pendingStructure || Boolean(historyError);
   const cachedPage = cache.get(key);
   const page = useMemo(
     () => overlayVirtualEdits(cachedPage, reliable.outbox?.queue, allColumns),
@@ -229,6 +230,189 @@ export const ServerVirtualGrid = (props) => {
       visibleColumns.has(mark.columnId));
   }, [highlights, page, columns]);
 
+  const undoKey = useMemo(
+    () => historyStorageKey(props.id, props.editDatasetId),
+    [props.id, props.editDatasetId],
+  );
+  const [history, setHistory] = useState(() => {
+    try {
+      return loadHistory(window.sessionStorage, undoKey,
+        reliable.outbox?.streamId || "");
+    } catch {
+      return initialHistory(reliable.outbox?.streamId || "");
+    }
+  });
+  const historyRef = useRef(history);
+  historyRef.current = history;
+
+  useEffect(() => {
+    try {
+      const restored = loadHistory(window.sessionStorage, undoKey,
+        reliable.outbox?.streamId || "");
+      historyRef.current = restored;
+      setHistory(restored);
+      setHistoryError(null);
+    } catch (error) {
+      setHistoryError("Cannot load the undo journal: " + error.message);
+    }
+  }, [undoKey, reliable.outbox?.streamId]);
+
+  const remember = (kind, seq) => {
+    if (!Number.isSafeInteger(seq)) return;
+    try {
+      const next = saveHistory(window.sessionStorage, undoKey,
+        nextHistory(historyRef.current, kind, seq));
+      historyRef.current = next;
+      setHistory(next);
+    } catch (error) {
+      setHistoryError("Undo journal could not be saved: " + error.message);
+    }
+  };
+
+  const submitOperation = (edits, kind = "edit") => {
+    if (editingBlocked || !reliable.outbox) return null;
+    const accepted = reliable.publish(
+      { data: EMPTY_DATA, rowIds: EMPTY_IDS, edits }, true);
+    if (!accepted) {
+      setCommandError("The operation could not be safely queued");
+      return null;
+    }
+    setCommandError(null);
+    remember(kind, accepted.seq);
+    return accepted;
+  };
+
+  const selectGlobal = (candidate) => {
+    if (!candidate) return;
+    globalRef.current = candidate;
+    setGlobalSelection(candidate);
+    setFromInput(String(candidate.start + 1));
+    setToInput(String(candidate.end));
+    setCopyText(null);
+    setCopyError(null);
+    setProps({ virtualSelection: candidate });
+  };
+
+  const selectionAt = (rowId, colId) => {
+    if (!page || !isDataId(rowId)) return null;
+    const offset = page.rowIds.indexOf(rowId);
+    const column = columns.findIndex((c) => c.columnId === colId);
+    return offset < 0 || column < 0 ? null :
+      { row: range.start + offset, col: column };
+  };
+
+  const applyRangeInputs = () => {
+    const selection = boundedSelection(
+      Number(fromInput) - 1, Number(toInput), 0, columns.length,
+      virtualRowCount, columns.length,
+    );
+    if (!selection) {
+      setCommandError("Enter a valid inclusive row range within the dataset");
+      return;
+    }
+    setCommandError(null);
+    selectGlobal(selection);
+  };
+
+  const insertRow = (append = false) => {
+    const position = append ? virtualRowCount :
+      (globalRef.current?.start ?? range.first);
+    const id = "new-" + (window.crypto?.randomUUID?.() || newRowId());
+    submitOperation([{
+      kind: "insert", rowId: id, position,
+      values: blankRow(allColumns, props.newRow),
+    }]);
+  };
+
+  const deleteSelection = () => {
+    const sel = globalRef.current;
+    if (!sel || editingBlocked) return;
+    const count = sel.end - sel.start;
+    if (count > MAX_RANGE_ROWS) {
+      setCommandError("Delete at most 1,000 rows in one operation");
+      return;
+    }
+    if (window.confirm("Delete " + count + " selected row(s)?")) {
+      submitOperation([{kind: "removeRange", start: sel.start, end: sel.end}]);
+    }
+  };
+
+  const undoOperation = () => {
+    const previous = historyRef.current.undo.at(-1);
+    if (previous && !editingBlocked && !reliable.pending)
+      submitOperation([{kind:"undo",targetSeq:previous}], "undo");
+  };
+  const redoOperation = () => {
+    const previous = historyRef.current.redo.at(-1);
+    if (previous && !editingBlocked && !reliable.pending)
+      submitOperation([{kind:"undo",targetSeq:previous}], "redo");
+  };
+
+  // Prepare range data asynchronously via Dash, so the eventual Copy click
+  // is a genuine user gesture and can use the synchronous clipboard event.
+  useEffect(() => {
+    setCopyText(null);
+    setCopyError(null);
+    if (!globalSelection) return;
+    if (globalSelection.end - globalSelection.start > MAX_RANGE_ROWS) {
+      setCopyError("Large selections must use Download CSV");
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      const request = copyRequestFor(virtualDatasetId,
+        ++copyCounter.current, globalSelection);
+      copyPending.current = request;
+      setProps({virtualRangeRequest:request});
+    }, 150);
+    return () => window.clearTimeout(timer);
+  }, [globalSelection, virtualDatasetId, setProps]);
+
+  useEffect(() => {
+    if (!matchesCopyResponse(virtualRangeData, copyPending.current)) return;
+    if (typeof virtualRangeData.error === "string") {
+      setCopyError(virtualRangeData.error);
+      setCopyText(null);
+    } else {
+      setCopyText(virtualRangeData.text);
+      setCopyError(null);
+    }
+  }, [virtualRangeData]);
+
+  const copySelection = () => {
+    if (typeof copyText !== "string") return;
+    // A textarea fallback works even where navigator.clipboard needs
+    // additional permissions or the page is not a secure context.
+    const textarea = document.createElement("textarea");
+    textarea.value = copyText;
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    let copied = false;
+    try { copied = document.execCommand("copy"); }
+    finally { document.body.removeChild(textarea); }
+    if (!copied && window.navigator.clipboard?.writeText) {
+      window.navigator.clipboard.writeText(copyText).then(
+        () => setCommandError(null),
+        () => setCommandError("Clipboard permission denied; use Download CSV"),
+      );
+    } else if (!copied) {
+      setCommandError("Clipboard is unavailable in this browser");
+    } else setCommandError(null);
+  };
+
+  const exportUrl = props.virtualExportUrl && globalSelection
+    ? props.virtualExportUrl +
+      (props.virtualExportUrl.includes("?") ? "&" : "?") +
+      new URLSearchParams({
+        start: String(globalSelection.start), end: String(globalSelection.end),
+        columnStart: String(globalSelection.columnStart),
+        columnEnd: String(globalSelection.columnEnd),
+        datasetId: props.editDatasetId,
+      }).toString()
+    : null;
+
   const publishChanges = (values) => {
     if (!page || editingBlocked) return;
     const allowed = values.filter((change) => {
@@ -243,9 +427,9 @@ export const ServerVirtualGrid = (props) => {
     if (!next.edits.length) return;
     // Persist to the ordered outbox BEFORE optimistically updating the
     // visible window. Reliable delivery and retry are handled by the hook.
-    if (!reliable.publish(next, true)) return;
+    if (!submitOperation(next.edits)) return;
     setCache((prev) => addViewportCache(prev, key,
-      {data:next.data,rowIds:next.rowIds}));
+      {data:next.data,rowIds:next.rowIds,start:range.start}));
   };
 
   const latest = useRef(null);

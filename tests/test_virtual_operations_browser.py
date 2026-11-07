@@ -12,9 +12,9 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 
-from examples.virtual_grid_store import VirtualGridStore
-
 ROOT=Path(__file__).resolve().parents[1]
+sys.path.insert(0,str(ROOT))
+from examples.virtual_grid_store import VirtualGridStore
 PORT=8063
 URL=f"http://127.0.0.1:{PORT}"
 COLUMNS=[{"columnId":"name","type":"text"},{"columnId":"value","type":"number"}]

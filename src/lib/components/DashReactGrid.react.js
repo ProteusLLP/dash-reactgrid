@@ -16,7 +16,6 @@ import {
   optionsOf,
   pastedValue,
   removeRows,
-  rowIdsOf,
   rowIndexesOf,
   rowsInRanges,
   rulesHold,

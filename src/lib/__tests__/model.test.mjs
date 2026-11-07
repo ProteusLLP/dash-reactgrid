@@ -9,6 +9,7 @@ import {
   pastedValue,
   removeRows,
   rowIdsOf,
+  rowIndexesOf,
   rowsInRanges,
 } from "../model.js";
 
@@ -192,4 +193,11 @@ test("bulk row deletion uses stable ids", () => {
   const next = removeRows(table, ["r1", "r1", "no-such-row"]);
   assert.deepEqual(next.rowIds, ["r2"]);
   assert.deepEqual(next.edits, [{ kind: "remove", rowIds: ["r1"] }]);
+});
+
+test("complete row ids and their lookup index retain reference identity across edits", () => {
+  assert.strictEqual(rowIdsOf(table.data, table.rowIds), table.rowIds);
+  assert.strictEqual(rowIndexesOf(table.rowIds), rowIndexesOf(table.rowIds));
+  assert.equal(rowIndexesOf(table.rowIds).get("r2"), 1);
+  assert.deepEqual(rowIdsOf([[1], [2]], ["a", undefined]), ["a", 1]);
 });

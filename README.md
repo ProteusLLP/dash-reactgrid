@@ -7,33 +7,95 @@ Get started with:
 2. Run `python usage.py`
 3. Visit http://localhost:8050 in your web browser
 
-## Very large tables
+## Large tables: continuous server-side virtualization
 
-ReactGrid 4.1.x builds an internal cell matrix for every supplied cell,
-including when virtual scrolling is enabled. For 100k rows or millions of
-cells, **use `rowPageSize=250`** to limit that work. The grid displays page
-controls (previous/next and direct page navigation). Row IDs and edits still
-refer to the original dataset, including edits on later pages. The extension
-row appears only on the last page; selection, copying, filling and pasting are
-confined to the current page (pasting beyond the last page is still allowed on
-extendable tables). Page navigation clears the previous selection.
+**Recommended for hundreds of thousands of rows or millions of cells:**
+use the server-backed continuous virtual scrolling mode, rather than
+transferring a full table or navigating pages. The browser requests small,
+absolute row intervals as the user scrolls. ReactGrid is given only those
+rows plus two lightweight spacer rows. It therefore has a bounded cell
+matrix even though the browser shows a normal scrollbar for the whole
+logical dataset.
 
 ```python
-DashReactGrid(
-    id="large-table",
-    columns=columns,
-    data=rows,
-    rowIds=row_ids,
-    rowPageSize=250,
-    transmitSparseEdits=True,
-    disableVirtualScrolling=False,
+from dash import Dash, Input, Output, html
+from dash_reactgrid import DashReactGrid
+
+app = Dash(__name__)
+columns = [
+    {"columnId": "name", "title": "Name", "type": "text"},
+    {"columnId": "value", "title": "Value", "type": "number"},
+]
+row_count = 100_000
+
+app.layout = html.Div([
+    DashReactGrid(
+        id="grid",
+        columns=columns,
+        data=[],                     # NO full dataset in the browser
+        virtualRowCount=row_count,
+        virtualDatasetId="assets-2026-v1",
+        virtualRowHeight=25,        # fixed row height in CSS pixels
+        virtualWindowSize=120,      # requested rows per window
+        virtualViewportHeight=420,
+    ),
+])
+
+@app.callback(
+    Output("grid", "virtualData"),
+    Input("grid", "virtualRequest"),
+    prevent_initial_call=True,
 )
+def load_rows(request):
+    start, end = request["start"], request["end"]  # [start, end)
+    # Fetch by indexed offset from your authoritative store; never
+    # construct or serialize the complete table in this callback.
+    row_ids, values = fetch_rows(start, end)  # application-specific
+    return {
+        "datasetId": request["datasetId"],
+        "requestId": request["requestId"],
+        "start": start,
+        "rowIds": row_ids,          # one stable ID per returned row
+        "data": values,             # arrays in columns' original order
+    }
 ```
 
-The renderer now shares number/date formatters and dropdown options across
-cells in each column. Edits use copy-on-write and only clone changed rows.
-For smaller grids, `disableVirtualScrolling=False` can reduce DOM overhead,
-although it does not reduce ReactGrid's internal cell matrix.
+Set `virtualDatasetId` to a new value when the server-side ordered dataset
+changes (sorting, filtering, rebuilding or changing its revision). All
+cached windows become invalid. `virtualRowCount` describes the entire
+dataset, not just the fetched window. Row indices in requests are zero-based,
+with `start` inclusive and `end` exclusive. The response must echo the
+dataset ID, request ID and start, and contain exactly `end-start` rows.
+Responses for previous requests are discarded. A bounded client cache keeps
+up to four windows, and missing requests are retried.
+
+The viewport gives ReactGrid only approximately `virtualWindowSize` rows at
+a time; the scrollbar uses spacer geometry to retain the positions of all
+other rows. No next/previous page controls are needed. Fixed data-row
+height is required for correct scroll positions. The physical scroll height
+is capped for very large datasets, while scroll positions are mapped back
+to logical row indices.
+
+**Editing:** Server virtual mode emits sparse `edits` batches for loaded
+cells and updates those cells optimistically, without transmitting full
+`data`. A server should persist these events and refresh or version the
+corresponding row windows. Row insertion/deletion and cross-window copy,
+paste, selection and undo are not yet supported in this mode. Production edits in this mode require `transmitSparseEdits=True`, a stable
+`editDatasetId`, and a transactional `editAck` callback as documented
+below. Otherwise the server-virtual grid is read-only. Pending edits are
+overlaid onto whichever row window is currently loaded.
+
+**Legacy alternative: bounded client-side paging.** `rowPageSize=250`
+remains available for existing grids that already send the entire dataset
+in `data`. It limits ReactGrid's cell matrix but still transfers and owns
+the full data in the browser. When `virtualRowCount` is provided, server
+virtualization takes precedence over client paging.
+
+The nonvirtualized renderer still shares number/date formatters and dropdown
+options across cells, uses copy-on-write edits and can reuse unchanged rows.
+For smaller full-data grids, `disableVirtualScrolling=False` reduces DOM
+overhead but does not reduce ReactGrid's internal matrix.
+
 
 ### Reliable sparse-edit transmission
 

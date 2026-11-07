@@ -136,7 +136,7 @@ injects its own data-access functions. For example:
 ```python
 from dash import Dash, Input, Output, callback
 from dash_reactgrid import DashReactGrid
-from examples.stateless_virtual_callbacks import (
+from dash_reactgrid.stateless_virtual import (
     window_response, clipboard_response, edit_ack,
 )
 

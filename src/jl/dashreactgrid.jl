@@ -45,6 +45,8 @@ an object by column id. Blank if omitted.
 - `persistence` (Bool | String | Real; optional)
 - `persistence_type` (a value equal to: 'local', 'session', 'memory'; optional)
 - `readOnly` (Bool; optional): Whether every cell is locked, no row can be added and none deleted.
+- `editAck` (Dict; optional): Server ACK for a committed sparse edit batch.
+- `editDatasetId` (String; optional): Stable dataset identifier required in sparse mode.
 - `transmitSparseEdits` (Bool; optional): Publish only edits to Dash; changes remain in browser memory.
 - `rowPageSize` (Real; optional): Maximum data rows displayed per page for very large tables.\n- `rowIds` (Array; optional): An id per row of `data`. Given, edits name rows by these ids, rows the
 user adds get ids starting `new-`, and rows can be deleted from the
@@ -60,7 +62,7 @@ context menu. Omitted, rows are named by position.
 - `styleHeader` (Dict; optional)
 """
 function dashreactgrid(; kwargs...)
-        available_props = Symbol[:id, :className, :columns, :data, :disableVirtualScrolling, :dropdownMenuPortal, :edits, :enableColumnSelection, :enableFillHandle, :enableRangeSelection, :enableRowSelection, :hiddenColumns, :highlights, :isExtendable, :lockedCells, :newRow, :persisted_props, :persistence, :persistence_type, :readOnly, :rowIds, :rowPageSize, :selectedCell, :transmitSparseEdits, :selectedRange, :selectedRowIds, :stickyBottomRows, :stickyLeftColumns, :stickyRightColumns, :stickyTopRows, :style, :styleHeader]
+        available_props = Symbol[:id, :className, :columns, :data, :disableVirtualScrolling, :dropdownMenuPortal, :edits, :editAck, :editDatasetId, :enableColumnSelection, :enableFillHandle, :enableRangeSelection, :enableRowSelection, :hiddenColumns, :highlights, :isExtendable, :lockedCells, :newRow, :persisted_props, :persistence, :persistence_type, :readOnly, :rowIds, :rowPageSize, :selectedCell, :transmitSparseEdits, :selectedRange, :selectedRowIds, :stickyBottomRows, :stickyLeftColumns, :stickyRightColumns, :stickyTopRows, :style, :styleHeader]
         wild_props = Symbol[]
         return Component("dashreactgrid", "DashReactGrid", "dash_reactgrid", available_props, wild_props; kwargs...)
 end

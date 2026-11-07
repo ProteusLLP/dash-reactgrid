@@ -58,14 +58,14 @@ export const validViewportResponse = (response, request, columns) => {
 export const addViewportCache = (cache, key, response, limit = 4) => {
   const next = new Map(cache);
   next.delete(key);
-  next.set(key, { data: response.data, rowIds: response.rowIds });
+  next.set(key, { data: response.data, rowIds: response.rowIds, start: response.start });
   while (next.size > limit) next.delete(next.keys().next().value);
   return next;
 };
 
 export const buildVirtualRows = ({
   columns, descriptors, allColumns, rowCount, range, page, rowHeight,
-  readOnly, locked, styleHeader, openDropdown,
+  readOnly, locked, styleHeader, openDropdown, selection,
 }) => {
   const spacer = (id, height) => ({
     rowId: id,
@@ -94,7 +94,13 @@ export const buildVirtualRows = ({
     const rendered = built.rows[i+1];
     rows.push({
       ...rendered, height: rowHeight * scale,
-      cells: loaded ? rendered.cells : rendered.cells.map((cell,j) => ({
+      cells: loaded ? rendered.cells.map((cell,j) => {
+        const globalRow = range.start + i;
+        const selected = selection && globalRow >= selection.start &&
+          globalRow < selection.end && j >= selection.columnStart &&
+          j < selection.columnEnd;
+        return selected ? { ...cell, className: (cell.className || "") + " rg-virtual-selected" } : cell;
+      }) : rendered.cells.map((cell,j) => ({
         type:"text", text:j===0 ? "Loading…" : "", nonEditable:true,
         className:"rg-virtual-loading",
       })),

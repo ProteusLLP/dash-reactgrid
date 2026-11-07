@@ -94,6 +94,12 @@ class SparseGridStoreTests(unittest.TestCase):
         self.assertEqual(self.store.apply(other)["status"], "ok")
         self.assertEqual(self.store.read()["data"], [["a", 10], ["b", 20]])
 
+    def test_initial_empty_dataset_is_never_reseeded(self):
+        empty = SparseGridStore(self.path, "empty-dataset", ["name", "amount"])
+        empty.seed_once([], [])
+        empty.seed_once([["surprise", 1]], ["unexpected"])
+        self.assertEqual(empty.read()["rowIds"], [])
+
     def test_remove_last_row_does_not_seed_original_rows_on_restart(self):
         self.assertEqual(self.store.apply(self.event(1, [
             {"kind": "remove", "rowIds": ["r1", "r2"]}

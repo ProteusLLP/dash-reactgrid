@@ -63,3 +63,19 @@
 .drg-pager button {
   padding: 0.2rem 0.6rem;
 }
+
+/* Save status for the acknowledged, durable sparse-edit queue. */
+.drg-sync-status {
+  margin: 0.4rem 0;
+  font-size: 0.82rem;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.drg-sync-error {
+  color: #9d1717;
+  font-weight: 600;
+}
+.drg-sync-status button {
+  padding: 0.1rem 0.5rem;
+}

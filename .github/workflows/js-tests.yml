@@ -36,3 +36,5 @@ jobs:
         run: python3 tests/test_server_virtual_browser.py
       - name: Test server virtualization with durable sparse edits
         run: python3 tests/test_virtual_reliable_browser.py
+      - name: Test virtual structural edits, offscreen clipboard and undo
+        run: python3 tests/test_virtual_operations_browser.py

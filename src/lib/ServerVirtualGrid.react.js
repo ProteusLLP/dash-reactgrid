@@ -290,6 +290,7 @@ export const ServerVirtualGrid = (props) => {
     setToInput(String(candidate.end));
     setCopyText(null);
     setCopyError(null);
+    copyPending.current=null;
     setProps({ virtualSelection: candidate });
   };
 
@@ -353,6 +354,7 @@ export const ServerVirtualGrid = (props) => {
   useEffect(() => {
     setCopyText(null);
     setCopyError(null);
+    copyPending.current=null;
     if (!globalSelection) return;
     if (globalSelection.end - globalSelection.start > MAX_RANGE_ROWS) {
       setCopyError("Large selections must use Download CSV");
@@ -365,7 +367,7 @@ export const ServerVirtualGrid = (props) => {
       setProps({virtualRangeRequest:request});
     }, 150);
     return () => window.clearTimeout(timer);
-  }, [globalSelection, virtualDatasetId, setProps]);
+  }, [globalSelection, virtualDatasetId, props.editAck?.revision, setProps]);
 
   useEffect(() => {
     if (!matchesCopyResponse(virtualRangeData, copyPending.current)) return;
@@ -611,9 +613,47 @@ export const ServerVirtualGrid = (props) => {
     row height of at least 16px, window size of at least 20 and a positive viewport height.
   </div>;
   if (!columns.length) return <div role="alert">No visible columns.</div>;
-  if (!virtualRowCount) return <div className="drg-virtual-empty">No rows</div>;
+  const selectedCount = globalSelection ? globalSelection.end - globalSelection.start : 0;
 
   return <div className="drg-virtual">
+    <div className="drg-virtual-toolbar" aria-label="Server grid actions">
+      <label>From row <input type="number" min="1"
+        max={Math.max(1,virtualRowCount)} value={fromInput}
+        onChange={(e) => setFromInput(e.target.value)}/></label>
+      <label>To row <input type="number" min="1"
+        max={Math.max(1,virtualRowCount)} value={toInput}
+        onChange={(e) => setToInput(e.target.value)}/></label>
+      <button type="button" disabled={!virtualRowCount} onClick={applyRangeInputs}>
+        Select range</button>
+      <button type="button" disabled={!virtualRowCount} onClick={() =>
+        selectGlobal(boundedSelection(0,virtualRowCount,0,columns.length,
+          virtualRowCount,columns.length))}>Select all</button>
+      <span className="drg-selection-count">
+        {globalSelection ? selectedCount.toLocaleString() + " rows selected" :
+          virtualRowCount.toLocaleString() + " rows"}
+      </span>
+      <button type="button" disabled={typeof copyText !== "string"}
+        onClick={copySelection}>Copy selection</button>
+      {exportUrl && <a href={exportUrl} download>Download selected CSV</a>}
+      {!readOnly && props.transmitSparseEdits && <>
+        <button type="button" disabled={editingBlocked}
+          onClick={() => insertRow(false)}>Insert row</button>
+        <button type="button" disabled={editingBlocked}
+          onClick={() => insertRow(true)}>Append row</button>
+        <button type="button" disabled={editingBlocked || !globalSelection ||
+          selectedCount > MAX_RANGE_ROWS}
+          onClick={deleteSelection}>Delete selected rows</button>
+        <button type="button" disabled={editingBlocked || reliable.pending>0 ||
+          !history.undo.length} onClick={undoOperation}>Undo</button>
+        <button type="button" disabled={editingBlocked || reliable.pending>0 ||
+          !history.redo.length} onClick={redoOperation}>Redo</button>
+      </>}
+    </div>
+    {!virtualRowCount && <div className="drg-virtual-empty">No rows. Use Append row to create one.</div>}
+    {(commandError || copyError || historyError) &&
+      <div role="alert" className="drg-virtual-error">
+        {[commandError,copyError,historyError].filter(Boolean).join(" ")}
+      </div>}
     <div className="drg-virtual-viewport" ref={viewportRef}
       onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
       onCopy={handleCopy} onPasteCapture={handlePaste}

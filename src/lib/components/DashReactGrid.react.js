@@ -21,6 +21,7 @@ import {
   textOf,
   valueOf,
 } from '../model';
+import { isCellEditorTarget, pasteStartRow, selectAllRanges, selectionText } from '../keyboard';
 
 const locale = window.navigator.language
 const parsers = { number: numberParser, percent: percentParser }
@@ -91,6 +92,7 @@ const ReactGridDataHandler = (props) => {
   const [openDropdown, setOpenDropdown] = useState(null)
   const [history, setHistory] = useState(NO_HISTORY)
   const selection = useRef(null)
+  const focused = useRef(null)
   const sequence = useRef(0)
 
   // The server sends new columns only when it remounts the table, which
@@ -235,7 +237,7 @@ const ReactGridDataHandler = (props) => {
     const first = ranges[0].first
     const changes = []
     clipboardCells(e.clipboardData).forEach((cells, ri) => {
-      const position = first.row.idx - 1 + ri // -1 for the header row
+      const position = pasteStartRow(ranges[0]) + ri // the header is not a data row
       let rowId
       if (position < table.data.length) {
         rowId = table.rowIds[position]
@@ -258,18 +260,9 @@ const ReactGridDataHandler = (props) => {
   }
 
   const handleCopy = (e) => {
-    const ranges = selection.current
-    if (!ranges || !ranges.length) return
-    const range = ranges[0]
-    const lines = []
-    for (let row = range.first.row.idx; row <= range.last.row.idx; row++) {
-      const cells = []
-      for (let column = range.first.column.idx; column <= range.last.column.idx; column++) {
-        cells.push(textOf(rows[row].cells[column]))
-      }
-      lines.push(cells.join("\t"))
-    }
-    e.clipboardData.setData("text/plain", lines.join("\n"))
+    const text = selectionText(rows, selection.current, textOf)
+    if (text === null) return
+    e.clipboardData.setData("text/plain", text)
     e.preventDefault()
   }
 
@@ -301,9 +294,17 @@ const ReactGridDataHandler = (props) => {
   // Caught before ReactGrid, which swallows the keys it handles itself.
   // While a cell is being typed in, its own input undoes the typing.
   const handleKeyDown = (e) => {
-    if (e.target && e.target.classList && e.target.classList.contains("rg-input") && e.target.type !== "checkbox") return
+    if (isCellEditorTarget(e.target)) return
     if ((!isMacOs() && e.ctrlKey) || e.metaKey) {
       switch (e.key.toLowerCase()) {
+        case "a":
+          if (!e.shiftKey && !e.altKey) {
+            // ReactGrid selects the entire matrix without notifying onSelectionChanged.
+            // Keep our clipboard selection and Dash's selectedRange in sync.
+            const ranges = selectAllRanges(selection.current, rows, columns, focused.current)
+            if (ranges) handleSelectionChanged(ranges)
+          }
+          return; // let ReactGrid update its own selection and highlight
         case "z":
           e.preventDefault();
           handleUndo();
@@ -323,7 +324,10 @@ const ReactGridDataHandler = (props) => {
     handleChanges,
     handleContextMenu,
     handleSelectionChanged,
-    handleFocus: (location) => setProps({ selectedCell: location }),
+    handleFocus: (location) => {
+      focused.current = location
+      setProps({ selectedCell: location })
+    },
   }
   const onCellsChanged = useCallback((changes) => latest.current.handleChanges(changes), [])
   const onContextMenu = useCallback((...args) => latest.current.handleContextMenu(...args), [])

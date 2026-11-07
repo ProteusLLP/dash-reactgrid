@@ -247,8 +247,8 @@ class FeatureMatrixChromeTests(unittest.TestCase):
         self.waiter.until(lambda _: self.state("paged").get("selectedRowIds") ==
             [f"p{i}" for i in range(11)])
         copied = self.copy("paged", "label", 0)
-        self.assertEqual(copied["plain"],
-            "\\n".join(f"Page row {i}" for i in range(11)).replace("\\n", "\n"))
+        self.assertEqual(copied["plain"].splitlines(),
+            [f"Page row {i}" for i in range(11)])
         self.chord(Keys.CONTROL, Keys.ARROW_UP)
         self.expect_focus("paged", "p0", "label")
 

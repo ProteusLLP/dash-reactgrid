@@ -113,8 +113,10 @@ export const replayPendingEdits = (table, queue, columns, newRow) => {
   let data = table.data;
   let rowIds = table.rowIds;
   let index = new Map(rowIndexesOf(rowIds));
-  const ensureMutable = () => {
+  const ensureMutableData = () => {
     if (data === table.data) data = data.slice();
+  };
+  const ensureMutableIds = () => {
     if (rowIds === table.rowIds) rowIds = rowIds.slice();
   };
   const rebuildIndex = () => { index = new Map(rowIds.map((id, idx) => [id, idx])); };
@@ -123,7 +125,8 @@ export const replayPendingEdits = (table, queue, columns, newRow) => {
     for (const edit of batch.edits) {
       if (edit.kind === "add") {
         if (index.has(edit.rowId)) continue;
-        ensureMutable();
+        ensureMutableData();
+        ensureMutableIds();
         data.push(blankRow(columns, newRow));
         rowIds.push(edit.rowId);
         copied.add(data.length - 1);
@@ -135,7 +138,7 @@ export const replayPendingEdits = (table, queue, columns, newRow) => {
           throw new Error("Pending edit refers to a missing row or column: " +
             String(edit.rowId) + "/" + String(edit.columnId));
         if (Object.is(data[row][col], edit.value)) continue;
-        ensureMutable();
+        ensureMutableData();
         if (!copied.has(row)) {
           data[row] = data[row].slice();
           copied.add(row);
@@ -145,7 +148,8 @@ export const replayPendingEdits = (table, queue, columns, newRow) => {
         if (!Array.isArray(edit.rowIds)) throw new Error("Invalid row removal event");
         const removed = new Set(edit.rowIds);
         if (![...removed].some((id) => index.has(id))) continue;
-        ensureMutable();
+        ensureMutableData();
+        ensureMutableIds();
         const nextData = [];
         const nextIds = [];
         for (let i = 0; i < rowIds.length; i++) {

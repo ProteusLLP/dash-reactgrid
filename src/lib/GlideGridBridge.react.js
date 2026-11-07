@@ -33,6 +33,7 @@ export const GlideGridBridge = ({
   const [editing,setEditing] = useState(null);
   const inputRef = useRef(null);
   const finishGuard = useRef(false);
+  const requestedFocus = useRef(null);
   const [portal,setPortal] = useState(null);
   useEffect(()=>{
     let element=document.getElementById("portal");
@@ -127,6 +128,7 @@ export const GlideGridBridge = ({
     const nextCol=Math.max(0,Math.min(columns.length-1,col));
     const nextRow=Math.max(0,Math.min(rows.length-2,row));
     const cell=[nextCol,nextRow];
+    requestedFocus.current=cell;
     setSelection({...empty(),current:{
       cell,range:{x:nextCol,y:nextRow,width:1,height:1},rangeStack:[],
     }});
@@ -174,6 +176,23 @@ export const GlideGridBridge = ({
     inputRef.current?.setSelectionRange?.(
       inputRef.current.value.length,inputRef.current.value.length);
   },[editing?.col,editing?.row]);
+
+  // The input removal sends focus to BODY in Chrome. Restore the actual
+  // keyboard target after React has committed removal of the editor, before
+  // the user presses Ctrl+Z, Enter or an arrow to continue navigation.
+  React.useLayoutEffect(()=>{
+    if(editing || !requestedFocus.current) return;
+    const [col,row]=requestedFocus.current;
+    const element=hostRef.current?.querySelector(
+      '[data-testid="glide-cell-'+col+'-'+(row+1)+'"]');
+    if(element) {
+      element.focus({preventScroll:true});
+      requestedFocus.current=null;
+    } else {
+      gridRef.current?.focus?.();
+      requestedFocus.current=null;
+    }
+  },[editing,selection]);
 
   const onTypingCapture=useCallback(event=>{
     // Do not intercept the browser's own clipboard operations, application

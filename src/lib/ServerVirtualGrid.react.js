@@ -337,7 +337,7 @@ export const ServerVirtualGrid = (props) => {
 
   const insertRow = (append = false) => {
     const position = append ? virtualRowCount :
-      (globalRef.current?.start ?? range.first);
+      (globalSelection?.start ?? globalRef.current?.start ?? range.first);
     const id = "new-" + (window.crypto?.randomUUID?.() || newRowId());
     submitOperation([{
       kind: "insert", rowId: id, position,
@@ -346,7 +346,9 @@ export const ServerVirtualGrid = (props) => {
   };
 
   const deleteSelection = () => {
-    const sel = globalRef.current;
+    // Destructive toolbar actions operate on the displayed global range,
+    // never on a later native cell focus that has not updated the toolbar.
+    const sel = globalSelection;
     if (!sel || editingBlocked) return;
     const count = sel.end - sel.start;
     if (count > MAX_RANGE_ROWS) {
@@ -416,17 +418,17 @@ export const ServerVirtualGrid = (props) => {
   }, [virtualRangeData]);
 
   const copySelection = () => {
-    if (globalRef.current &&
-        globalRef.current.end-globalRef.current.start > MAX_RANGE_ROWS) {
+    if (globalSelection &&
+        globalSelection.end-globalSelection.start > MAX_RANGE_ROWS) {
       setCopyError("Use Download CSV for selections exceeding 1,000 rows");
       return;
     }
     if (typeof copyText !== "string") {
-      if (globalRef.current) {
+      if (globalSelection) {
         // A manual click is a retry even when an earlier prefetch is still
         // outstanding. Dash receives a fresh requestId to trigger the callback.
         const request=copyRequestFor(virtualDatasetId,
-          ++copyCounter.current,globalRef.current);
+          ++copyCounter.current,globalSelection);
         copyPending.current=request;
         setPropsRef.current({virtualRangeRequest:request});
         setCopyError(null);
@@ -564,7 +566,13 @@ export const ServerVirtualGrid = (props) => {
     // Native single-cell selection is copyable without any Dash request.
     // This also avoids stale, asynchronously prepared range clipboard data.
     const normal = selection.current;
-    if (!globalSelection && normal.length) {
+    const current=globalRef.current;
+    const toolbarMatches=current && globalSelection &&
+      current.start===globalSelection.start &&
+      current.end===globalSelection.end &&
+      current.columnStart===globalSelection.columnStart &&
+      current.columnEnd===globalSelection.columnEnd;
+    if (!toolbarMatches && normal.length) {
       const txt=selectionText(rows,normal,textOf);
       if (txt!==null) {
         e.preventDefault();e.stopPropagation();

@@ -32,7 +32,7 @@ COLUMN_WIDTHS = {
     "target": [("label",180),("value",110)],
     "paged": [("label",180),("value",110)],
     "readonly": [("label",180),("value",110)],
-    "numeric": [("value",120),("other",120)],
+    "numeric": [("a",120),("b",120)],
 }
 
 
@@ -102,6 +102,7 @@ class GlideDashBrowserTests(unittest.TestCase):
         x=sum(w for _,w in layout[:ix])+layout[ix][1]/2
         y=32+row*27+13
         selector=f"#{grid} .drg-glide"
+        self.driver.execute_script("document.querySelector(arguments[0]).scrollIntoView({block:'center'});",selector)
         pos=self.driver.execute_script("""
             const b=document.querySelector(arguments[0]).getBoundingClientRect();
             return {x:b.left+arguments[1],y:b.top+arguments[2]};
@@ -251,7 +252,7 @@ class GlideDashBrowserTests(unittest.TestCase):
         self.assertEqual(self.state("readonly")["data"][0][0],"Protected")
 
     def test_17_numpy_data_edit_uses_Dash_callback(self):
-        self.click("numeric","value",0)
+        self.click("numeric","a",0)
         self.type("9.5")
         self.chord(Keys.ENTER)
         self.waiter.until(lambda _: self.state("numeric").get("data") and

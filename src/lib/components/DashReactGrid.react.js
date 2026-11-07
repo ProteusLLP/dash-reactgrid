@@ -6,7 +6,7 @@ import "../styles.css"
 import { CustomNumberCellTemplate, numberParser } from '../CustomNumberCell';
 import { PercentCellTemplate, percentParser } from '../PercentCell';
 import { PortalDropdownCellTemplate } from '../PortalDropdownCell';
-import { compileGridColumns, buildGridRows, pageBounds } from '../gridRows';
+import { compileGridColumns, buildGridRows, pageBounds, canPasteOnPage } from '../gridRows';
 import {
   GHOST_ROW_ID,
   applyChanges,
@@ -220,7 +220,7 @@ const ReactGridDataHandler = (props) => {
     clipboardCells(e.clipboardData).forEach((cells, ri) => {
       const position = pageStart + pasteStartRow(ranges[0]) + ri // the header is not a data row
       // Do not silently modify data on a page the user cannot see.
-      if (pageSize && page !== pageCount - 1 && position >= pageEnd) return
+      if (!canPasteOnPage(position, bounds, pageSize)) return
       let rowId
       if (position < table.data.length) {
         rowId = table.rowIds[position]

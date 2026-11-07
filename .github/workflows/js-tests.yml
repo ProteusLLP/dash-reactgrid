@@ -24,3 +24,7 @@ jobs:
         run: npm run build:js
       - name: Benchmark large tables
         run: node --experimental-detect-module scripts/benchmark-large-grid.mjs
+      - name: Install Dash and Selenium for browser virtualization test
+        run: python3 -m pip install "dash>=3,<5" "selenium>=4,<5"
+      - name: Test continuous server-backed virtualization in Chrome
+        run: python3 tests/test_server_virtual_browser.py

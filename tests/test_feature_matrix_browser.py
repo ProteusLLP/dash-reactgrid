@@ -374,7 +374,7 @@ class FeatureMatrixChromeTests(unittest.TestCase):
 
     def test_paste_blank_cells_clears_text_and_number(self):
         self.cell("target", "label", 0).click()
-        result = self.paste("target", "\\t", column="label")
+        result = self.paste("target", "\t", column="label")
         self.assertTrue(result["prevented"])
         self.waiter.until(lambda _: self.state("target")["data"][0] == ["", None])
         self.assertEqual(self.state("target")["data"][1], ["Target 2", 2])
@@ -382,7 +382,7 @@ class FeatureMatrixChromeTests(unittest.TestCase):
     def test_ghost_row_paste_respects_noneditable_column(self):
         self.cell("matrix", "text", 2).click()
         result = self.paste(
-            "matrix", "New row" + "\\t" * 8 + "Forbidden",
+            "matrix", "New row" + "\t" * 8 + "Forbidden",
             column="text", index=2,
         )
         self.assertTrue(result["prevented"])

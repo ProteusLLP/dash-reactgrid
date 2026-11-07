@@ -7,7 +7,7 @@ import { CustomNumberCellTemplate, numberParser } from '../CustomNumberCell';
 import { PercentCellTemplate, percentParser } from '../PercentCell';
 import { PortalDropdownCellTemplate } from '../PortalDropdownCell';
 import { compileGridColumns, buildGridRows, pageBounds, canPasteOnPage } from '../gridRows';
-import { initialGridSnapshot, reconcileGridSnapshot, commitGridSnapshot, editsPayload } from '../sparseEdits';
+import { useReliableGrid } from '../useReliableGrid';
 import {
   GHOST_ROW_ID,
   applyChanges,
@@ -59,19 +59,14 @@ const ReactGridDataHandler = (props) => {
 
   const tracked = Array.isArray(rowIds)
   const transmitSparseEdits = Boolean(props.transmitSparseEdits)
-  const propTable = useMemo(() => ({ data, rowIds: rowIdsOf(data, rowIds) }), [data, rowIds])
-  // In sparse mode Dash owns the starting snapshot while subsequent edits
-  // live locally. Updating the server's data/rowIds props replaces the
-  // browser snapshot, but publishing edits alone never resets it.
-  const [localSnapshot, setLocalSnapshot] = useState(
-    () => initialGridSnapshot(data, rowIds, transmitSparseEdits),
-  )
-  const syncedSnapshot = reconcileGridSnapshot(localSnapshot, data, rowIds, transmitSparseEdits)
-  if (syncedSnapshot !== localSnapshot) setLocalSnapshot(syncedSnapshot)
-  const table = transmitSparseEdits ? syncedSnapshot.table : propTable
-  const tableRef = useRef(table)
-  tableRef.current = table
-  const extendable = isExtendable && !readOnly
+  const sync = useReliableGrid({
+    enabled: transmitSparseEdits, id: props.id,
+    datasetId: props.editDatasetId, editAck: props.editAck,
+    data, rowIds, columns: allColumns, newRow, setProps,
+  })
+  const { table, tableRef } = sync
+  const editingBlocked = readOnly || Boolean(sync.error)
+  const extendable = isExtendable && !editingBlocked
   const columnIds = columns.map((column) => column.columnId)
   const displayedColumnIndex = useMemo(
     () => new Map(columnIds.map((id, idx) => [id, idx])), [columns],
@@ -98,7 +93,6 @@ const ReactGridDataHandler = (props) => {
   const [history, setHistory] = useState(NO_HISTORY)
   const selection = useRef(null)
   const focused = useRef(null)
-  const sequence = useRef(0)
 
   // The server sends new columns only when it remounts the table, which
   // starts a new history; the grid's own changes never touch them.
@@ -114,7 +108,7 @@ const ReactGridDataHandler = (props) => {
     [lockedCells],
   )
   const isLocked = (rowId, columnId, column) =>
-    readOnly || Boolean(column.nonEditable) || locked.has(`${rowId}\u0000${columnId}`)
+    editingBlocked || Boolean(column.nonEditable) || locked.has(`${rowId}\u0000${columnId}`)
 
   // Only pass the current page to ReactGrid: its cell-matrix builder touches
   // every cell, even when it has virtual DOM scrolling enabled.
@@ -122,23 +116,23 @@ const ReactGridDataHandler = (props) => {
     const validCache = rowCache.current &&
       rowCache.current.descriptors === renderColumns &&
       rowCache.current.locked === locked &&
-      rowCache.current.readOnly === readOnly &&
+      rowCache.current.readOnly === editingBlocked &&
       rowCache.current.newRow === newRow &&
       rowCache.current.styleHeader === styleHeader;
     const built = buildGridRows({
       columns, descriptors: renderColumns, allColumns,
       data: table.data.slice(pageStart, pageEnd),
       rowIds: table.rowIds.slice(pageStart, pageEnd),
-      newRow, readOnly, locked, styleHeader, showGhost, openDropdown,
+      newRow, readOnly: editingBlocked, locked, styleHeader, showGhost, openDropdown,
       previous: validCache ? rowCache.current.cache : null,
     });
     rowCache.current = {
-      descriptors: renderColumns, locked, readOnly, newRow, styleHeader,
+      descriptors: renderColumns, locked, readOnly: editingBlocked, newRow, styleHeader,
       cache: built.cache,
     };
     return built.rows;
   }, [columns, renderColumns, allColumns, table, pageStart, pageEnd,
-    newRow, locked, readOnly, styleHeader, showGhost, openDropdown]);
+    newRow, locked, editingBlocked, styleHeader, showGhost, openDropdown]);
 
   // Highlights may reference rows on other pages. Passing them directly
   // makes ReactGrid reject them as inconsistent with its current cell matrix.
@@ -154,25 +148,15 @@ const ReactGridDataHandler = (props) => {
   // a one-column table is sticky, so at least one row and column scroll.
   const sticky = stickyCounts(props, columns.length, rows.length)
 
-  /** Publish the edit batch; sparse mode retains the table only in the browser. */
-  const publish = (next) => {
-    if (next.edits.length === 0) return
-    sequence.current += 1
-    if (transmitSparseEdits) {
-      // Keep the latest version available to successive edits even before
-      // React commits its next render.
-      tableRef.current = { data: next.data, rowIds: next.rowIds }
-      setLocalSnapshot((current) =>
-        commitGridSnapshot(reconcileGridSnapshot(current, data, rowIds, transmitSparseEdits), next))
-    }
-    setProps(editsPayload(next, sequence.current, transmitSparseEdits, tracked))
-  }
+  /** Commit a batch only if it was persisted to the reliable outbox. */
+  const publish = (next) => sync.publish(next, tracked)
 
   /** Apply value changes, remembering cell edits for undo. */
   const change = (changes, remember = true) => {
-    const currentTable = transmitSparseEdits ? tableRef.current : table
+    if (editingBlocked) return
+    const currentTable = tableRef.current
     const next = applyChanges(currentTable, changes, { columns: allColumns, newRow })
-    publish(next)
+    if (!publish(next)) return
     if (pageSize && next.edits.some((edit) => edit.kind === "add") &&
         next.data.length > (page + 1) * pageSize) {
       const last = Math.floor((next.data.length - 1) / pageSize)
@@ -248,7 +232,7 @@ const ReactGridDataHandler = (props) => {
     e.stopPropagation()
     e.preventDefault()
     const ranges = selection.current
-    if (readOnly || !ranges || !ranges.length) return
+    if (editingBlocked || !ranges || !ranges.length) return
     const first = ranges[0].first
     const changes = []
     clipboardCells(e.clipboardData).forEach((cells, ri) => {
@@ -290,7 +274,7 @@ const ReactGridDataHandler = (props) => {
   }
 
   const handleContextMenu = (selectedRowIds, selectedColIds, selectionMode, menuOptions, selectedRanges) => {
-    if (!tracked || readOnly) return menuOptions
+    if (!tracked || editingBlocked) return menuOptions
     const removing = []
     selectedRanges.forEach((range) => range.forEach(({ rowId }) => {
       if (rowId !== "header" && rowId !== GHOST_ROW_ID && !removing.includes(rowId)) removing.push(rowId)
@@ -302,8 +286,7 @@ const ReactGridDataHandler = (props) => {
         id: DELETE_ROWS_OPTION,
         label: removing.length === 1 ? "Delete row" : `Delete ${removing.length} rows`,
         handler: () => {
-          publish(removeRows(transmitSparseEdits ? tableRef.current : table, removing))
-          setHistory(NO_HISTORY)
+          if (publish(removeRows(tableRef.current, removing))) setHistory(NO_HISTORY)
         },
       },
     ]
@@ -318,7 +301,7 @@ const ReactGridDataHandler = (props) => {
       // behaviour. The blank extension row is never a data edit.
       const ranges = selection.current?.length ? selection.current :
         [focusedRange(rows, columns, focused.current)].filter(Boolean)
-      const changes = readOnly ? [] : clearSelectedCells(rows, columns, ranges)
+      const changes = editingBlocked ? [] : clearSelectedCells(rows, columns, ranges)
       if (changes.length) {
         e.preventDefault()
         e.stopPropagation()
@@ -369,7 +352,7 @@ const ReactGridDataHandler = (props) => {
   const grid = useMemo(() => (
     <ReactGrid key={pageSize ? `page-${page}` : 'all'} rows={rows} columns={columns} onCellsChanged={onCellsChanged}
       onFocusLocationChanged={onFocusLocationChanged}
-      enableFillHandle={enableFillHandle && !readOnly}
+      enableFillHandle={enableFillHandle && !editingBlocked}
       enableRangeSelection={enableRangeSelection}
       enableRowSelection={enableRowSelection}
       enableColumnSelection={enableColumnSelection}
@@ -382,7 +365,7 @@ const ReactGridDataHandler = (props) => {
       onSelectionChanged={onSelectionChanged}
       disableVirtualScrolling={disableVirtualScrolling}
     />
-  ), [rows, columns, readOnly, pageHighlights, sticky.left, sticky.right, sticky.top, sticky.bottom,
+  ), [rows, columns, editingBlocked, pageHighlights, sticky.left, sticky.right, sticky.top, sticky.bottom,
     enableFillHandle, enableRangeSelection, enableRowSelection, enableColumnSelection, disableVirtualScrolling,
     dropdownMenuPortal, pageSize, page])
 
@@ -402,6 +385,20 @@ const ReactGridDataHandler = (props) => {
   return (
     <div onPasteCapture={handlePaste} onCopy={handleCopy} onKeyDownCapture={handleKeyDown}>
       {grid}
+      {transmitSparseEdits && (
+        <div className="drg-sync-status" role="status" aria-live="polite">
+          {sync.error ? (
+            <>
+              <span className="drg-sync-error">{sync.error}. {sync.pending} pending batch(es) retained.</span>
+              {sync.pending > 0 && <button type="button" onClick={sync.retryFailed}>Retry sending</button>}
+            </>
+          ) : sync.pending > 0 ? (
+            <span>{sync.pending} unacknowledged edit batch(es); retrying automatically</span>
+          ) : (
+            <span>All edits acknowledged</span>
+          )}
+        </div>
+      )}
       {pageSize && pageCount > 1 && (
         <nav className="drg-pager" aria-label="Grid pages">
           <button type="button" disabled={page === 0} onClick={() => goToPage(page - 1)}>Previous</button>
@@ -437,6 +434,8 @@ DashReactGrid.defaultProps = {
   disableVirtualScrolling: true,
   rowPageSize: null,
   transmitSparseEdits: false,
+  editDatasetId: null,
+  editAck: null,
   dropdownMenuPortal: false,
   persistence_type: 'local',
   persisted_props: ['columns', 'data'],
@@ -545,6 +544,17 @@ DashReactGrid.propTypes = {
    * update. Default false publishes full data as before.
    */
   transmitSparseEdits: PropTypes.bool,
+  /**
+   * Stable identifier for the authoritative dataset. Required in sparse mode
+   * to recover pending batches across reloads without cross-dataset replay.
+   */
+  editDatasetId: PropTypes.string,
+  /**
+   * Authoritative server acknowledgement returned from a Dash callback:
+   * {datasetId, streamId, seq, status: "ok" | "retry" | "error" | "conflict", message?}.
+   * Only status "ok" removes the head batch from the durable outbox.
+   */
+  editAck: PropTypes.object,
   /**
    * Whether dropdown menus render in a portal on the page body, with fixed
    * positioning, rather than inside their cell. Turn it on when the grid sits

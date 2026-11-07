@@ -19,6 +19,6 @@ jobs:
       - name: Run JavaScript unit tests
         run: npm run test:js
       - name: Install build dependencies
-        run: npm ci
+        run: npm ci --legacy-peer-deps
       - name: Compile component
         run: npm run build:js

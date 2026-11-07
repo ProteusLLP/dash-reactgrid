@@ -494,12 +494,18 @@ export const ServerVirtualGrid = (props) => {
         if (indices.length) {
           const firstCol = selected.first.column.idx;
           const lastCol = selected.last.column.idx;
-          selectGlobal(boundedSelection(
+          const candidate = boundedSelection(
             range.start + Math.min(...indices),
             range.start + Math.max(...indices) + 1,
             Math.min(firstCol,lastCol),Math.max(firstCol,lastCol)+1,
             virtualRowCount,columns.length,
-          ));
+          );
+          if (candidate) {
+            if ((candidate.end-candidate.start) *
+                (candidate.columnEnd-candidate.columnStart) > 1)
+              selectGlobal(candidate);
+            else globalRef.current=candidate;
+          }
         }
       }
     },
@@ -520,9 +526,12 @@ export const ServerVirtualGrid = (props) => {
           virtualRowCount,columns.length,
         ));
       } else {
+        // Ordinary single-cell focus must not modify React state in the
+        // pointer event. ReactGrid's double-click editor depends on its
+        // original cell element remaining mounted through both clicks.
         anchor.current=place;
-        selectGlobal(boundedSelection(place.row,place.row+1,
-          place.col,place.col+1,virtualRowCount,columns.length));
+        globalRef.current=boundedSelection(place.row,place.row+1,
+          place.col,place.col+1,virtualRowCount,columns.length);
       }
     },
   };
@@ -532,7 +541,19 @@ export const ServerVirtualGrid = (props) => {
   const onContextMenu = useCallback((...args) => latest.current.contextMenu(...args),[]);
 
   const handleCopy = (e) => {
-    if (isCellEditorTarget(e.target) || !globalRef.current) return;
+    if (isCellEditorTarget(e.target)) return;
+    // Native single-cell selection is copyable without any Dash request.
+    // This also avoids stale, asynchronously prepared range clipboard data.
+    const normal = selection.current;
+    if (!globalSelection && normal.length) {
+      const txt=selectionText(rows,normal,textOf);
+      if (txt!==null) {
+        e.preventDefault();e.stopPropagation();
+        e.clipboardData.setData("text/plain",txt);
+        return;
+      }
+    }
+    if (!globalRef.current) return;
     e.preventDefault();
     e.stopPropagation();
     if (reliable.pending > 0) {

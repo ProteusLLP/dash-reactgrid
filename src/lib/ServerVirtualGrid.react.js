@@ -485,27 +485,23 @@ export const ServerVirtualGrid = (props) => {
     },
     selectionChanged: (ranges) => {
       selection.current = ranges;
-      const ids = rowsInRanges(ranges).filter(isDataId);
+      // ReactGrid's pointer and double-click handlers are sensitive to
+      // rerendering their rows during selection. Keep ordinary selection
+      // entirely in refs; use toolbar/Shift-click for global range state.
+      const ids=rowsInRanges(ranges).filter(isDataId);
       setProps({selectedRange:ranges,selectedRowIds:ids});
-      if (!shiftPointer.current && page && ranges.length) {
-        const selected = ranges[0];
-        const indices = (selected.rows || []).map((row) =>
-          page.rowIds.indexOf(row.rowId)).filter((i) => i >= 0);
+      if (page && ranges.length && !shiftPointer.current) {
+        const chosen=ranges[0];
+        const indices=(chosen.rows || []).map((row) =>
+          page.rowIds.indexOf(row.rowId)).filter((idx)=>idx>=0);
         if (indices.length) {
-          const firstCol = selected.first.column.idx;
-          const lastCol = selected.last.column.idx;
-          const candidate = boundedSelection(
-            range.start + Math.min(...indices),
-            range.start + Math.max(...indices) + 1,
-            Math.min(firstCol,lastCol),Math.max(firstCol,lastCol)+1,
+          globalRef.current=boundedSelection(
+            range.start+Math.min(...indices),
+            range.start+Math.max(...indices)+1,
+            Math.min(chosen.first.column.idx,chosen.last.column.idx),
+            Math.max(chosen.first.column.idx,chosen.last.column.idx)+1,
             virtualRowCount,columns.length,
           );
-          if (candidate) {
-            if ((candidate.end-candidate.start) *
-                (candidate.columnEnd-candidate.columnStart) > 1)
-              selectGlobal(candidate);
-            else globalRef.current=candidate;
-          }
         }
       }
     },

@@ -76,15 +76,32 @@ height is required for correct scroll positions. The physical scroll height
 is capped for very large datasets, while scroll positions are mapped back
 to logical row indices.
 
-**Editing:** Server virtual mode emits sparse `edits` batches for loaded
-cells and updates those cells optimistically, without transmitting full
-`data`. A server should persist these events and refresh or version the
-corresponding row windows. Row insertion/deletion and cross-window copy,
-paste, selection and undo are not yet supported in this mode. Production
-cell editing requires `transmitSparseEdits=True`, a stable
-`editDatasetId`, and a transactional `editAck` callback as documented
-below. Otherwise the server-virtual grid is read-only. Pending edits are
-overlaid onto whichever row window is currently loaded.
+**Editing:** Server virtual mode uses sparse `edits` batches and
+`transmitSparseEdits=True` together with a stable `editDatasetId` and
+transactional `editAck`. Loaded cell edits update optimistically; inserting
+and deleting rows, pasting and clearing ranges in unloaded windows, and
+undo/redo are committed by the server and fetched back on acknowledgement.
+The component updates its row count from the committed acknowledgement and
+invalidates stale viewport caches. Server virtual mode is read-only unless
+reliable sparse transmission is enabled.
+
+**Global selection:** Use Shift-click while scrolling to extend a selection
+or the From row / To row inputs to select a range by absolute row index.
+Ctrl+A selects all rows. The browser holds only the four boundary indices,
+never an array of every selected row. `virtualSelection` publishes these
+indices to Dash. Small ranges are prepared with `virtualRangeRequest`
+and `virtualRangeData` and can be copied in TSV form. For selections
+larger than 1,000 rows or 1 MB, provide `virtualExportUrl` so users can
+download a streamed CSV export. Clipboard pastes of up to 1,000 rows and
+20,000 cells are applied by the server, including cells in unloaded rows.
+Insertion and deletion operate at absolute positions, and undo/redo use
+transactional inverse receipts rather than loading the whole table.
+
+**Boundaries:** This is a single-editor editing protocol with no collaborative
+revision detection. Pending changes normally survive reloads in the same
+tab, but may be lost if session storage is cleared or the tab is closed
+before acknowledgement. Operations spanning excessive numbers of rows
+are rejected with an error rather than silently truncated.
 
 **Legacy alternative: bounded client-side paging.** `rowPageSize=250`
 remains available for existing grids that already send the entire dataset
@@ -97,6 +114,76 @@ options across cells, uses copy-on-write edits and can reuse unchanged rows.
 For smaller full-data grids, `disableVirtualScrolling=False` reduces DOM
 overhead but does not reduce ReactGrid's internal matrix.
 
+
+### Server-backed range editing reference
+
+The enhanced `examples/virtual_grid_store.py` provides transactional
+operations and persistent inverse journals. It extends the earlier sparse
+edit example and offers an indexed range reader, bounded TSV copy, and
+streamed CSV exports. The recommended production callback pattern is:
+
+```python
+from dash import Dash, Input, Output, callback
+from dash_reactgrid import DashReactGrid
+from examples.virtual_grid_store import VirtualGridStore
+
+store = VirtualGridStore("grid.sqlite3", "assets-v1", columns,
+                         new_row=new_row)
+store.seed_once(initial_data, initial_row_ids)  # only once
+app = Dash(__name__)
+app.layout = DashReactGrid(
+    id="grid", columns=columns, data=[], rowIds=[],
+    virtualRowCount=store.row_count(),
+    virtualDatasetId="assets-v1", virtualWindowSize=120,
+    virtualViewportHeight=420,
+    editDatasetId="assets-v1", transmitSparseEdits=True,
+    virtualExportUrl="/grid/export.csv",
+)
+
+@callback(Output("grid", "virtualData"), Input("grid", "virtualRequest"),
+          prevent_initial_call=True)
+def fetch_rows(req):
+    return {"datasetId":req["datasetId"], "requestId":req["requestId"],
+            "start":req["start"],
+            **store.read_range(req["start"],req["end"])}
+
+@callback(Output("grid", "editAck"), Input("grid", "edits"),
+          prevent_initial_call=True)
+def commit_changes(batch):
+    return store.apply(batch)
+
+@callback(Output("grid", "virtualRangeData"),
+          Input("grid", "virtualRangeRequest"),
+          prevent_initial_call=True)
+def prepare_clipboard(req):
+    result={k:req[k] for k in
+            ("datasetId","requestId","start","end","columnStart","columnEnd")}
+    try:
+        result["text"]=store.copy_range(
+            req["start"],req["end"],req["columnStart"],req["columnEnd"])
+    except ValueError as error:
+        result["error"]=str(error)
+    return result
+```
+
+The app must also expose the configured CSV export URL. See
+`tests/virtual_reliable_browser_app.py` for a runnable streaming route
+using `VirtualGridStore.export_csv()`. That route is intentionally
+unauthenticated in the test harness. A production application must
+authorise access to the requested dataset, validate row and column
+boundaries and configure its own HTTPS and CSRF protections. The store
+supports server-side `lockedCells`, `nonEditable` and `editableWhen`
+rules; configure the same column definitions and locks in both the server
+and the component.
+
+Only `edits`, `virtualRequest` and `virtualRangeRequest` are inputs to
+the respective callbacks. Do not add `State("grid", "data")` or output
+the complete table. Server acknowledgements include `rowCount` and
+`revision`, allowing the component to refresh its viewport after each
+committed operation. Undo and redo reference previous transaction sequence
+numbers; the store saves their inverse operations in SQLite. Keep these
+receipts for as long as users need undo, and establish a retention/archival
+policy before a large deployment.
 
 ### Reliable sparse-edit transmission
 

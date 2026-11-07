@@ -1,0 +1,39 @@
+name: Experimental Dash large-grid performance
+
+on:
+  pull_request:
+    paths:
+      - 'tests/benchmark_dash_large_app.py'
+      - 'tests/benchmark_dash_large_browser.py'
+      - '.github/workflows/dash-large-benchmark.yml'
+      - 'src/lib/**'
+      - 'package.json'
+  workflow_dispatch:
+
+jobs:
+  large-grid:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install experimental JavaScript dependencies
+        run: npm install --legacy-peer-deps --no-audit --no-fund
+      - name: Build Dash component under test
+        run: npm run build:js
+      - name: Install Dash, NumPy and Chrome controls
+        run: python3 -m pip install "dash>=3,<5" "numpy>=1.23,<3" "selenium>=4,<5"
+      - name: Measure full-data, paged and stateless virtual scenarios
+        continue-on-error: true
+        run: python3 tests/benchmark_dash_large_browser.py | tee dash-large-run.log
+      - name: Upload raw measurements
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dash-large-performance
+          path: |
+            dash-large-results.json
+            dash-large-run.log
+          if-no-files-found: warn

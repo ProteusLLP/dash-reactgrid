@@ -35,9 +35,10 @@ try {
       const rows = mode === "mixed" ? 50_000 : 100_000;
       const cols = mode === "mixed" ? 8 : 12;
       const start = performance.now();
+      try {
       await page.goto(origin + "/?renderer=" + renderer + "&rows=" + rows +
         "&cols=" + cols + "&mode=" + mode, {waitUntil:"domcontentloaded"});
-      await page.waitForFunction(() => window.__bakeoff?.ready === true, {timeout:30000});
+      await page.waitForFunction(() => window.__bakeoff?.ready === true, null, {timeout:15000});
       const wallMs = performance.now() - start;
       const snapshot = await page.evaluate(() => window.__bakeoff.snapshot());
       const cdp = await page.context().newCDPSession(page);
@@ -61,7 +62,13 @@ try {
         domNodes, jumpDispatchMs:+jumpDispatchMs.toFixed(1), errors});
       console.log(JSON.stringify(results.at(-1)));
       await cdp.detach();
-      await page.close();
+      } catch (error) {
+        const diagnostic = {renderer,mode,rows,cols,error:String(error)};
+        results.push(diagnostic);
+        console.log(JSON.stringify(diagnostic));
+      } finally {
+        await page.close();
+      }
     }
   }
   mkdirSync("test-results", {recursive:true});

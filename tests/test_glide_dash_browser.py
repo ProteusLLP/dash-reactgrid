@@ -221,7 +221,11 @@ class GlideDashBrowserTests(unittest.TestCase):
         self.click("matrix","clock",0)
         self.type("15:45")
         self.chord(Keys.ENTER)
-        self.waiter.until(lambda _:"15:45" in str(self.state("matrix")["data"][0][7]))
+        try:
+            self.waiter.until(lambda _:"15:45" in str(self.state("matrix")["data"][0][7]))
+        except TimeoutException:
+            self.diagnostic("matrix","Time edit expected 15:45")
+            raise
 
     def test_11_paste_Excel_tsv_round_trip(self):
         self.click("target","label")
@@ -283,7 +287,11 @@ class GlideDashBrowserTests(unittest.TestCase):
                 e.get("columnId")=="a" and e.get("value")==9.5
                 for e in edits.get("edits",[]))
 
-        self.waiter.until(accepted)
+        try:
+            self.waiter.until(accepted)
+        except TimeoutException:
+            self.diagnostic("numeric","NumPy expected value 9.5")
+            raise
 
 
 if __name__=="__main__":

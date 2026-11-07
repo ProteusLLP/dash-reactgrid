@@ -1,6 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
 import { ReactGrid } from "@silevis/reactgrid";
+import { GlideGridBridge } from "../GlideGridBridge.react";
+
+const GridEngine = ({ renderer, ...props }) => renderer === "glide"
+  ? <GlideGridBridge {...props} /> : <ReactGrid {...props} />;
 import "@silevis/reactgrid/styles.css";
 import "../styles.css"
 import { numberParser } from '../CustomNumberCell';
@@ -559,7 +563,7 @@ const ReactGridDataHandler = (props) => {
   const visibleJump = jumpLocation && rows.some((row) => row.rowId === jumpLocation.rowId)
     ? jumpLocation : undefined
   const grid = useMemo(() => (
-    <ReactGrid key={pageSize ? `page-${page}` : 'all'} rows={rows} columns={columns} onCellsChanged={onCellsChanged}
+    <GridEngine renderer={props.renderer} key={pageSize ? `page-${page}` : 'all'} rows={rows} columns={columns} onCellsChanged={onCellsChanged}
       onFocusLocationChanged={onFocusLocationChanged}
       focusLocation={visibleJump}
       onColumnResized={onColumnResized}
@@ -578,7 +582,7 @@ const ReactGridDataHandler = (props) => {
     />
   ), [rows, columns, editingBlocked, pageHighlights, sticky.left, sticky.right, sticky.top, sticky.bottom,
     enableFillHandle, enableRangeSelection, enableRowSelection, enableColumnSelection, disableVirtualScrolling,
-    dropdownMenuPortal, cellTemplates, pageSize, page, visibleJump])
+    dropdownMenuPortal, cellTemplates, pageSize, page, visibleJump, props.renderer])
 
   const goToPage = (requested) => {
     if (!Number.isFinite(requested)) {
@@ -649,6 +653,7 @@ const ReactGridDataHandler = (props) => {
 }
 
 DashReactGrid.defaultProps = {
+  renderer: 'reactgrid',
   enableFillHandle: true, enableRangeSelection: true, enableRowSelection: true, enableColumnSelection: true,
   stickyLeftColumns: 0,
   stickyRightColumns: 0,
@@ -680,6 +685,8 @@ DashReactGrid.defaultProps = {
 };
 
 DashReactGrid.propTypes = {
+  /** Experimental canvas renderer for ordinary tables. Server-virtual mode retains ReactGrid. */
+  renderer: PropTypes.oneOf(['reactgrid', 'glide']),
   /**
    * The ID used to identify this component in Dash callbacks.
    */

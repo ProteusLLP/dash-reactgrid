@@ -194,17 +194,18 @@ class FeatureMatrixChromeTests(unittest.TestCase):
         # Pasting numeric values works, but the editable number column did not
         # publish a direct edit in Chrome, even after leaving the cell.
         self.edit("matrix", "amount", "31.25", index=1)
+        print("NUMERIC after blur:", self.state("matrix"), flush=True)
         self.waiter.until(lambda _: self.state("matrix")["data"][1][1] == 31.25)
 
-    @unittest.expectedFailure
     def test_text_edit_undo_redo_regression(self):
-        # Native Ctrl+Z after editing a text cell does not currently restore
-        # its previous value. Checkbox undo is checked independently above.
+        # Focus an untouched, noneditable cell before invoking grid history;
+        # clicking the edited text cell again could reopen its text editor.
         self.edit("matrix", "text", "Changed")
         self.waiter.until(lambda _: self.state("matrix")["data"][0][0] == "Changed")
-        self.press("z", "matrix", "text")
+        self.press("z", "matrix", "fixed")
+        print("TEXT undo:", self.state("matrix"), flush=True)
         self.waiter.until(lambda _: self.state("matrix")["data"][0][0] == "Alpha")
-        self.press("y", "matrix", "text")
+        self.press("y", "matrix", "fixed")
         self.waiter.until(lambda _: self.state("matrix")["data"][0][0] == "Changed")
 
     def test_custom_number_direct_editing(self):
@@ -272,23 +273,22 @@ class FeatureMatrixChromeTests(unittest.TestCase):
         ])
 
 
-    @unittest.expectedFailure
     def test_multicell_clipboard_undo_regression(self):
-        # On the current component this batch pastes successfully, but
-        # Ctrl+Z has not restored the original target values in Chrome.
-        # Keep it as an xfail regression rather than silently omitting undo.
+        # Focus a different cell to make sure undo reaches the grid rather
+        # than a text editor reopened by clicking the recently pasted cell.
         self.press("a", "target", "label")
         self.assertTrue(self.paste(
             "target", "Changed\t100\nAnother\t200", column="label"
         )["prevented"])
         self.waiter.until(lambda _: self.state("target")["data"][0][0] == "Changed")
-        self.press("z", "target", "label")
+        self.press("z", "target", "value", 1)
+        print("PASTE undo:", self.state("target"), flush=True)
         self.waiter.until(
             lambda _: self.state("target")["data"] == [
                 ["Target 1", 1], ["Target 2", 2]
             ]
         )
-        self.press("y", "target", "label")
+        self.press("y", "target", "value", 1)
         self.waiter.until(
             lambda _: self.state("target")["data"] == [
                 ["Changed", 100], ["Another", 200]

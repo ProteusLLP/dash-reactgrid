@@ -57,6 +57,8 @@ export const ServerVirtualGrid = (props) => {
   } = props;
 
   const viewportRef = useRef(null);
+  const setPropsRef = useRef(setProps);
+  setPropsRef.current = setProps;
   const [scrollTop, setScrollTop] = useState(0);
   const [virtualRowCount, setVirtualRowCount] = useState(suppliedRowCount);
   const [globalSelection, setGlobalSelection] = useState(null);
@@ -361,9 +363,9 @@ export const ServerVirtualGrid = (props) => {
   useEffect(() => {
     if (!globalSelection) return;
     const timer=window.setTimeout(
-      () => setProps({virtualSelection:globalSelection}), 200);
+      () => setPropsRef.current({virtualSelection:globalSelection}), 200);
     return () => window.clearTimeout(timer);
-  }, [globalSelection, setProps]);
+  }, [globalSelection]);
 
   // Prepare range data asynchronously via Dash, so the eventual Copy click
   // is a genuine user gesture and can use the synchronous clipboard event.
@@ -381,13 +383,14 @@ export const ServerVirtualGrid = (props) => {
       return;
     }
     const timer = window.setTimeout(() => {
+      if (copyPending.current) return;
       const request = copyRequestFor(virtualDatasetId,
         ++copyCounter.current, globalSelection);
       copyPending.current = request;
-      setProps({virtualRangeRequest:request});
+      setPropsRef.current({virtualRangeRequest:request});
     }, 150);
     return () => window.clearTimeout(timer);
-  }, [globalSelection, virtualDatasetId, props.editAck?.revision, setProps]);
+  }, [globalSelection, virtualDatasetId, props.editAck?.revision]);
 
   useEffect(() => {
     if (!matchesCopyResponse(virtualRangeData, copyPending.current)) return;
@@ -406,7 +409,7 @@ export const ServerVirtualGrid = (props) => {
         const request=copyRequestFor(virtualDatasetId,
           ++copyCounter.current,globalRef.current);
         copyPending.current=request;
-        setProps({virtualRangeRequest:request});
+        setPropsRef.current({virtualRangeRequest:request});
       }
       return;
     }

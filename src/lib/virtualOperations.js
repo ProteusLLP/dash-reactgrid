@@ -68,6 +68,8 @@ export const makeRangePaste = (text, selection, columns, totalRows, convert) => 
   if(selection.columnStart+width>columns.length)
     throw new Error("Paste extends beyond the final visible column");
   const target=columns.slice(selection.columnStart,selection.columnStart+width);
+  if (target.some((column) => column.nonEditable))
+    throw new Error("Cannot paste into a non-editable column");
   return {kind:"paste",start:selection.start,columnIds:target.map(x=>x.columnId),
     rows:parsed.map(row=>row.map((value,i)=>convert(target[i],value)))};
 };

@@ -389,6 +389,9 @@ on the order the grid shows. With `rowIds`:
 
 Other properties:
 
+- Columns are resizable by dragging the header boundary. New widths are
+  published to Dash's `columns` property. Set `resizable: false` in a
+  column definition (or `resizable=False` in Python's `Column`) to opt out.
 - `readOnly` locks every cell; `lockedCells` locks `[rowId, columnId]` pairs.
 - `hiddenColumns` hides columns by id; their values stay in `data`.
 - A column's `editableWhen` rules lock its cells unless the row's other values

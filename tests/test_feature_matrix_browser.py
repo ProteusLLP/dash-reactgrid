@@ -372,6 +372,25 @@ class FeatureMatrixChromeTests(unittest.TestCase):
         self.edit("matrix", "custom", "14.75")
         self.waiter.until(lambda _: self.state("matrix")["data"][0][2] == 14.75)
 
+    def test_paste_blank_cells_clears_text_and_number(self):
+        self.cell("target", "label", 0).click()
+        result = self.paste("target", "\t", column="label")
+        self.assertTrue(result["prevented"])
+        self.waiter.until(lambda _: self.state("target")["data"][0] == ["", None])
+        self.assertEqual(self.state("target")["data"][1], ["Target 2", 2])
+
+    def test_ghost_row_paste_respects_noneditable_column(self):
+        self.cell("matrix", "text", 2).click()
+        result = self.paste(
+            "matrix", "New row" + "\t" * 8 + "Forbidden",
+            column="text", index=2,
+        )
+        self.assertTrue(result["prevented"])
+        self.waiter.until(lambda _: len(self.state("matrix")["data"]) == 3)
+        self.assertEqual(self.state("matrix")["data"][-1][0], "New row")
+        self.assertNotEqual(self.state("matrix")["data"][-1][9], "Forbidden")
+        self.assertIsNone(self.state("matrix")["data"][-1][9])
+
     def test_excel_clipboard_paste_respects_types_locks_and_edit_rules(self):
         self.press("a")
         excel_tsv = (

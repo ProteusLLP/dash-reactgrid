@@ -14,6 +14,24 @@ const alignStyle = (align) => {
   }
 };
 
+/** ReactGrid requires resizable column metadata and a resize callback. */
+export const visibleGridColumns = (allColumns, hiddenColumns) => {
+  const hidden = new Set(hiddenColumns || []);
+  return allColumns.filter((column) => !hidden.has(column.columnId))
+    .map((column) => column.resizable === undefined
+      ? {...column, resizable: true} : column);
+};
+
+/** Persist resized widths without altering unaffected column objects. */
+export const resizeGridColumns = (columns, columnId, width, selectedColIds) => {
+  if (!Number.isFinite(width) || width < 20) return columns;
+  const ids = new Set(Array.isArray(selectedColIds) &&
+    selectedColIds.includes(columnId) ? selectedColIds : [columnId]);
+  return columns.map((column) =>
+    ids.has(column.columnId) && column.resizable !== false
+      ? {...column, width} : column);
+};
+
 /** Expensive Intl formatters and dropdown options are shared by all cells in a column. */
 export const compileGridColumns = (visible, allColumns, locale) => {
   const indexes = new Map(allColumns.map((column, idx) => [column.columnId, idx]));

@@ -272,9 +272,18 @@ class GlideDashBrowserTests(unittest.TestCase):
         self.click("numeric","a",0)
         self.type("9.5")
         self.chord(Keys.ENTER)
-        self.waiter.until(lambda _: self.state("numeric").get("data") and
-            self.state("numeric")["data"].get("__dash_reactgrid_ndarray__")==1 or
-            float(self.state("numeric")["data"][0][0])==9.5)
+
+        def accepted(_):
+            state=self.state("numeric")
+            data=state.get("data")
+            if isinstance(data,list) and data and data[0][0]==9.5:
+                return True
+            edits=state.get("edits") or {}
+            return any(e.get("kind")=="cell" and e.get("rowId")=="n0" and
+                e.get("columnId")=="a" and e.get("value")==9.5
+                for e in edits.get("edits",[]))
+
+        self.waiter.until(accepted)
 
 
 if __name__=="__main__":

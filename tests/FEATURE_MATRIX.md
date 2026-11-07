@@ -7,7 +7,7 @@ offscreen range editing, and recovery tests.
 
 | Area | Model/contract | Chrome |
 | --- | --- | --- |
-| Text, number, customnumber, percent, dropdown, checkbox, date, time | Render descriptors, edits, parsing, blank values and serialization | Render and edit all types, including direct typing, keyboard dropdown choices and checkbox Space; paste all types |
+| Text, number, customnumber, percent, dropdown, checkbox, date, time | Render descriptors, edits, parsing, blank values and serialization | Render and edit all types, including direct typing and keyboard navigation in normal and virtual modes, dropdown choices and checkbox Space; paste all types |
 | Column formatting and visibility | Type-safe values, styles, formatters, original indices, hidden columns | Rendered classes, hidden values retained after paste |
 | Editable rules | Conditional predicates, locked cells, read-only, noneditable columns | Rejected keyboard typing and paste into locked/conditional/read-only cells |
 | Clipboard | Excel quoted TSV (tabs, Unicode, embedded line breaks/quotes), ReactGrid copy values, hidden column mapping | Ctrl+A/Ctrl+C, native Ctrl+V, synthetic Excel HTML + TSV, grid-to-grid paste |
@@ -99,6 +99,26 @@ movement after editing.
 
 Desktop Microsoft Excel itself is not driven by Chrome CI. Native Chrome
 clipboard operations and Excel-compatible TSV/HTML interchange are covered.
+
+## Date-only values and international locales
+
+Date columns publish **calendar date strings** in `YYYY-MM-DD` format in
+both the `data` and `edits` payloads. They do not publish the UTC
+representation of local midnight, which can have a different calendar day.
+When displayed again, these strings are parsed as local calendar dates;
+time columns continue to preserve full timestamps.
+
+Keyboard entry accepts ISO `YYYY-MM-DD` regardless of browser locale, and
+numeric dates in the order reported by `Intl.DateTimeFormat.formatToParts`.
+This includes year-first dates such as `2026/11/14` in `ja-JP` as well
+as the day-first and month-first formats. Invalid dates are rejected.
+
+Chrome tests exercise both Pacific/Auckland and America/Los_Angeles, checking
+that the published date and rendered day remain the same. A Japanese-locale
+browser test covers year-first keyboard entry. A stateless server-virtualised
+fixture checks that text, date and time editors behave consistently in
+continuous scrolling mode, including the sparse edit payload. Each grid owns
+its own editor instances, preventing typing state from leaking between grids.
 
 ## Resolved regression cases
 

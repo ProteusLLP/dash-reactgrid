@@ -148,7 +148,8 @@ export const GlideGridBridge = ({
       rowSelect={enableRowSelection?"multi":"none"}
       columnSelect={enableColumnSelection?"multi":"none"}
       freezeColumns={Math.max(0,stickyLeftColumns||0)}
-      fillHandle={Boolean(enableFillHandle)} smoothScrollY={false}/>
+      fillHandle={Boolean(enableFillHandle)} editOnType={true}
+      smoothScrollY={false}/>
     {menu && <div className="drg-glide-menu" role="menu" style={{
       position:"absolute",left:menu.x,top:menu.y,zIndex:12,
       background:"white",border:"1px solid #ccd",boxShadow:"0 3px 12px #0002",

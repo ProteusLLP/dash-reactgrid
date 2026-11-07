@@ -35,66 +35,118 @@ cells in each column. Edits use copy-on-write and only clone changed rows.
 For smaller grids, `disableVirtualScrolling=False` can reduce DOM overhead,
 although it does not reduce ReactGrid's internal cell matrix.
 
-### Transmit only sparse edits
+### Reliable sparse-edit transmission
 
-For large datasets, enable `transmitSparseEdits=True`. The browser keeps the
-edited table (including newly added or deleted rows) in local state, but
-`setProps` publishes **only `edits`**, not `data` or `rowIds`. The
-default is `False`, preserving the previous full-data behaviour.
+For large grids, enable `transmitSparseEdits=True` with a stable `id`,
+`editDatasetId`, and a complete, stable `rowIds` array. The browser keeps
+edited data in memory, but **never returns the full `data` property** on
+edits. The default remains `transmitSparseEdits=False`, which retains
+the original full-data callback behaviour.
 
 ```python
-from dash import Input, Output, callback, html
+from dash import Input, Output, callback
 from dash_reactgrid import DashReactGrid
+from examples.sparse_edit_server import SparseGridStore
+
+store = SparseGridStore(
+    "grid-edits.sqlite3", "pricing-v1", columns,
+    new_row=new_row,
+)
+# Seed only once when creating a new dataset. After that, always load
+# the authoritative snapshot from your persistent database.
+store.seed_once(initial_data, initial_row_ids)
+snapshot = store.read()
 
 grid = DashReactGrid(
     id="grid",
     columns=columns,
-    data=data,
-    rowIds=row_ids,             # recommended for stable edit identifiers
-    rowPageSize=250,            # optional for large tables
+    data=snapshot["data"],
+    rowIds=snapshot["rowIds"],
+    newRow=new_row,
+    isExtendable=True,
+    rowPageSize=250,
     transmitSparseEdits=True,
+    editDatasetId="pricing-v1",
 )
-# Add grid and html.Div(id="edit-status") to your layout.
 
 @callback(
-    Output("edit-status", "children"),
+    Output("grid", "editAck"),
     Input("grid", "edits"),
     prevent_initial_call=True,
 )
-def save_edits(event):
-    # Persist every {kind: "cell"/"add"/"remove", ...} in event["edits"]
-    # to your server-side data store using its stable row IDs.
-    # "seq" increases with each edit batch from this component instance.
-    persist_changes(event["edits"])  # application-specific function
-    return f"Saved edit batch {event['seq']}"
+def save_edits(batch):
+    return store.apply(batch)
 ```
 
-The `edits` payload retains its existing format:
-`{"seq": 4, "edits": [{"kind":"cell","rowId":"r2","columnId":"value","value":2.5}]}`.
-Row additions emit an `add` event with a generated row ID, followed by the
-cell edits. Row deletions emit `remove` with a list of row IDs. The server
-must apply the same `newRow` template on an `add` event. Undo and redo
-publish ordinary inverse cell edits. The browser retains the updated values
-across selection changes and paging.
+`examples/sparse_edit_server.py` demonstrates a **transactional** SQLite
+backend. An edit event has this shape:
 
-**Important:** The `data` prop is the authoritative starting snapshot, not a
-live representation of browser edits in sparse mode. A subsequent server
-update to `data` or `rowIds` replaces the browser's local table, including
-any unsynchronised edits, and clears undo history. Do not echo stale `data`
-from an edit callback. The `data` prop is still initially sent in full,
-and full data exports must come from your server's own store. Ensure edits
-are saved reliably and processed in `seq` order; the component exposes the
-latest edit batch, not an acknowledged queue of all outstanding changes.
-Avoid including `State("grid", "data")` in callbacks processing the edits,
-because doing so transmits the full table again. If Dash persistence is used,
-consider `persisted_props=["columns"]`, since `data` does not represent
-the edited local table.
+```json
+{
+  "datasetId": "pricing-v1",
+  "streamId": "cryptographically-generated-per-editor-id",
+  "seq": 12,
+  "attempt": 1,
+  "edits": [
+    {"kind": "cell", "rowId": "r2", "columnId": "amount", "value": 2.5}
+  ]
+}
+```
 
-**Remaining scalability limitation:** This is client-side paging. A large
-initial `data` property is still transferred to Dash/the browser. For
-datasets beyond client memory, use server-provided page data and a server-side
-edit store. Select-all, clipboard copy and paste are confined to the
-current page; global export belongs on the server.
+After committing the whole batch (including its idempotency receipt) in the
+same database transaction, the callback returns:
+
+```json
+{
+  "datasetId": "pricing-v1",
+  "streamId": "cryptographically-generated-per-editor-id",
+  "seq": 12,
+  "status": "ok"
+}
+```
+
+Only a matching `status: "ok"` ACK removes that batch from the browser's
+outbox. The component sends one batch at a time, in order. Unacknowledged
+batches are retained in browser `sessionStorage`, retried automatically
+with the same `streamId` and `seq` but an incremented `attempt`, and
+replayed locally after a reload of the same browser tab. The server must
+deduplicate by `(datasetId, streamId, seq)`, verify the payload has not
+changed, and store the receipt atomically with the edits. That prevents
+duplicate inserts/deletes if the server committed but its ACK was lost.
+The component displays unsaved counts and blocks further edits on a server
+conflict, corrupt storage, or exhausted storage quota rather than dropping
+pending changes. Changes made through undo/redo are new ordered batches.
+
+Use `status: "retry"` for temporary failures, allowing automatic retries,
+and `status: "error"` or `"conflict"` for problems requiring intervention
+(the user is shown the reason and can retry after it has been resolved).
+
+**Operational requirements:** The Dash callback must not take
+`State("grid", "data")`, since that would transmit the entire table.
+The callback must access a durable shared database and return an ACK only
+after a committed transaction. Do not construct the store per request,
+reset server data after each edit, echo stale `data`, or return an ACK from
+a fire-and-forget task. On page reload, load the latest authoritative
+dataset from the store. `data` and `rowIds` prop updates are authoritative:
+unacknowledged batches are replayed over them, or editing is blocked if they
+cannot be reconciled. A persistent user/editor identity and application
+authorization are separate concerns; do not trust a client-supplied
+`datasetId` to authorize access.
+
+**Limits:** `sessionStorage` normally survives reloads in the same tab,
+but not closing that tab or clearing browser data. The component warns
+before navigating away while edits remain unacknowledged, but no browser
+storage can provide a guaranteed recovery service. The example uses
+single-editor or last-writer-wins semantics across different streams; it
+does **not** implement collaborative editing conflict resolution. If
+multiple concurrent editors need to preserve all changes, add optimistic
+row versions and conflict handling in the backend. Large initial datasets
+are still fully transferred to the browser; true server-side paging remains
+separate work. Full-table exports should come from the server.
+
+In sparse mode, Dash persistence should generally use
+`persisted_props=["columns"]`, since the `data` prop is an initial
+snapshot rather than the current edited table.
 
 ## Editing with stable row ids
 

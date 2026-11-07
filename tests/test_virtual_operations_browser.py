@@ -143,6 +143,18 @@ def test():
             wait.until(lambda _: store.row_count()==998)
             wait.until(lambda _: synced())
 
+            # The undo receipt stack is retained across a same-tab reload.
+            # Undo/redo must still refer to the original server journal.
+            driver.refresh()
+            wait.until(lambda _: "998 rows" in driver.find_element(
+                By.CSS_SELECTOR,"#grid .drg-selection-count").text)
+            click("Undo")
+            wait.until(lambda _: store.row_count()==1001)
+            wait.until(lambda _: synced())
+            click("Redo")
+            wait.until(lambda _: store.row_count()==998)
+            wait.until(lambda _: synced())
+
             click("Select all")
             wait.until(lambda _: "998 rows selected" in driver.find_element(
                 By.CSS_SELECTOR,"#grid .drg-selection-count").text)

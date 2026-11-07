@@ -121,7 +121,7 @@ export const ServerVirtualGrid = (props) => {
     columns: allColumns, newRow: props.newRow, setProps, windowed: true,
   });
   // Inserting or deleting shifts row offsets; pause further editing until
-  // the database commits and the viewport has been invalidated.
+  // the application acknowledges the change and the viewport is invalidated.
   const pendingStructure = Boolean(reliable.outbox?.queue.some((batch) =>
     batch.edits.some((edit) => !["cell", "paste"].includes(edit.kind))));
   const editingBlocked = readOnly || !props.transmitSparseEdits ||

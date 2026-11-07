@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { compileGridColumns, buildGridRows, pageBounds } from "../gridRows.js";
+import { compileGridColumns, buildGridRows, pageBounds, canPasteOnPage } from "../gridRows.js";
 import { GHOST_ROW_ID } from "../model.js";
 
 const columns = [
@@ -103,4 +103,13 @@ test("a 100k-row source supplies only one page to ReactGrid's cell builder", () 
   assert.equal(built.rows.length, 251);
   assert.equal(built.rows[1].rowId, "row-95000");
   assert.equal(built.rows.at(-1).rowId, "row-95249");
+});
+
+test("pasting never writes onto the next hidden page", () => {
+  const first = pageBounds(1000, 250, 0);
+  assert.equal(canPasteOnPage(249, first, 250), true);
+  assert.equal(canPasteOnPage(250, first, 250), false);
+  const last = pageBounds(1001, 250, 4);
+  assert.equal(canPasteOnPage(1001, last, 250), true, "extendable tables can paste new rows on the last page");
+  assert.equal(canPasteOnPage(9999, first, null), true, "unpaged tables retain normal paste behaviour");
 });

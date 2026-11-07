@@ -403,6 +403,20 @@ Other properties:
 - Every cell carries the class `rg-col-<columnId>`.
 - Pasted text without a `%` goes into a percent column as a fraction (`0.35`
   is 35%), as Excel and this grid copy values; `35%` is 35% too.
+- Ctrl+Arrow jumps to the first or last data row/visible column; Ctrl+Shift+Arrow
+  extends the selection to that boundary. For server-virtualized grids these
+  refer to absolute dataset boundaries, without fetching all rows.
+- Ctrl+D fills down from the first selected row. With just one selected cell,
+  it copies the value from the cell immediately above. Locked and non-editable
+  destinations are preserved; each fill is one undoable edit batch.
+- To enter one value into several selected cells, select the cells, type in the
+  active cell and press Shift+Enter. Target columns use their own value types;
+  a single-cell Shift+Enter retains ordinary upward navigation.
+- Keyboard fill and multi-cell edits are limited to 20,000 cells per operation;
+  server-virtualized operations also have a 1,000-row limit. When the source
+  row of an offscreen server-virtualized fill is not loaded, prepare the
+  selection for copying before using Ctrl+D. Host applications must enforce
+  row-level edit permissions when accepting sparse commands.
 - Ctrl+Z and Ctrl+Y undo and redo cell edits.
 
 The data model (`src/lib/model.js`) has no React in it; test it with

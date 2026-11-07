@@ -12,6 +12,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import time
 import unittest
 import urllib.request
@@ -31,11 +32,15 @@ URL = f"http://127.0.0.1:{PORT}"
 class FeatureMatrixChromeTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        # The Dash fixture can emit more request logs than a PIPE buffer can
+        # hold during a long browser suite. A blocked logging write would
+        # deadlock the Dash server and make Selenium calls appear to hang.
+        cls.server_log = tempfile.TemporaryFile(mode="w+b")
         cls.server = subprocess.Popen(
             [sys.executable, "-m", "tests.feature_matrix_browser_app"],
             cwd=ROOT,
             env={**os.environ, "GRID_MATRIX_BROWSER_PORT": str(PORT)},
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+            stdout=cls.server_log, stderr=subprocess.STDOUT,
         )
         cls.driver = None
         try:
@@ -73,14 +78,24 @@ class FeatureMatrixChromeTests(unittest.TestCase):
         if getattr(cls, "server", None):
             cls.server.terminate()
             try:
-                output = cls.server.communicate(timeout=5)[0]
+                cls.server.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 cls.server.kill()
-                output = cls.server.communicate()[0]
-            if output:
-                print("Feature matrix Dash output:", output[-4000:])
+                cls.server.wait()
+            if getattr(cls, "server_log", None):
+                cls.server_log.seek(0, os.SEEK_END)
+                size = cls.server_log.tell()
+                cls.server_log.seek(max(0, size - 4000))
+                output = cls.server_log.read().decode("utf-8", errors="replace")
+                cls.server_log.close()
+                if output:
+                    print("Feature matrix Dash output:", output)
 
     def setUp(self):
+        # The virtual fixture intentionally has no acknowledgement callback.
+        # Do not carry its durable outbox into the next independent test.
+        if self.driver.current_url.startswith(URL):
+            self.driver.execute_script("window.sessionStorage.clear()")
         self.driver.get(URL)
         self.waiter.until(
             lambda d: len(d.find_elements(By.CSS_SELECTOR, "#matrix .rg-col-text.rg-cell")) >= 2
@@ -186,6 +201,120 @@ class FeatureMatrixChromeTests(unittest.TestCase):
         WebDriverWait(self.driver, 5).until(lambda _: self.state(grid).get("selectedCell") == {
             "rowId": row_id, "columnId": column_id,
         })
+
+    def chord(self, *keys):
+        action = ActionChains(self.driver)
+        for modifier in [Keys.CONTROL, Keys.SHIFT]:
+            if modifier in keys:
+                action.key_down(modifier)
+        for key in keys:
+            if key not in (Keys.CONTROL, Keys.SHIFT):
+                action.send_keys(key)
+        for modifier in [Keys.SHIFT, Keys.CONTROL]:
+            if modifier in keys:
+                action.key_up(modifier)
+        action.perform()
+
+    def test_ctrl_arrows_select_and_fill_down_with_undo(self):
+        self.cell("target", "label", 0).click()
+        self.chord(Keys.CONTROL, Keys.ARROW_DOWN)
+        self.expect_focus("target", "target-2", "label")
+        self.chord(Keys.CONTROL, Keys.ARROW_UP)
+        self.expect_focus("target", "target-1", "label")
+        self.chord(Keys.CONTROL, Keys.ARROW_RIGHT)
+        self.expect_focus("target", "target-1", "value")
+        self.chord(Keys.CONTROL, Keys.ARROW_LEFT)
+        self.expect_focus("target", "target-1", "label")
+        self.chord(Keys.CONTROL, Keys.SHIFT, Keys.ARROW_DOWN)
+        self.waiter.until(
+            lambda _: self.state("target").get("selectedRowIds") ==
+                ["target-1", "target-2"]
+        )
+        copied = self.copy("target", "label")
+        self.assertEqual(copied["plain"], "Target 1\nTarget 2")
+        self.chord(Keys.CONTROL, "d")
+        self.waiter.until(
+            lambda _: self.state("target")["data"][1][0] == "Target 1"
+        )
+        self.chord(Keys.CONTROL, "z")
+        self.waiter.until(
+            lambda _: self.state("target")["data"][1][0] == "Target 2"
+        )
+
+    def test_shift_enter_applies_one_edit_to_selected_cells(self):
+        self.cell("target", "label", 0).click()
+        self.chord(Keys.CONTROL, Keys.SHIFT, Keys.ARROW_DOWN)
+        self.type_in_focused("Broadcast")
+        self.chord(Keys.SHIFT, Keys.ENTER)
+        self.waiter.until(
+            lambda _: [row[0] for row in self.state("target")["data"]] ==
+                ["Broadcast", "Broadcast"]
+        )
+        self.assertEqual(
+            [row[1] for row in self.state("target")["data"]], [1, 2]
+        )
+
+    def test_ctrl_arrow_navigates_across_paged_table(self):
+        self.cell("paged", "label", 0).click()
+        self.chord(Keys.CONTROL, Keys.ARROW_DOWN)
+        self.expect_focus("paged", "p10", "label")
+        self.chord(Keys.CONTROL, Keys.SHIFT, Keys.ARROW_UP)
+        self.waiter.until(lambda _: self.state("paged").get("selectedRowIds") ==
+            [f"p{i}" for i in range(11)])
+        copied = self.copy("paged", "label", 0)
+        self.assertEqual(copied["plain"].splitlines(),
+            [f"Page row {i}" for i in range(11)])
+        self.chord(Keys.CONTROL, Keys.ARROW_UP)
+        self.expect_focus("paged", "p0", "label")
+
+    def test_server_virtual_ctrl_arrow_and_range_selection(self):
+        self.cell("review-virtual", "label", 0).click()
+        self.chord(Keys.CONTROL, Keys.ARROW_DOWN)
+        self.waiter.until(lambda _: "Second" in
+            self.driver.find_element(By.ID, "review-virtual").text)
+        self.chord(Keys.CONTROL, Keys.SHIFT, Keys.ARROW_RIGHT)
+        self.waiter.until(lambda _: len(self.driver.find_elements(
+            By.CSS_SELECTOR, "#review-virtual .rg-virtual-selected"
+        )) >= 2)
+
+    def test_server_virtual_fill_down_uses_sparse_range_command(self):
+        self.cell("review-virtual", "label", 0).click()
+        self.chord(Keys.CONTROL, Keys.SHIFT, Keys.ARROW_DOWN)
+        self.chord(Keys.CONTROL, "d")
+
+        def emitted():
+            try:
+                batch = json.loads(self.driver.find_element(
+                    By.ID, "review-virtual-edits").text)
+                return batch.get("edits") == [{
+                    "kind": "paste", "start": 1,
+                    "columnIds": ["label"],
+                    "rows": [["Existing"]],
+                }]
+            except (ValueError, AttributeError):
+                return False
+
+        self.waiter.until(lambda _: emitted())
+
+    def test_server_virtual_shift_enter_submits_multi_cell_paste(self):
+        self.cell("review-virtual", "label", 0).click()
+        self.chord(Keys.CONTROL, Keys.SHIFT, Keys.ARROW_DOWN)
+        self.type_in_focused("Shared")
+        self.chord(Keys.SHIFT, Keys.ENTER)
+
+        def emitted():
+            try:
+                batch = json.loads(self.driver.find_element(
+                    By.ID, "review-virtual-edits").text)
+                return batch.get("edits") == [{
+                    "kind": "paste", "start": 0,
+                    "columnIds": ["label"],
+                    "rows": [["Shared"], ["Shared"]],
+                }]
+            except (ValueError, AttributeError):
+                return False
+
+        self.waiter.until(lambda _: emitted())
 
     def test_direct_typing_and_arrow_navigation_all_text_numeric_percent(self):
         cases = [

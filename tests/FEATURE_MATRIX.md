@@ -143,3 +143,15 @@ The distinction between **grid history shortcuts** and **native editor
 shortcuts** is important: an active input should retain its own text-selection
 and undo behaviour until editing has been committed and focus has returned to
 the grid.
+
+## Spreadsheet navigation and range editing
+
+- Ctrl+Arrow jumps to data/column boundaries; Ctrl+Shift+Arrow extends a
+  rectangular selection in ordinary, paged and server-virtualized views.
+- Ctrl+D copies the first selected row down, or copies from the preceding
+  row when only one cell is selected. Locked cells and conditional edit rules
+  remain enforced, and normal-mode undo treats it as one edit.
+- Shift+Enter in a multi-cell selection applies the edited cell value across
+  eligible destinations; single-cell Shift+Enter retains upward navigation.
+- JavaScript edge/range tests cover reversed selections, cross-page index
+  conversion, TSV clipboard, type conversion, limits and protected cells.

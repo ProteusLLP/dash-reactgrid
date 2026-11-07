@@ -19,12 +19,13 @@ import {
 import {
   boundedSelection, extendSelection, copyRequestFor, matchesCopyResponse,
   selectedColumnIds,
-  makeRangePaste, historyStorageKey, initialHistory, loadHistory,
+  makeRangePaste, parseClipboardTsv, historyStorageKey, initialHistory, loadHistory,
   saveHistory, nextHistory, MAX_RANGE_ROWS,
 } from "./virtualOperations";
 import { numberParser } from "./CustomNumberCell";
 import { percentParser } from "./PercentCell";
 import { createCellTemplates } from "./cellTemplates";
+import { sheetEdge, keyboardRectangle, keyboardArea, MAX_KEYBOARD_EDIT_CELLS } from "./spreadsheetKeyboard";
 
 const parsers = { number: numberParser, percent: percentParser };
 const EMPTY_DATA = [];
@@ -89,6 +90,11 @@ export const ServerVirtualGrid = (props) => {
   const requestCounter = useRef(0);
   const selection = useRef([]);
   const focused = useRef(null);
+  const keyboardAnchor = useRef(null);
+  const keyboardCursor = useRef(null);
+  const [keyboardFocus, setKeyboardFocus] = useState(null);
+  const multiCommit = useRef(false);
+  const suppressNativeSelection = useRef(false);
 
   const columns = useMemo(() =>
     visibleGridColumns(allColumns, hiddenColumns), [allColumns, hiddenColumns]);
@@ -473,6 +479,87 @@ export const ServerVirtualGrid = (props) => {
       }).toString()
     : null;
 
+  const submitRepeated = (sel, values, start = sel.start, end = sel.end) => {
+    const count=end-start;
+    const target=columns.slice(sel.columnStart,sel.columnEnd);
+    if (count<1) return;
+    if (count>MAX_RANGE_ROWS || count*target.length>MAX_KEYBOARD_EDIT_CELLS) {
+      setCommandError("Fill and multi-cell editing are limited to 1,000 rows and 20,000 cells");
+      return;
+    }
+    if (target.some((col)=>col.nonEditable)) {
+      setCommandError("Cannot change a selection containing non-editable columns");
+      return;
+    }
+    submitOperation([{kind:"paste",start,columnIds:target.map(c=>c.columnId),
+      rows:Array.from({length:count},()=>values.slice())}]);
+  };
+
+  const fillDown = () => {
+    if (editingBlocked) return;
+    const sel=globalSelection || globalRef.current;
+    if (!sel) return;
+    const multiple=sel.end-sel.start>1;
+    const sourceRow=multiple ? sel.start : sel.start-1;
+    if (sourceRow<0) return;
+    const target=columns.slice(sel.columnStart,sel.columnEnd);
+    let source=null;
+    if (page && sourceRow>=range.start &&
+        sourceRow<range.start+page.data.length) {
+      const values=page.data[sourceRow-range.start];
+      source=target.map((col)=>values[allColumns.findIndex(c=>c.columnId===col.columnId)]);
+    } else if (multiple && globalSelection &&
+               typeof copyText==="string" && reliable.pending===0 &&
+               globalSelection.start===sel.start &&
+               globalSelection.end===sel.end &&
+               globalSelection.columnStart===sel.columnStart &&
+               globalSelection.columnEnd===sel.columnEnd) {
+      try {
+        const first=parseClipboardTsv(copyText)[0];
+        if (first && first.length===target.length)
+          source=first.map((value,i)=>pastedValue(target[i],
+            {type:"text",text:value},parsers));
+      } catch (error) {
+        setCommandError(error.message);
+        return;
+      }
+    }
+    if (!source) {
+      setCommandError("Fill down needs the source row loaded or prepared for copying");
+      return;
+    }
+    submitRepeated(sel,source,multiple ? sel.start+1 : sel.start,sel.end);
+  };
+
+  const navigateToEdge = (key,shift) => {
+    if (!virtualRowCount) return;
+    const focusedPlace=focused.current
+      ? selectionAt(focused.current.rowId,focused.current.columnId) : null;
+    const current=keyboardCursor.current || focusedPlace ||
+      (globalRef.current
+        ? {row:globalRef.current.start,col:globalRef.current.columnStart} : null);
+    const target=sheetEdge(key,current,virtualRowCount,columns.length);
+    if (!target) return;
+    const anchor=shift ? keyboardAnchor.current || focusedPlace || current : target;
+    keyboardAnchor.current=anchor;
+    keyboardCursor.current=target;
+    const next=keyboardRectangle(anchor,target);
+    suppressNativeSelection.current=true;
+    selectGlobal(boundedSelection(next.start,next.end,next.columnStart,
+      next.columnEnd,virtualRowCount,columns.length));
+    if (!shift) {
+      setKeyboardFocus(target);
+      const physicalHeight=Math.min(virtualRowCount*virtualRowHeight,20000000);
+      const maximum=Math.max(0,physicalHeight-virtualViewportHeight);
+      if (key==="ArrowDown" || key==="ArrowUp") {
+        const position=target.row===0 ? 0 : maximum;
+        if (viewportRef.current) viewportRef.current.scrollTop=position;
+        setScrollTop(position);
+      }
+    }
+    setCommandError(null);
+  };
+
   const publishChanges = (values) => {
     if (!page || editingBlocked) return;
     const allowed = values.filter((change) => {
@@ -495,6 +582,21 @@ export const ServerVirtualGrid = (props) => {
   const latest = useRef(null);
   latest.current = {
     handleChanges: (changes) => {
+      if (multiCommit.current && changes.length===1) {
+        multiCommit.current=false;
+        const sel=globalSelection || globalRef.current;
+        const change=changes[0];
+        const source=columnById.get(change.columnId);
+        if (sel && source && keyboardArea(sel)>1) {
+          const raw=valueOf(source,change.newCell);
+          const target=columns.slice(sel.columnStart,sel.columnEnd);
+          const values=target.map((col)=>col.type===source.type
+            ? raw : pastedValue(col,{type:"text",text:raw==null?"":String(raw)},parsers));
+          submitRepeated(sel,values);
+          return;
+        }
+      }
+      multiCommit.current=false;
       const edits = [];
       changes.forEach((change) => {
         const column = columnById.get(change.columnId);
@@ -514,6 +616,7 @@ export const ServerVirtualGrid = (props) => {
       publishChanges(edits);
     },
     selectionChanged: (ranges) => {
+      if (suppressNativeSelection.current) return;
       selection.current = ranges;
       // ReactGrid's pointer and double-click handlers are sensitive to
       // rerendering their rows during selection. Keep ordinary selection
@@ -648,10 +751,32 @@ export const ServerVirtualGrid = (props) => {
   };
 
   const handleKey = (e) => {
-    if (isCellEditorTarget(e.target)) return;
+    if (isCellEditorTarget(e.target)) {
+      if (e.key==="Enter" && e.shiftKey && !e.ctrlKey && !e.metaKey &&
+          !e.altKey) multiCommit.current=true;
+      return;
+    }
     const modified=(e.ctrlKey || e.metaKey) && !e.altKey;
+    if (!modified && !e.shiftKey &&
+        ["ArrowUp","ArrowDown","ArrowLeft","ArrowRight","Tab","Enter"].includes(e.key)) {
+      keyboardAnchor.current=null;
+      keyboardCursor.current=null;
+      suppressNativeSelection.current=false;
+      setKeyboardFocus(null);
+    }
+    if (modified && ["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.key)) {
+      e.preventDefault(); e.stopPropagation();
+      navigateToEdge(e.key,e.shiftKey);
+      return;
+    }
     if (modified) {
       switch(e.key.toLowerCase()) {
+        case "d":
+          if (!e.shiftKey) {
+            e.preventDefault();e.stopPropagation();
+            fillDown();
+          }
+          return;
         case "a":
           e.preventDefault();
           e.stopPropagation();
@@ -679,12 +804,18 @@ export const ServerVirtualGrid = (props) => {
     }
   };
 
+  const keyboardFocusLocation = keyboardFocus && page &&
+    keyboardFocus.row>=range.start &&
+    keyboardFocus.row<range.start+page.rowIds.length
+    ? {rowId:page.rowIds[keyboardFocus.row-range.start],
+        columnId:columns[keyboardFocus.col]?.columnId} : undefined;
   const grid = useMemo(() => rows.length ? (
     <ReactGrid key={String(virtualDatasetId) + ":" + range.start + ":" + range.end}
       rows={rows} columns={columns}
       onCellsChanged={onCellsChanged}
       onSelectionChanged={onSelectionChanged}
       onFocusLocationChanged={onFocusLocationChanged}
+      focusLocation={keyboardFocusLocation}
       onColumnResized={onColumnResized}
       onContextMenu={onContextMenu}
       highlights={visibleHighlights}
@@ -702,7 +833,8 @@ export const ServerVirtualGrid = (props) => {
   [rows,columns,onCellsChanged,onSelectionChanged,onFocusLocationChanged,onContextMenu,
    visibleHighlights,props.stickyLeftColumns,props.stickyRightColumns,
    props.enableRangeSelection,props.enableRowSelection,props.enableColumnSelection,
-   props.enableFillHandle,editingBlocked,dropdownMenuPortal,cellTemplates]);
+   props.enableFillHandle,editingBlocked,dropdownMenuPortal,cellTemplates,
+   keyboardFocusLocation?.rowId,keyboardFocusLocation?.columnId]);
 
   if (!valid) return <div role="alert" className="drg-virtual-error">
     Server virtualization needs a stable virtualDatasetId, nonnegative virtualRowCount,
@@ -756,7 +888,13 @@ export const ServerVirtualGrid = (props) => {
       onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
       onCopy={handleCopy} onPasteCapture={handlePaste}
       onKeyDownCapture={handleKey}
-      onPointerDownCapture={(e) => {shiftPointer.current=e.shiftKey;}}
+      onPointerDownCapture={(e) => {
+        shiftPointer.current=e.shiftKey;
+        keyboardAnchor.current=null;
+        keyboardCursor.current=null;
+        suppressNativeSelection.current=false;
+        setKeyboardFocus(null);
+      }}
       onPointerUpCapture={() => {shiftPointer.current=false;}}
       style={{height:virtualViewportHeight,overflowY:"auto",overflowX:"auto"}}>
       {grid}

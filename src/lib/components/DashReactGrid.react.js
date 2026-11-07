@@ -27,6 +27,11 @@ import {
 } from '../model';
 import { clearSelectedCells, focusedRange, isCellEditorTarget, pasteStartRow, selectAllRanges, selectionText } from '../keyboard';
 import { parseClipboardTsv } from '../virtualOperations';
+import {
+  sheetEdge, keyboardRectangle, keyboardArea, nativeRectangle,
+  publicKeyboardRange, keyboardHighlights, fillDownChanges,
+  multiEditChanges, keyboardClipboardText, MAX_KEYBOARD_EDIT_CELLS,
+} from '../spreadsheetKeyboard';
 
 const locale = window.navigator.language
 const parsers = { number: numberParser, percent: percentParser }
@@ -93,6 +98,16 @@ const ReactGridDataHandler = (props) => {
   const [history, setHistory] = useState(NO_HISTORY)
   const selection = useRef(null)
   const focused = useRef(null)
+  const shortcutRange = useRef(null)
+  const shortcutAnchor = useRef(null)
+  const shortcutCursor = useRef(null)
+  const suppressNativeSelection = useRef(false)
+  const [shortcutHighlight, setShortcutHighlight] = useState(null)
+  const [jumpLocation, setJumpLocation] = useState(null)
+  const keyboardHost = useRef(null)
+  const [keyboardError, setKeyboardError] = useState(null)
+  const multiCommit = useRef(false)
+  const lastMultiSelection = useRef(null)
 
   // The server sends new columns only when it remounts the table, which
   // starts a new history; the grid's own changes never touch them.
@@ -140,12 +155,14 @@ const ReactGridDataHandler = (props) => {
   // Highlights may reference rows on other pages. Passing them directly
   // makes ReactGrid reject them as inconsistent with its current cell matrix.
   const pageHighlights = useMemo(() => {
-    if (!pageSize || !highlights?.length) return highlights
     const ids = new Set(rows.map((row) => row.rowId))
     const visible = new Set(columnIds)
-    return highlights.filter((highlight) =>
+    const supplied = (highlights || []).filter((highlight) =>
       ids.has(highlight.rowId) && visible.has(highlight.columnId))
-  }, [highlights, pageSize, rows, columns])
+    const selected = keyboardHighlights(shortcutHighlight, table.rowIds,
+      columns, pageStart, pageEnd)
+    return [...supplied, ...selected]
+  }, [highlights, pageStart, pageEnd, rows, columns, shortcutHighlight, table.rowIds])
 
   // ReactGrid fails when nothing is left to scroll, as when every column of
   // a one-column table is sticky, so at least one row and column scroll.
@@ -154,11 +171,28 @@ const ReactGridDataHandler = (props) => {
   /** Commit a batch only if it was persisted to the reliable outbox. */
   const publish = (next) => sync.publish(next, tracked)
 
+  const canEdit = (rowId, column, values) =>
+    !isLocked(rowId, column.columnId, column) &&
+    rulesHold(column, values, allColumnIds)
+
   /** Apply value changes, remembering cell edits for undo. */
   const change = (changes, remember = true) => {
     if (editingBlocked) return
     const currentTable = tableRef.current
-    const next = applyChanges(currentTable, changes, { columns: allColumns, newRow })
+    const rowIndexes = rowIndexesOf(currentTable.rowIds)
+    const allowed = changes.filter(({rowId, columnId}) => {
+      const index = allColumnIndex.get(columnId)
+      if (index === undefined) return false
+      const values = rowId === GHOST_ROW_ID ||
+        (rowId && typeof rowId === "object")
+        ? blankRow(allColumns, newRow)
+        : currentTable.data[rowIndexes.get(rowId)]
+      return values && canEdit(
+        rowId && typeof rowId === "object" ? GHOST_ROW_ID : rowId,
+        allColumns[index], values)
+    })
+    if (!allowed.length) return
+    const next = applyChanges(currentTable, allowed, { columns: allColumns, newRow })
     if (!publish(next)) return
     if (pageSize && next.edits.some((edit) => edit.kind === "add") &&
         next.data.length > (page + 1) * pageSize) {
@@ -184,6 +218,32 @@ const ReactGridDataHandler = (props) => {
   }
 
   const handleChanges = (cellChanges) => {
+    if (multiCommit.current && cellChanges.length === 1) {
+      multiCommit.current = false
+      const changed = cellChanges[0]
+      const source = columns[displayedColumnIndex.get(changed.columnId)]
+      const sourceRow = rowIndexesOf(table.rowIds).get(changed.rowId)
+      const rect = shortcutRange.current ||
+        lastMultiSelection.current ||
+        nativeRectangle(selection.current, pageStart, table.data.length,
+          columns.length)
+      if (source && rect && sourceRow >= rect.start && sourceRow < rect.end &&
+          keyboardArea(rect) > 1) {
+        try {
+          const changes = multiEditChanges(rect, changed, source,
+            (row) => row < table.data.length
+              ? {rowId:table.rowIds[row],values:table.data[row]} : null,
+            columns, canEdit, parsers)
+          if (changes?.length) change(changes)
+          setKeyboardError(null)
+          return
+        } catch (error) {
+          setKeyboardError(error.message)
+          return
+        }
+      }
+    }
+    multiCommit.current = false
     const changes = []
     cellChanges.forEach((cellChange) => {
       const column = columns[displayedColumnIndex.get(cellChange.columnId)]
@@ -233,11 +293,13 @@ const ReactGridDataHandler = (props) => {
     e.stopPropagation()
     e.preventDefault()
     const ranges = selection.current
-    if (editingBlocked || !ranges || !ranges.length) return
-    const first = ranges[0].first
+    const keyRange = shortcutRange.current
+    if (editingBlocked || (!keyRange && (!ranges || !ranges.length))) return
+    const first = keyRange ? null : ranges[0].first
     const changes = []
     clipboardCells(e.clipboardData).forEach((cells, ri) => {
-      const position = pageStart + pasteStartRow(ranges[0]) + ri // the header is not a data row
+      const position = (keyRange ? keyRange.start :
+        pageStart + pasteStartRow(ranges[0])) + ri // the header is not a data row
       // Do not silently modify data on a page the user cannot see.
       if (!canPasteOnPage(position, bounds, pageSize)) return
       let rowId
@@ -249,7 +311,7 @@ const ReactGridDataHandler = (props) => {
         return
       }
       cells.forEach((cell, ci) => {
-        const col = first.column.idx + ci
+        const col = (keyRange ? keyRange.columnStart : first.column.idx) + ci
         if (col >= columns.length) return
         const column = columns[col]
         const values = typeof rowId === "object" ? blankRow(allColumns, newRow) : table.data[position]
@@ -263,15 +325,94 @@ const ReactGridDataHandler = (props) => {
 
   const handleCopy = (e) => {
     if (isCellEditorTarget(e.target)) return
-    const text = selectionText(rows, selection.current, textOf)
-    if (text === null) return
+    const text = shortcutRange.current
+      ? keyboardClipboardText(shortcutRange.current,table.data,allColumns,columns)
+      : selectionText(rows, selection.current, textOf)
+    if (text === null) {
+      if (shortcutRange.current) {
+        e.preventDefault()
+        e.stopPropagation()
+        setKeyboardError("Copy is limited to 20,000 cells; use a smaller range or server export")
+      }
+      return
+    }
     e.clipboardData.setData("text/plain", text)
     e.preventDefault()
   }
 
   const handleSelectionChanged = (ranges) => {
+    if (suppressNativeSelection.current) return
     selection.current = ranges
+    shortcutRange.current = null
+    setShortcutHighlight(null)
+    const rect = nativeRectangle(ranges,pageStart,table.data.length,columns.length)
+    lastMultiSelection.current = keyboardArea(rect)>1 ? rect : null
     setProps({ selectedRange: ranges, selectedRowIds: tracked ? rowsInRanges(ranges) : [] })
+  }
+
+  const focusedPosition = () => {
+    if (!focused.current) return null
+    const row = rowIndexesOf(table.rowIds).get(focused.current.rowId)
+    const col = displayedColumnIndex.get(focused.current.columnId)
+    if (col === undefined) return null
+    if (row === undefined) return null
+    return {row,col}
+  }
+
+  const navigateToEdge = (key,shift) => {
+    const current = shortcutCursor.current || focusedPosition()
+    const target = sheetEdge(key,current,table.data.length,columns.length)
+    if (!target) return
+    if (shift) {
+      const anchor = shortcutAnchor.current || focusedPosition() || current
+      const rect = keyboardRectangle(anchor,target)
+      shortcutAnchor.current = anchor
+      shortcutCursor.current = target
+      shortcutRange.current = rect
+      setShortcutHighlight(rect)
+      suppressNativeSelection.current = true
+      setProps({
+        selectedRange:[publicKeyboardRange(rect,table.rowIds,columns)],
+        selectedRowIds:tracked && rect.end-rect.start<=1000
+          ? table.rowIds.slice(rect.start,rect.end) : [],
+      })
+    } else {
+      shortcutAnchor.current = target
+      shortcutCursor.current = target
+      shortcutRange.current = null
+      lastMultiSelection.current = null
+      setShortcutHighlight(null)
+      suppressNativeSelection.current = true
+      const location={rowId:table.rowIds[target.row],
+        columnId:columns[target.col].columnId}
+      focused.current=location
+      setJumpLocation(location)
+      setProps({selectedCell:location,selectedRange:[],selectedRowIds:[]})
+      if (pageSize) {
+        const destination=Math.floor(target.row/pageSize)
+        if (destination !== page) {
+          setRequestedPage(destination)
+          setPageInput(String(destination+1))
+        }
+      }
+    }
+    setKeyboardError(null)
+  }
+
+  const activeRectangle = () =>
+    shortcutRange.current || nativeRectangle(selection.current,pageStart,
+      table.data.length,columns.length,focusedPosition())
+
+  const fillDown = () => {
+    if (editingBlocked) return
+    try {
+      const changes=fillDownChanges(activeRectangle(),table.data,table.rowIds,
+        allColumns,columns,canEdit)
+      if (changes.length) change(changes)
+      setKeyboardError(null)
+    } catch(error) {
+      setKeyboardError(error.message)
+    }
   }
 
   const handleContextMenu = (selectedRowIds, selectedColIds, selectionMode, menuOptions, selectedRanges) => {
@@ -296,10 +437,47 @@ const ReactGridDataHandler = (props) => {
   // Caught before ReactGrid, which swallows the keys it handles itself.
   // While a cell is being typed in, its own input undoes the typing.
   const handleKeyDown = (e) => {
-    if (isCellEditorTarget(e.target)) return
+    if (isCellEditorTarget(e.target)) {
+      if (e.key === "Enter" && e.shiftKey && !e.ctrlKey && !e.metaKey &&
+          !e.altKey) multiCommit.current = true
+      return
+    }
+    if (!e.ctrlKey && !e.metaKey && !e.altKey &&
+        ["ArrowUp","ArrowDown","ArrowLeft","ArrowRight","Tab","Enter"].includes(e.key)) {
+      suppressNativeSelection.current = false
+      shortcutAnchor.current = null
+      shortcutCursor.current = null
+      shortcutRange.current = null
+      setShortcutHighlight(null)
+      setJumpLocation(null)
+    }
     if (!e.ctrlKey && !e.metaKey && !e.altKey && (e.key === "Delete" || e.key === "Backspace")) {
       // Handle clearing here instead of relying on ReactGrid's last-row
       // behaviour. The blank extension row is never a data edit.
+      if (shortcutRange.current) {
+        e.preventDefault()
+        e.stopPropagation()
+        const rect=shortcutRange.current
+        if (editingBlocked) return
+        if (keyboardArea(rect)>MAX_KEYBOARD_EDIT_CELLS) {
+          setKeyboardError("Clear is limited to 20,000 cells per operation")
+          return
+        }
+        const changes=[]
+        for (let ri=rect.start;ri<rect.end;ri++) {
+          const rowId=table.rowIds[ri]
+          for (let ci=rect.columnStart;ci<rect.columnEnd;ci++) {
+            const col=columns[ci]
+            if (!canEdit(rowId,col,table.data[ri])) continue
+            const value=col.type==="checkbox" ? false :
+              ["text"].includes(col.type) ? "" : null
+            changes.push({rowId,columnId:col.columnId,value})
+          }
+        }
+        if (changes.length) change(changes)
+        setKeyboardError(null)
+        return
+      }
       const ranges = selection.current?.length ? selection.current :
         [focusedRange(rows, columns, focused.current)].filter(Boolean)
       const changes = editingBlocked ? [] : clearSelectedCells(rows, columns, ranges)
@@ -310,8 +488,21 @@ const ReactGridDataHandler = (props) => {
       }
       return
     }
-    if ((!isMacOs() && e.ctrlKey) || e.metaKey) {
+    if (((!isMacOs() && e.ctrlKey) || e.metaKey) && !e.altKey) {
+      if (["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.key)) {
+        e.preventDefault()
+        e.stopPropagation()
+        navigateToEdge(e.key,e.shiftKey)
+        return
+      }
       switch (e.key.toLowerCase()) {
+        case "d":
+          if (!e.shiftKey) {
+            e.preventDefault()
+            e.stopPropagation()
+            fillDown()
+          }
+          return;
         case "a":
           if (!e.shiftKey && !e.altKey) {
             // ReactGrid selects the entire matrix without notifying onSelectionChanged.
@@ -355,10 +546,22 @@ const ReactGridDataHandler = (props) => {
   const onColumnResized = useCallback((...args) => latest.current.resizeColumn(...args), [])
   const onFocusLocationChanged = useCallback((location) => latest.current.handleFocus(location), [])
 
+  // Switching pages remounts ReactGrid. focusLocation selects the target
+  // logically, but browser keystrokes still need its hidden focus input.
+  useEffect(() => {
+    if (!jumpLocation || !rows.some((row) => row.rowId === jumpLocation.rowId))
+      return
+    keyboardHost.current?.querySelector("input.rg-hidden-element")
+      ?.focus({preventScroll:true})
+  }, [jumpLocation, page, rows])
+
   const { enableFillHandle, enableRangeSelection, enableRowSelection, enableColumnSelection, disableVirtualScrolling, dropdownMenuPortal } = props
+  const visibleJump = jumpLocation && rows.some((row) => row.rowId === jumpLocation.rowId)
+    ? jumpLocation : undefined
   const grid = useMemo(() => (
     <ReactGrid key={pageSize ? `page-${page}` : 'all'} rows={rows} columns={columns} onCellsChanged={onCellsChanged}
       onFocusLocationChanged={onFocusLocationChanged}
+      focusLocation={visibleJump}
       onColumnResized={onColumnResized}
       enableFillHandle={enableFillHandle && !editingBlocked}
       enableRangeSelection={enableRangeSelection}
@@ -375,7 +578,7 @@ const ReactGridDataHandler = (props) => {
     />
   ), [rows, columns, editingBlocked, pageHighlights, sticky.left, sticky.right, sticky.top, sticky.bottom,
     enableFillHandle, enableRangeSelection, enableRowSelection, enableColumnSelection, disableVirtualScrolling,
-    dropdownMenuPortal, cellTemplates, pageSize, page])
+    dropdownMenuPortal, cellTemplates, pageSize, page, visibleJump])
 
   const goToPage = (requested) => {
     if (!Number.isFinite(requested)) {
@@ -387,12 +590,28 @@ const ReactGridDataHandler = (props) => {
     setPageInput(String(next + 1))
     selection.current = null
     focused.current = null
+    shortcutRange.current = null
+    shortcutAnchor.current = null
+    shortcutCursor.current = null
+    suppressNativeSelection.current = false
+    setShortcutHighlight(null)
+    setJumpLocation(null)
     setProps({ selectedRange: [], selectedRowIds: [], selectedCell: null })
   }
 
   return (
-    <div onPasteCapture={handlePaste} onCopy={handleCopy} onKeyDownCapture={handleKeyDown}>
+    <div ref={keyboardHost} onPasteCapture={handlePaste} onCopy={handleCopy}
+      onPointerDownCapture={() => {
+        suppressNativeSelection.current=false
+        shortcutRange.current=null
+        shortcutAnchor.current=null
+        shortcutCursor.current=null
+        setShortcutHighlight(null)
+        setJumpLocation(null)
+      }}
+      onKeyDownCapture={handleKeyDown}>
       {grid}
+      {keyboardError && <div role="alert" className="drg-keyboard-error">{keyboardError}</div>}
       {transmitSparseEdits && (
         <div className="drg-sync-status" role="status" aria-live="polite">
           {sync.error ? (

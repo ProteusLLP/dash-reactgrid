@@ -531,7 +531,7 @@ export const ServerVirtualGrid = (props) => {
       }
     },
     contextMenu: (selectedRowIds,selectedColIds,selectionMode,menuOptions) =>
-      editingBlocked ? menuOptions : [...(menuOptions || []), {
+      editingBlocked || !globalSelection ? menuOptions : [...(menuOptions || []), {
         id:"deleteVirtualSelection",label:"Delete selected rows",
         handler: deleteSelection,
       }],

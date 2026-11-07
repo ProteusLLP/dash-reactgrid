@@ -92,6 +92,8 @@ def test():
 
             # Copy a row range hundreds of rows away from the loaded viewport.
             select(501,503)
+            if not copy_ready():
+                click("Prepare copy")
             wait.until(lambda _: copy_ready())
             click("Copy selection")
             wait.until(lambda _: clipboard()=="Row 500\t500\nRow 501\t501\nRow 502\t502")

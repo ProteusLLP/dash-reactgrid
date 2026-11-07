@@ -2,6 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  clearSelectedCells,
   focusedRange,
   isCellEditorTarget,
   isWholeGridSelected,
@@ -69,4 +70,41 @@ test("Ctrl+A inside a cell editor must select its text instead of the grid", () 
 test("an empty grid has no selection to copy", () => {
   assert.equal(wholeGridRange([], columns), null);
   assert.equal(selectAllRanges([], [], columns, null).length, 0);
+});
+
+
+test("Delete on the final data cell clears the correct row, not the ghost", () => {
+  const selected = [focusedRange(rows, columns, { rowId: "two", columnId: "weight" })];
+  assert.deepEqual(clearSelectedCells(rows, columns, selected), [
+    { rowId: "two", columnId: "weight", value: null },
+  ]);
+});
+
+test("Delete on a Ctrl+A selection clears every real editable cell only", () => {
+  const changes = clearSelectedCells(rows, columns, [wholeGridRange(rows, columns)]);
+  assert.deepEqual(changes, [
+    { rowId: "one", columnId: "name", value: "" },
+    { rowId: "one", columnId: "weight", value: null },
+    { rowId: "two", columnId: "name", value: "" },
+    { rowId: "two", columnId: "weight", value: null },
+  ]);
+});
+
+test("Delete respects nonEditable cells and ignores ghost-only selections", () => {
+  const locked = rows.map((row) => ({ ...row, cells: row.cells.map((cell) => ({ ...cell })) }));
+  locked[2].cells[1].nonEditable = true;
+  assert.deepEqual(clearSelectedCells(locked, columns, [focusedRange(locked, columns, { rowId: "two", columnId: "weight" })]), []);
+  assert.deepEqual(clearSelectedCells(rows, columns, [focusedRange(rows, columns, { rowId: GHOST_ROW_ID, columnId: "weight" })]), []);
+});
+
+test("overlapping selected ranges clear a cell only once", () => {
+  const selected = [wholeGridRange(rows, columns), focusedRange(rows, columns, { rowId: "two", columnId: "weight" })];
+  assert.equal(clearSelectedCells(rows, columns, selected).length, 4);
+});
+
+test("checkbox clearing uses false rather than null", () => {
+  const checkRows = [{ rowId: "one", cells: [{ type: "checkbox", checked: true }] }];
+  assert.deepEqual(clearSelectedCells(checkRows, [{ columnId: "flag" }], [wholeGridRange(checkRows, [{ columnId: "flag" }])]), [
+    { rowId: "one", columnId: "flag", value: false },
+  ]);
 });

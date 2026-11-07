@@ -70,6 +70,12 @@ const ReactGridDataHandler = (props) => {
   const pageSize = Number.isInteger(props.rowPageSize) && props.rowPageSize > 0 ? props.rowPageSize : null
   const bounds = pageBounds(table.data.length, pageSize, requestedPage)
   const { page, count: pageCount, start: pageStart, end: pageEnd } = bounds
+  useEffect(() => {
+    if (requestedPage !== page) {
+      setRequestedPage(page)
+      setPageInput(String(page + 1))
+    }
+  }, [requestedPage, page])
   const showGhost = extendable && (!pageSize || page === pageCount - 1)
   const renderColumns = useMemo(() => compileGridColumns(columns, allColumns, locale), [columns, allColumns])
   const rowCache = useRef(null)

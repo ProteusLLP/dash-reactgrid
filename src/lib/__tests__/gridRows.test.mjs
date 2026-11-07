@@ -113,3 +113,18 @@ test("pasting never writes onto the next hidden page", () => {
   assert.equal(canPasteOnPage(1001, last, 250), true, "extendable tables can paste new rows on the last page");
   assert.equal(canPasteOnPage(9999, first, null), true, "unpaged tables retain normal paste behaviour");
 });
+
+test("column header tooltip is opt-in and unchanged when columns are hidden", () => {
+  const first = { ...columns[0], tooltip: "Full customer name" };
+  const second = { ...columns[1], tooltip: "" };
+  const visible = [first, second, columns[2]];
+  const allColumns = [...visible, {columnId:"hidden", title:"Hidden", type:"text", tooltip:"Invisible"}];
+  const descriptors = compileGridColumns(visible, allColumns, "en-GB");
+  const { rows } = render({columns:visible, allColumns, descriptors});
+  assert.equal(rows[0].cells.length, 3);
+  assert.equal(rows[0].cells[0].tooltip, "Full customer name");
+  assert.equal(rows[0].cells[0].text, "Name");
+  assert.equal(rows[0].cells[0].style.height, 30);
+  assert.equal(Object.hasOwn(rows[0].cells[1], "tooltip"), false);
+  assert.equal(Object.hasOwn(rows[0].cells[2], "tooltip"), false);
+});

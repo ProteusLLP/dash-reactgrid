@@ -295,6 +295,26 @@ class FeatureMatrixChromeTests(unittest.TestCase):
         self.assertEqual(self.state("matrix")["data"][2][0], "Third by keyboard")
         self.assertEqual(self.state("matrix")["data"][2][4], "open")
 
+    def test_header_tooltips_in_normal_and_virtual_grids(self):
+        """Native tooltips attach only to configured visible headers."""
+        self.waiter.until(lambda d: d.find_elements(
+            By.CSS_SELECTOR, "#matrix .rg-header-cell .drg-header-tooltip"))
+        labels = self.driver.find_elements(
+            By.CSS_SELECTOR, "#matrix .rg-header-cell .drg-header-tooltip")
+        tooltip_by_title = {label.text: label.get_attribute("title") for label in labels}
+        self.assertEqual(tooltip_by_title["Text"], "A free-form text value")
+        self.assertEqual(tooltip_by_title["Amount"], "Amount in pounds")
+        self.assertNotIn("Choice", tooltip_by_title)
+        self.assertEqual(self.driver.find_elements(
+            By.CSS_SELECTOR, "#target .rg-header-cell .drg-header-tooltip"), [])
+        self.waiter.until(lambda d: d.find_elements(
+            By.CSS_SELECTOR, "#review-virtual .rg-header-cell .drg-header-tooltip"))
+        virtual = self.driver.find_elements(
+            By.CSS_SELECTOR, "#review-virtual .rg-header-cell .drg-header-tooltip")
+        self.assertTrue(any(cell.text == "Label" and
+                            cell.get_attribute("title") == "Server-backed label"
+                            for cell in virtual))
+
     def test_renders_every_column_type_with_conditional_lock_and_hidden_column(self):
         for column in ("text", "amount", "custom", "percent", "choice",
                        "flag", "day", "clock", "conditional", "fixed"):

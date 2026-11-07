@@ -2,12 +2,14 @@ import { ExcelTextCellTemplate, ExcelDateCellTemplate, ExcelTimeCellTemplate } f
 import { CustomNumberCellTemplate } from "./CustomNumberCell";
 import { PercentCellTemplate } from "./PercentCell";
 import { PortalDropdownCellTemplate } from "./PortalDropdownCell";
+import { TooltipHeaderCellTemplate } from "./TooltipHeaderCell";
 
 /** Each rendered grid owns its editor instances. Mutating the typing mode of
  * one grid must not affect another grid's active editor.
  * The same templates are used in ordinary and server-virtualised renderers.
  */
 export const createCellTemplates = (dropdownMenuPortal = false) => ({
+  header: new TooltipHeaderCellTemplate(),
   text: new ExcelTextCellTemplate(),
   date: new ExcelDateCellTemplate(),
   time: new ExcelTimeCellTemplate(),

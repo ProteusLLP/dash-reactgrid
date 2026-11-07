@@ -216,7 +216,7 @@ class FeatureMatrixChromeTests(unittest.TestCase):
                 ["target-1", "target-2"]
         )
         copied = self.copy("target", "label")
-        self.assertEqual(copied["plain"], "Target 1\\nTarget 2")
+        self.assertEqual(copied["plain"], "Target 1\nTarget 2")
         self.chord(Keys.CONTROL, "d")
         self.waiter.until(
             lambda _: self.state("target")["data"][1][0] == "Target 1"
@@ -228,7 +228,7 @@ class FeatureMatrixChromeTests(unittest.TestCase):
 
     def test_shift_enter_applies_one_edit_to_selected_cells(self):
         self.cell("target", "label", 0).click()
-        self.chord(Keys.SHIFT, Keys.ARROW_DOWN)
+        self.chord(Keys.CONTROL, Keys.SHIFT, Keys.ARROW_DOWN)
         self.type_in_focused("Broadcast")
         self.chord(Keys.SHIFT, Keys.ENTER)
         self.waiter.until(

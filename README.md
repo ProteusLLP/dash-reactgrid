@@ -25,6 +25,7 @@ DashReactGrid(
     data=rows,
     rowIds=row_ids,
     rowPageSize=250,
+    transmitSparseEdits=True,
     disableVirtualScrolling=False,
 )
 ```
@@ -34,11 +35,66 @@ cells in each column. Edits use copy-on-write and only clone changed rows.
 For smaller grids, `disableVirtualScrolling=False` can reduce DOM overhead,
 although it does not reduce ReactGrid's internal cell matrix.
 
-**Limitations:** Dash still transfers the entire `data` property to the client
-and publishes it again on edits, so this is not server-side paging. For
-million-cell data, the next step is a sparse edit-only callback protocol and
-server-provided page data. Clipboard copy-all across pages, global select-all,
-and fast cross-page search would need dedicated operations.
+### Transmit only sparse edits
+
+For large datasets, enable `transmitSparseEdits=True`. The browser keeps the
+edited table (including newly added or deleted rows) in local state, but
+`setProps` publishes **only `edits`**, not `data` or `rowIds`. The
+default is `False`, preserving the previous full-data behaviour.
+
+```python
+from dash import Input, Output, callback, html
+from dash_reactgrid import DashReactGrid
+
+grid = DashReactGrid(
+    id="grid",
+    columns=columns,
+    data=data,
+    rowIds=row_ids,             # recommended for stable edit identifiers
+    rowPageSize=250,            # optional for large tables
+    transmitSparseEdits=True,
+)
+# Add grid and html.Div(id="edit-status") to your layout.
+
+@callback(
+    Output("edit-status", "children"),
+    Input("grid", "edits"),
+    prevent_initial_call=True,
+)
+def save_edits(event):
+    # Persist every {kind: "cell"/"add"/"remove", ...} in event["edits"]
+    # to your server-side data store using its stable row IDs.
+    # "seq" increases with each edit batch from this component instance.
+    persist_changes(event["edits"])  # application-specific function
+    return f"Saved edit batch {event['seq']}"
+```
+
+The `edits` payload retains its existing format:
+`{"seq": 4, "edits": [{"kind":"cell","rowId":"r2","columnId":"value","value":2.5}]}`.
+Row additions emit an `add` event with a generated row ID, followed by the
+cell edits. Row deletions emit `remove` with a list of row IDs. The server
+must apply the same `newRow` template on an `add` event. Undo and redo
+publish ordinary inverse cell edits. The browser retains the updated values
+across selection changes and paging.
+
+**Important:** The `data` prop is the authoritative starting snapshot, not a
+live representation of browser edits in sparse mode. A subsequent server
+update to `data` or `rowIds` replaces the browser's local table, including
+any unsynchronised edits, and clears undo history. Do not echo stale `data`
+from an edit callback. The `data` prop is still initially sent in full,
+and full data exports must come from your server's own store. Ensure edits
+are saved reliably and processed in `seq` order; the component exposes the
+latest edit batch, not an acknowledged queue of all outstanding changes.
+Avoid including `State("grid", "data")` in callbacks processing the edits,
+because doing so transmits the full table again. If Dash persistence is used,
+consider `persisted_props=["columns"]`, since `data` does not represent
+the edited local table.
+
+**Remaining scalability limitation:** This is client-side paging. A large
+initial `data` property is still transferred to Dash/the browser. For
+datasets beyond client memory, use server-provided page data and a server-side
+edit store. Select-all, clipboard copy and paste are confined to the
+current page; global export belongs on the server.
 
 ## Editing with stable row ids
 

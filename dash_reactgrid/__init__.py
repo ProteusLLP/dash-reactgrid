@@ -33,7 +33,15 @@ _current_path = _os.path.dirname(_os.path.abspath(__file__))
 
 _this_module = _sys.modules[__name__]
 
-async_resources = []
+# Register webpack-created asynchronous chunks, including those used by
+# Glide's on-demand editors. Dash rejects unregistered component resources.
+# Discover the actual build outputs so normal deployments do not declare
+# assets that were not generated.
+async_resources = sorted({
+    filename[len("async-"):-len(".js")]
+    for filename in _os.listdir(_basepath)
+    if filename.startswith("async-") and filename.endswith(".js")
+})
 
 _js_dist = []
 

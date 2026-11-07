@@ -12,6 +12,7 @@ import hashlib
 import json
 import sqlite3
 from pathlib import Path
+from contextlib import closing
 
 
 def canonical(value):
@@ -36,7 +37,7 @@ class SparseGridStore:
             else [new_row[i] if i < len(new_row) else None for i in range(len(self.columns))]
             if isinstance(new_row, list) else [None] * len(self.columns)
         )
-        with self.connect() as db:
+        with closing(self.connect()) as db, db:
             db.executescript("""
                 CREATE TABLE IF NOT EXISTS datasets (
                     dataset_id TEXT PRIMARY KEY,
@@ -88,7 +89,7 @@ class SparseGridStore:
             raise ValueError("row IDs and values must have equal lengths")
         if any(len(row) != len(self.columns) for row in data):
             raise ValueError("Row width differs from the configured columns")
-        with self.connect() as db:
+        with closing(self.connect()) as db, db:
             # Guard repeated startup; the dataset may legitimately have no rows.
             marker = db.execute(
                 "SELECT COUNT(*) FROM applied_batches WHERE dataset_id=?",
@@ -107,7 +108,7 @@ class SparseGridStore:
             )
 
     def read(self):
-        with self.connect() as db:
+        with closing(self.connect()) as db, db:
             rows = db.execute(
                 "SELECT row_id, values_json FROM grid_rows WHERE dataset_id=? ORDER BY position",
                 (self.dataset_id,),
@@ -210,8 +211,10 @@ class SparseGridStore:
             ).fetchone()
             if row is None:
                 raise ValueError("Unknown row")
+            if "value" not in edit:
+                raise ValueError("Cell event is missing its value")
             values = json.loads(row[0])
-            values[self.columns.index(column)] = edit.get("value")
+            values[self.columns.index(column)] = edit["value"]
             db.execute(
                 "UPDATE grid_rows SET values_json=? WHERE dataset_id=? AND row_id=?",
                 (canonical(values), self.dataset_id, rid),

@@ -172,8 +172,18 @@ class FeatureMatrixChromeTests(unittest.TestCase):
         for character in value:
             ActionChains(self.driver).send_keys(character).perform()
 
+    def keyboard_debug(self, grid, label):
+        print("KEYBOARD CHECK", label, self.state(grid),
+              self.driver.execute_script("""
+                return {
+                  active: document.activeElement?.outerHTML.slice(0,250),
+                  editor: document.querySelector(arguments[0]+' .rg-celleditor')?.innerHTML.slice(0,320),
+                  hidden: document.querySelector(arguments[0]+' .rg-hidden-element')?.outerHTML.slice(0,150),
+                };
+              """, "#"+grid), flush=True)
+
     def expect_focus(self, grid, row_id, column_id):
-        self.waiter.until(lambda _: self.state(grid).get("selectedCell") == {
+        WebDriverWait(self.driver, 5).until(lambda _: self.state(grid).get("selectedCell") == {
             "rowId": row_id, "columnId": column_id,
         })
 
@@ -191,8 +201,10 @@ class FeatureMatrixChromeTests(unittest.TestCase):
                 self.waiter.until(lambda _: self.state("matrix").get("data"))
                 self.cell("matrix", column, index).click()
                 self.type_in_focused(typed)
+                self.keyboard_debug("matrix", column + " before right")
                 ActionChains(self.driver).send_keys(Keys.ARROW_RIGHT).perform()
-                self.waiter.until(
+                self.keyboard_debug("matrix", column + " after right")
+                WebDriverWait(self.driver, 5).until(
                     lambda _: self.state("matrix")["data"][index][position] == expected
                 )
                 self.expect_focus("matrix", row_id, next_col)
@@ -205,8 +217,10 @@ class FeatureMatrixChromeTests(unittest.TestCase):
         self.expect_focus("matrix", "r1", "clock")
 
         self.type_in_focused("15:45")
+        self.keyboard_debug("matrix", "time before right")
         ActionChains(self.driver).send_keys(Keys.ARROW_RIGHT).perform()
-        self.waiter.until(lambda _: "15:45" in str(self.state("matrix")["data"][0][7]))
+        self.keyboard_debug("matrix", "time after right")
+        WebDriverWait(self.driver, 5).until(lambda _: "15:45" in str(self.state("matrix")["data"][0][7]))
         self.expect_focus("matrix", "r1", "conditional")
 
     def test_dropdown_type_to_select_then_navigate_and_checkbox_space(self):
@@ -235,7 +249,9 @@ class FeatureMatrixChromeTests(unittest.TestCase):
         self.expect_focus("target", "target-1", "value")
 
         self.type_in_focused("99.25")
+        self.keyboard_debug("target", "number before enter")
         ActionChains(self.driver).send_keys(Keys.ENTER).perform()
+        self.keyboard_debug("target", "number after enter")
         self.waiter.until(lambda _: self.state("target")["data"][0][1] == 99.25)
         self.expect_focus("target", "target-2", "value")
 

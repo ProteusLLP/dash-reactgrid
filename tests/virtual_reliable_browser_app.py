@@ -33,6 +33,7 @@ def layout():
         ),
         html.Div(id="commit-status"),
         html.Div(id="viewport-status"),
+        html.Div(id="range-status"),
     ])
 app.layout=layout
 
@@ -49,7 +50,7 @@ def fetch_window(request):
         **window,
     }, f"Fetched {start}:{end}"
 
-@app.callback(Output("grid","virtualRangeData"),
+@app.callback(Output("grid","virtualRangeData"),Output("range-status","children"),
               Input("grid","virtualRangeRequest"),prevent_initial_call=True)
 def copy_range(request):
     if not request:
@@ -57,13 +58,13 @@ def copy_range(request):
     identity={key:request[key] for key in
               ("datasetId","requestId","start","end","columnStart","columnEnd")}
     if request["datasetId"]!=DATASET:
-        return {**identity,"error":"Dataset mismatch"}
+        return {**identity,"error":"Dataset mismatch"}, "Copy request rejected: dataset"
     try:
         text=store.copy_range(request["start"],request["end"],
                               request["columnStart"],request["columnEnd"])
-        return {**identity,"text":text}
+        return {**identity,"text":text}, f"Copy prepared {request['start']}:{request['end']}"
     except ValueError as error:
-        return {**identity,"error":str(error)}
+        return {**identity,"error":str(error)}, "Copy error: "+str(error)
 
 @app.server.route("/export.csv")
 def download_csv():

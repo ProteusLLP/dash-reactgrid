@@ -11,6 +11,7 @@ from dash_reactgrid import DashReactGrid
 from dash_reactgrid.stateless_virtual import window_response
 
 PORT = int(os.environ.get("GRID_MATRIX_BROWSER_PORT", "8065"))
+RENDERER = os.environ.get("GRID_RENDERER", "reactgrid")
 
 MATRIX_COLUMNS = [
     {"columnId": "text", "title": "Text", "type": "text", "width": 160,
@@ -80,6 +81,7 @@ def layout():
     return html.Div([
         html.H3("Matrix"),
         DashReactGrid(
+            renderer=RENDERER,
             id="matrix", columns=MATRIX_COLUMNS, data=MATRIX_DATA,
             rowIds=["r1", "r2"], hiddenColumns=["secret"],
             lockedCells=[["r1", "amount"]],
@@ -92,12 +94,14 @@ def layout():
         html.Pre(id="matrix-state"),
         html.H3("Clipboard source"),
         DashReactGrid(
+            renderer=RENDERER,
             id="source", columns=TWO_COLUMNS, data=SOURCE_DATA,
             rowIds=["source-1", "source-2"], stickyTopRows=1,
             persisted_props=[],
         ),
         html.H3("Clipboard destination"),
         DashReactGrid(
+            renderer=RENDERER,
             id="target", columns=TWO_COLUMNS, data=TARGET_DATA,
             rowIds=["target-1", "target-2"], isExtendable=True,
             newRow={"value": 0}, stickyTopRows=1,
@@ -106,6 +110,7 @@ def layout():
         html.Pre(id="target-state"),
         html.H3("Paged"),
         DashReactGrid(
+            renderer=RENDERER,
             id="paged", columns=TWO_COLUMNS, data=PAGE_DATA,
             rowIds=[f"p{i}" for i in range(11)],
             rowPageSize=4, isExtendable=True, stickyTopRows=1,
@@ -114,6 +119,7 @@ def layout():
         html.Pre(id="paged-state"),
         html.H3("Read only"),
         DashReactGrid(
+            renderer=RENDERER,
             id="readonly", columns=TWO_COLUMNS, data=[["Protected", 42]],
             rowIds=["protected"], readOnly=True, isExtendable=True,
             persisted_props=[],
@@ -121,6 +127,7 @@ def layout():
         html.Pre(id="readonly-state"),
         html.H3("Review virtual cell types"),
         DashReactGrid(
+            renderer=RENDERER,
             id="review-virtual", columns=VIRTUAL_REVIEW_COLUMNS,
             data=[], rowIds=[],
             virtualRowCount=len(VIRTUAL_REVIEW_DATA),
@@ -132,12 +139,14 @@ def layout():
         html.Pre(id="review-virtual-edits"),
         html.H3("NumPy-backed normal grid"),
         DashReactGrid(
+            renderer=RENDERER,
             id="numeric", columns=NUMERIC_COLUMNS, data=NUMERIC_DATA,
             rowIds=["n0", "n1"], persisted_props=[],
         ),
         html.Pre(id="numeric-state"),
         html.H3("NumPy-backed virtual grid"),
         DashReactGrid(
+            renderer=RENDERER,
             id="numeric-virtual", columns=NUMERIC_COLUMNS, data=[],
             virtualRowCount=len(NUMERIC_VIRTUAL_DATA),
             virtualDatasetId=NUMERIC_VIRTUAL_DATASET,

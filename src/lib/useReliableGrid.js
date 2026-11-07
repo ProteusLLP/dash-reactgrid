@@ -1,0 +1,184 @@
+import { useEffect, useRef, useState } from "react";
+import { editsPayload, initialGridSnapshot, reconcileGridSnapshot } from "./sparseEdits.js";
+import {
+  acknowledgeEdits, enqueueEdits, loadOutbox, outboxStorageKey,
+  replayPendingEdits, retryHead, saveOutbox,
+} from "./durableEdits.js";
+
+const newStreamId = () => {
+  if (typeof window === "undefined" || !window.crypto?.getRandomValues)
+    throw new Error("Cryptographic random IDs are required for reliable sparse edits");
+  if (window.crypto.randomUUID) return window.crypto.randomUUID();
+  const bytes = new Uint8Array(16);
+  window.crypto.getRandomValues(bytes);
+  return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+};
+
+const makeSession = ({ enabled, id, datasetId, data, rowIds, columns, newRow }) => {
+  if (!enabled) return {
+    enabled: false, sourceData: data, sourceRowIds: rowIds,
+    snapshot: initialGridSnapshot(data, rowIds, false),
+    table: initialGridSnapshot(data, rowIds, false).table,
+    outbox: null, key: null, error: null,
+  };
+  const partial = {
+    enabled: true, sourceData: data, sourceRowIds: rowIds,
+    key: null, outbox: null, table: initialGridSnapshot(data, rowIds, true).table,
+    error: null,
+  };
+  if (id === undefined || id === null || typeof datasetId !== "string" || !datasetId.trim() ||
+      !Array.isArray(rowIds) || rowIds.length !== data.length ||
+      rowIds.some((rowId) => rowId === null || rowId === undefined)) {
+    return {
+      ...partial, error: "Reliable sparse edits require id, a nonempty editDatasetId, and one stable rowId per data row.",
+    };
+  }
+  try {
+    const key = outboxStorageKey(id, datasetId);
+    const storage = window.sessionStorage;
+    const outbox = loadOutbox(storage, key, datasetId, newStreamId);
+    return {
+      ...partial, key, outbox,
+      table: replayPendingEdits(partial.table, outbox.queue, columns, newRow),
+    };
+  } catch (error) {
+    return { ...partial, error: "Cannot recover/persist pending grid edits: " + error.message };
+  }
+};
+
+const reconcileSession = (session, config) => {
+  if (session.enabled !== config.enabled ||
+      session.key !== (config.enabled ? outboxStorageKey(config.id, config.datasetId) : null))
+    return makeSession(config);
+  if (session.sourceData === config.data && session.sourceRowIds === config.rowIds)
+    return session;
+  // An authoritative prop update does not discard unacknowledged edits.
+  const source = initialGridSnapshot(config.data, config.rowIds, config.enabled);
+  try {
+    return {
+      ...session, sourceData: config.data, sourceRowIds: config.rowIds,
+      table: config.enabled && session.outbox
+        ? replayPendingEdits(source.table, session.outbox.queue, config.columns, config.newRow)
+        : source.table,
+    };
+  } catch (error) {
+    return { ...session, error: "Cannot reconcile server data with pending edits: " + error.message };
+  }
+};
+
+/**
+ * Delivery is strictly serial: only the head is ever sent to Dash. A
+ * successful ack durably removes it before the next is sent. A timeout or
+ * remount repeats that head with the same streamId and seq and a new attempt.
+ */
+export const useReliableGrid = ({
+  enabled, id, datasetId, editAck, data, rowIds, columns, newRow, setProps,
+}) => {
+  const config = { enabled, id, datasetId, data, rowIds, columns, newRow };
+  const [session, setSession] = useState(() => makeSession(config));
+  const current = useRef(session);
+  const fullSequence = useRef(0);
+  const tableRef = useRef(session.table);
+  const sendPropsRef = useRef(setProps);
+  sendPropsRef.current = setProps;
+
+  const synced = reconcileSession(current.current, config);
+  if (synced !== current.current) {
+    current.current = synced;
+    tableRef.current = synced.table;
+    setSession(synced);
+  }
+  const state = current.current;
+  const key = state.key;
+
+  const update = (next) => {
+    current.current = next;
+    tableRef.current = next.table;
+    setSession(next);
+  };
+
+  const sendHead = () => {
+    const before = current.current;
+    if (!before.enabled || before.error || before.outbox?.blocked ||
+        !before.outbox?.queue.length) return;
+    try {
+      const nextBox = retryHead(before.outbox);
+      saveOutbox(window.sessionStorage, before.key, nextBox);
+      update({ ...before, outbox: nextBox });
+      sendPropsRef.current({ edits: nextBox.queue[0] });
+    } catch (error) {
+      update({ ...before, error: "Unable to save pending edits before retry: " + error.message });
+    }
+  };
+
+  const publish = (next, tracked) => {
+    if (!next.edits.length) return false;
+    if (!enabled) {
+      fullSequence.current += 1;
+      sendPropsRef.current(editsPayload(next, fullSequence.current, false, tracked));
+      return true;
+    }
+    const before = current.current;
+    if (before.error || before.outbox?.blocked || !before.outbox) return false;
+    try {
+      let queued = enqueueEdits(before.outbox, next.edits);
+      // The first event is marked as an attempt before writing the durable
+      // state. Later queued events are sent only when the head is ACKed.
+      const shouldSend = before.outbox.queue.length === 0;
+      if (shouldSend) queued = retryHead(queued);
+      saveOutbox(window.sessionStorage, before.key, queued);
+      update({
+        ...before, outbox: queued,
+        table: { data: next.data, rowIds: next.rowIds },
+      });
+      if (shouldSend) sendPropsRef.current({ edits: queued.queue[0] });
+      return true;
+    } catch (error) {
+      update({ ...before, error: "Edit was not accepted: " + error.message });
+      return false;
+    }
+  };
+
+  useEffect(() => {
+    if (!enabled || !key) return;
+    // Recover pending batches after a reload or mount, and retry every few
+    // seconds until the server confirms a durable transaction.
+    sendHead();
+    const timer = window.setInterval(sendHead, 4000);
+    return () => window.clearInterval(timer);
+  }, [enabled, key]);
+
+  useEffect(() => {
+    const before = current.current;
+    if (!before.enabled || !before.outbox || before.error) return;
+    const nextBox = acknowledgeEdits(before.outbox, editAck);
+    if (nextBox === before.outbox) return;
+    try {
+      // If persistence fails, preserve the old pending head and retry it.
+      saveOutbox(window.sessionStorage, before.key, nextBox);
+      update({ ...before, outbox: nextBox });
+      if (!nextBox.blocked && nextBox.queue.length) sendHead();
+    } catch (error) {
+      update({ ...before, error: "Could not persist server acknowledgement: " + error.message });
+    }
+  }, [editAck, enabled, key]);
+
+  const retryFailed = () => {
+    const before = current.current;
+    if (!before.enabled || !before.key) return;
+    try {
+      const outbox = { ...before.outbox, blocked: null };
+      saveOutbox(window.sessionStorage, before.key, outbox);
+      update({ ...before, error: null, outbox });
+      sendHead();
+    } catch (error) {
+      update({ ...before, error: error.message });
+    }
+  };
+
+  return {
+    table: state.table, tableRef,
+    publish, retryFailed, error: state.error || state.outbox?.blocked || null,
+    pending: state.outbox?.queue.length || 0,
+  };
+};

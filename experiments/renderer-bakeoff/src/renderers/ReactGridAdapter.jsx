@@ -6,7 +6,7 @@ import "@silevis/reactgrid/styles.css";
 // resembling the bounded-window strategy in the actual Dash wrapper.
 // This is NOT the production ServerVirtualGrid itself.
 const WINDOW = 160;
-export default function ReactGridAdapter({ fixture, commitMany, jumpRow, onReady, metricsRef }) {
+export default function ReactGridAdapter({ fixture, revision, commitMany, jumpRow, onReady, metricsRef }) {
   const start = Math.min(Math.max(0, fixture.rowCount - WINDOW),
     Math.floor(jumpRow / WINDOW) * WINDOW);
   const columns = useMemo(() => fixture.columns.map(c => ({
@@ -33,7 +33,7 @@ export default function ReactGridAdapter({ fixture, commitMany, jumpRow, onReady
     }
     metricsRef.current.materializedRows = result.length - 1;
     return result;
-  }, [fixture, start, metricsRef]);
+  }, [fixture, start, revision, metricsRef]);
 
   useEffect(onReady, [onReady]);
 

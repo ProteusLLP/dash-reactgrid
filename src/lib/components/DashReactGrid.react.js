@@ -203,6 +203,7 @@ const ReactGridDataHandler = (props) => {
   }
 
   const handlePaste = (e) => {
+    if (isCellEditorTarget(e.target)) return
     e.stopPropagation()
     e.preventDefault()
     const ranges = selection.current
@@ -233,6 +234,7 @@ const ReactGridDataHandler = (props) => {
   }
 
   const handleCopy = (e) => {
+    if (isCellEditorTarget(e.target)) return
     const text = selectionText(rows, selection.current, textOf)
     if (text === null) return
     e.clipboardData.setData("text/plain", text)
@@ -342,7 +344,11 @@ const ReactGridDataHandler = (props) => {
     dropdownMenuPortal, pageSize, page])
 
   const goToPage = (requested) => {
-    const next = pageBounds(table.data.length, pageSize, requested).page
+    if (!Number.isFinite(requested)) {
+      setPageInput(String(page + 1))
+      return
+    }
+    const next = pageBounds(table.data.length, pageSize, Math.trunc(requested)).page
     setRequestedPage(next)
     setPageInput(String(next + 1))
     selection.current = null

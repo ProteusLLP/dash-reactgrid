@@ -7,12 +7,12 @@ offscreen range editing, and recovery tests.
 
 | Area | Model/contract | Chrome |
 | --- | --- | --- |
-| Text, number, customnumber, percent, dropdown, checkbox, date, time | Render descriptors, edits, parsing, blank values and serialization | Render all; edit text/customnumber, checkbox and dropdown; paste all types; direct number edit is an expected-failure regression |
+| Text, number, customnumber, percent, dropdown, checkbox, date, time | Render descriptors, edits, parsing, blank values and serialization | Render all; edit text, number and customnumber, checkbox and dropdown; paste all types |
 | Column formatting and visibility | Type-safe values, styles, formatters, original indices, hidden columns | Rendered classes, hidden values retained after paste |
 | Editable rules | Conditional predicates, locked cells, read-only, noneditable columns | Rejected paste into locked/conditional/read-only cells |
 | Clipboard | Excel quoted TSV (tabs, Unicode, embedded line breaks/quotes), ReactGrid copy values, hidden column mapping | Ctrl+A/Ctrl+C, native Ctrl+V, synthetic Excel HTML + TSV, grid-to-grid paste |
 | Extendable grids | Ghost-row additions, multiple-row paste, defaults, blank rows | Ghost editing and defaults |
-| History | Multi-cell step, undo/redo reference stacks | Checkbox undo passes; text and multi-cell clipboard undo are expected-failure regressions |
+| History | Multi-cell step, undo/redo reference stacks | Text and checkbox undo/redo; multi-cell clipboard undo/redo |
 | Right-click | Row deletion by stable ID | Context menu Delete row |
 | Paging | Page boundaries and paste guard | Navigation, last-page ghost, paste boundary |
 | Server virtualization | Bounded requests, malformed responses, large row indexes, compact selection and paste | Existing virtual scrolling/offscreen Chrome suites |
@@ -65,17 +65,26 @@ direct Chrome assertion for their effect on data or edits. Changes to
 the server virtualisation protocol should be tested against the injected
 Python provider and the existing real Chrome virtual suites.
 
-Known limitation: the row builder describes customnumber cells as text
-rather than the custom numeric template. Chrome has nevertheless verified
-a numeric value from direct editing, so the renderer/type inconsistency
-remains a code-review finding, not an expected-failure browser test.
+## Resolved regression cases
 
-Chrome has also reproduced two undo regressions: Ctrl+Z after an ordinary
-text edit, and Ctrl+Z after a multi-cell clipboard paste, did not restore the
-original values. Both are isolated expected-failure tests, while checkbox
-undo is tested as a passing behaviour. These should be fixed in the component
-before treating the full editing history as production-ready.
+The regression suite now uses ordinary passing tests for all three previously
+identified failures:
 
-Chrome also reproduces a failure to publish direct edits in a regular
-number column. Paste conversion to the same column passes independently.
-The direct number edit has an expected-failure test until repaired.
+* **Number editing:** Ctrl/Cmd+A must select the input's existing value, so
+  entering a replacement number does not append to the original text.
+  Number and percent inputs preserve native editor clipboard and undo keys.
+* **Text editing undo/redo:** the browser test keeps focus on the grid after
+  committing a text edit. Ctrl+Z/Y then exercise grid history, rather than
+  invoking a newly opened text editor's own undo buffer.
+* **Multi-cell paste undo/redo:** the test focuses a header (which cannot
+  enter edit mode) before issuing keyboard undo/redo, and verifies restoration
+  of the original two-row, two-column data.
+
+The `customnumber` column also uses the shared numeric cell template rather
+than falling back to the plain text cell. The production browser assets are
+rebuilt and checked for reproducibility in CI.
+
+The distinction between **grid history shortcuts** and **native editor
+shortcuts** is important: an active input should retain its own text-selection
+and undo behaviour until editing has been committed and focus has returned to
+the grid.

@@ -139,7 +139,8 @@ export const useReliableGrid = ({
         table: windowed ? before.table : { data: next.data, rowIds: next.rowIds },
       });
       if (shouldSend) sendPropsRef.current({ edits: queued.queue[0] });
-      return true;
+      // The committed batch identity is used by server-side undo/redo.
+      return { seq: queued.nextSeq - 1, streamId: queued.streamId };
     } catch (error) {
       update({ ...before, error: "Edit was not accepted: " + error.message });
       return false;

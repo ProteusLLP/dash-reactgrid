@@ -25,9 +25,33 @@ const TRUE_TEXT = ["true", "yes", "1", "y", "x"];
 export const newRowId = () =>
   NEW_ROW_PREFIX + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 
-/** The ids of the rows, using positions where the caller gave none. */
-export const rowIdsOf = (data, rowIds) =>
-  data.map((_, idx) => (rowIds && rowIds[idx] !== undefined ? rowIds[idx] : idx));
+const validIds = new WeakMap();
+const rowIndexCache = new WeakMap();
+
+/** The ids of the rows, using positions where the caller gave none.
+ * Reuse a complete supplied id array instead of remapping 100k rows per edit.
+ */
+export const rowIdsOf = (data, rowIds) => {
+  if (Array.isArray(rowIds) && rowIds.length === data.length) {
+    let complete = validIds.get(rowIds);
+    if (complete === undefined) {
+      complete = rowIds.every((id) => id !== undefined);
+      validIds.set(rowIds, complete);
+    }
+    if (complete) return rowIds;
+  }
+  return data.map((_, idx) => (rowIds && rowIds[idx] !== undefined ? rowIds[idx] : idx));
+};
+
+/** Index stable row ids once per immutable rowIds array. */
+export const rowIndexesOf = (rowIds) => {
+  let indexes = rowIndexCache.get(rowIds);
+  if (!indexes) {
+    indexes = new Map(rowIds.map((rowId, idx) => [rowId, idx]));
+    rowIndexCache.set(rowIds, indexes);
+  }
+  return indexes;
+};
 
 /** A column's dropdown options as ReactGrid wants them. */
 export const optionsOf = (column) =>
@@ -165,7 +189,7 @@ export const applyChanges = (table, changes, { columns, newRow, makeId = newRowI
   const added = new Map();
   const copied = new Set();
   const columnIndex = new Map(columns.map((column, index) => [column.columnId, index]));
-  const rowIndex = new Map(table.rowIds.map((id, index) => [id, index]));
+  const rowIndex = rowIndexesOf(table.rowIds);
 
   const mutableData = () => {
     if (data === table.data) data = table.data.slice();

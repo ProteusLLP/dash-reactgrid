@@ -298,7 +298,6 @@ export const ServerVirtualGrid = (props) => {
     setCopyText(null);
     setCopyError(null);
     copyPending.current=null;
-    setProps({ virtualSelection: candidate });
   };
 
   const selectionAt = (rowId, colId) => {
@@ -356,6 +355,16 @@ export const ServerVirtualGrid = (props) => {
       submitOperation([{kind:"undo",targetSeq:previous}], "redo");
   };
 
+  // Publish global selections after ReactGrid finishes processing clicks.
+  // Synchronous Dash prop updates on every focus can interrupt double-click
+  // editing by replacing ReactGrid's active input.
+  useEffect(() => {
+    if (!globalSelection) return;
+    const timer=window.setTimeout(
+      () => setProps({virtualSelection:globalSelection}), 200);
+    return () => window.clearTimeout(timer);
+  }, [globalSelection, setProps]);
+
   // Prepare range data asynchronously via Dash, so the eventual Copy click
   // is a genuine user gesture and can use the synchronous clipboard event.
   useEffect(() => {
@@ -363,6 +372,10 @@ export const ServerVirtualGrid = (props) => {
     setCopyError(null);
     copyPending.current=null;
     if (!globalSelection) return;
+    // A click focusing a single cell is NOT a request to fetch its content.
+    // In particular, don't trigger a Dash response during double-click edit.
+    if ((globalSelection.end - globalSelection.start) *
+        (globalSelection.columnEnd - globalSelection.columnStart) === 1) return;
     if (globalSelection.end - globalSelection.start > MAX_RANGE_ROWS) {
       setCopyError("Large selections must use Download CSV");
       return;
@@ -388,7 +401,15 @@ export const ServerVirtualGrid = (props) => {
   }, [virtualRangeData]);
 
   const copySelection = () => {
-    if (typeof copyText !== "string") return;
+    if (typeof copyText !== "string") {
+      if (globalRef.current && !copyPending.current) {
+        const request=copyRequestFor(virtualDatasetId,
+          ++copyCounter.current,globalRef.current);
+        copyPending.current=request;
+        setProps({virtualRangeRequest:request});
+      }
+      return;
+    }
     // A textarea fallback works even where navigator.clipboard needs
     // additional permissions or the page is not a secure context.
     const textarea = document.createElement("textarea");
@@ -643,9 +664,10 @@ export const ServerVirtualGrid = (props) => {
         {globalSelection ? selectedCount.toLocaleString() + " rows selected" :
           virtualRowCount.toLocaleString() + " rows"}
       </span>
-      <button type="button" disabled={typeof copyText !== "string" ||
+      <button type="button" disabled={!globalSelection ||
         reliable.pending > 0}
-        onClick={copySelection}>Copy selection</button>
+        onClick={copySelection}>
+        {typeof copyText === "string" ? "Copy selection" : "Prepare copy"}</button>
       {exportUrl && <a href={exportUrl} download>Download selected CSV</a>}
       {!readOnly && props.transmitSparseEdits && <>
         <button type="button" disabled={editingBlocked}

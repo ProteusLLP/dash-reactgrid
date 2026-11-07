@@ -147,8 +147,14 @@ export const useReliableGrid = ({
     // Recover pending batches after a reload or mount, and retry every few
     // seconds until the server confirms a durable transaction.
     sendHead();
-    const timer = window.setInterval(sendHead, 4000);
-    return () => window.clearInterval(timer);
+    const timer = window.setInterval(() => {
+      if (window.navigator.onLine !== false) sendHead();
+    }, 4000);
+    window.addEventListener("online", sendHead);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("online", sendHead);
+    };
   }, [enabled, key]);
 
   useEffect(() => {
@@ -165,6 +171,19 @@ export const useReliableGrid = ({
       update({ ...before, error: "Could not persist server acknowledgement: " + error.message });
     }
   }, [editAck, enabled, key]);
+
+  // Warn when a user tries to close or navigate away while unacknowledged
+  // edits are held only in this tab's sessionStorage. Not all browsers
+  // display this dialog (notably mobile background kills).
+  useEffect(() => {
+    if (!enabled || !state.outbox?.queue.length) return;
+    const warn = (event) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [enabled, state.outbox?.queue.length]);
 
   const retryFailed = () => {
     const before = current.current;

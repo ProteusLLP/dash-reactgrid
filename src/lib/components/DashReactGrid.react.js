@@ -30,7 +30,7 @@ import { parseClipboardTsv } from '../virtualOperations';
 import {
   sheetEdge, keyboardRectangle, keyboardArea, nativeRectangle,
   publicKeyboardRange, keyboardHighlights, fillDownChanges,
-  multiEditChanges, keyboardClipboardText,
+  multiEditChanges, keyboardClipboardText, MAX_KEYBOARD_EDIT_CELLS,
 } from '../spreadsheetKeyboard';
 
 const locale = window.navigator.language
@@ -328,7 +328,14 @@ const ReactGridDataHandler = (props) => {
     const text = shortcutRange.current
       ? keyboardClipboardText(shortcutRange.current,table.data,allColumns,columns)
       : selectionText(rows, selection.current, textOf)
-    if (text === null) return
+    if (text === null) {
+      if (shortcutRange.current) {
+        e.preventDefault()
+        e.stopPropagation()
+        setKeyboardError("Copy is limited to 20,000 cells; use a smaller range or server export")
+      }
+      return
+    }
     e.clipboardData.setData("text/plain", text)
     e.preventDefault()
   }
@@ -447,6 +454,30 @@ const ReactGridDataHandler = (props) => {
     if (!e.ctrlKey && !e.metaKey && !e.altKey && (e.key === "Delete" || e.key === "Backspace")) {
       // Handle clearing here instead of relying on ReactGrid's last-row
       // behaviour. The blank extension row is never a data edit.
+      if (shortcutRange.current) {
+        e.preventDefault()
+        e.stopPropagation()
+        const rect=shortcutRange.current
+        if (editingBlocked) return
+        if (keyboardArea(rect)>MAX_KEYBOARD_EDIT_CELLS) {
+          setKeyboardError("Clear is limited to 20,000 cells per operation")
+          return
+        }
+        const changes=[]
+        for (let ri=rect.start;ri<rect.end;ri++) {
+          const rowId=table.rowIds[ri]
+          for (let ci=rect.columnStart;ci<rect.columnEnd;ci++) {
+            const col=columns[ci]
+            if (!canEdit(rowId,col,table.data[ri])) continue
+            const value=col.type==="checkbox" ? false :
+              ["text"].includes(col.type) ? "" : null
+            changes.push({rowId,columnId:col.columnId,value})
+          }
+        }
+        if (changes.length) change(changes)
+        setKeyboardError(null)
+        return
+      }
       const ranges = selection.current?.length ? selection.current :
         [focusedRange(rows, columns, focused.current)].filter(Boolean)
       const changes = editingBlocked ? [] : clearSelectedCells(rows, columns, ranges)

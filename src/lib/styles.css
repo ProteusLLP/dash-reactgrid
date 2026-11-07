@@ -134,3 +134,13 @@
 .reactgrid .rg-cell.rg-virtual-selected {
   background: rgba(45, 116, 214, 0.17);
 }
+
+/* Keyboard-selected regions can cross pages without enumerating source rows. */
+.reactgrid .rg-cell.rg-keyboard-selected {
+  background-color: rgba(45, 116, 214, 0.20);
+}
+.drg-keyboard-error {
+  margin: 0.3rem 0;
+  color: #952323;
+  font-size: 0.85rem;
+}

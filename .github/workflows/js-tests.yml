@@ -1,0 +1,46 @@
+name: JavaScript tests and build
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - 'fix/**'
+      - 'perf/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install build and test dependencies
+        run: npm ci --legacy-peer-deps
+      - name: Run JavaScript unit tests
+        run: npm run test:js
+      - name: Compile component
+        run: npm run build:js
+      - name: Verify committed browser assets match source
+        run: git diff --exit-code -- dash_reactgrid/dash_reactgrid.min.js dash_reactgrid/dash_reactgrid.min.js.map
+
+
+      - name: Benchmark large tables
+        run: node --experimental-detect-module scripts/benchmark-large-grid.mjs
+      - name: Test stateless provider callbacks
+        run: python3 -m unittest discover -s tests -p test_stateless_virtual_callbacks.py -v
+      - name: Test optional SQLite fixture protocol
+        run: python3 -m unittest discover -s tests -p test_sparse_edit_server.py -v
+      - name: Test virtual operations against optional SQLite fixture
+        run: python3 -m unittest discover -s tests -p test_virtual_grid_store.py -v
+      - name: Install Dash and Selenium browser testing
+        run: python3 -m pip install "dash>=3,<5" "selenium>=4,<5"
+      - name: Test real-browser sparse edit and ACK
+        run: python3 tests/test_sparse_browser.py
+      - name: Test server virtualization in Chrome
+        run: python3 tests/test_server_virtual_browser.py
+      - name: Test virtual structural edits, offscreen clipboard and undo
+        run: python3 tests/test_virtual_operations_browser.py
+      - name: Test server virtualization with durable sparse edits
+        run: python3 tests/test_virtual_reliable_browser.py

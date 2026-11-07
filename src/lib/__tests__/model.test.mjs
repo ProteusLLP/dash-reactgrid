@@ -9,6 +9,7 @@ import {
   pastedValue,
   removeRows,
   rowIdsOf,
+  rowIndexesOf,
   rowsInRanges,
 } from "../model.js";
 
@@ -115,4 +116,88 @@ test("a column's class is safe in a selector", async () => {
   const { columnClass } = await import("../model.js");
   assert.equal(columnClass("cf_face_value"), "rg-col-cf_face_value");
   assert.equal(columnClass('["USD","Model","x"]'), "rg-col-__USD___Model___x__");
+});
+
+
+test("Delete or Backspace on the final real cell clears it without adding a row", () => {
+  const next = applyChanges(table, [{ rowId: "r2", columnId: "kind", value: null }], { columns, makeId: ids() });
+  assert.deepEqual(next.rowIds, ["r1", "r2"]);
+  assert.equal(next.data[1][2], null);
+  assert.deepEqual(next.edits, [{ kind: "cell", rowId: "r2", columnId: "kind", value: null }]);
+});
+
+test("Delete on the final blank extension cell must not add an empty row", () => {
+  const next = applyChanges(table, [
+    { rowId: GHOST_ROW_ID, columnId: "name", value: "" },
+    { rowId: GHOST_ROW_ID, columnId: "weight", value: null },
+    { rowId: GHOST_ROW_ID, columnId: "kind", value: null },
+    { rowId: GHOST_ROW_ID, columnId: "credit", value: false },
+  ], { columns, newRow: { kind: "bond" }, makeId: ids() });
+  assert.deepEqual(next.rowIds, table.rowIds);
+  assert.deepEqual(next.data, table.data);
+  assert.deepEqual(next.edits, []);
+});
+
+test("blank trailing paste rows do not grow an extendable table", () => {
+  const next = applyChanges(table, [
+    { rowId: { ghost: 0 }, columnId: "name", value: "C" },
+    { rowId: { ghost: 1 }, columnId: "name", value: "" },
+    { rowId: { ghost: 1 }, columnId: "weight", value: null },
+  ], { columns, makeId: ids() });
+  assert.deepEqual(next.rowIds, ["r1", "r2", "new-1"]);
+  assert.equal(next.data[2][0], "C");
+});
+
+
+test("updating a large table clones only touched rows", () => {
+  const size = 100_000;
+  const values = Array.from({ length: size }, (_, i) => ["r" + i, i, "bond", false]);
+  const ids = Array.from({ length: size }, (_, i) => "row-" + i);
+  const large = { data: values, rowIds: ids };
+  const next = applyChanges(large, [{ rowId: "row-95000", columnId: "weight", value: 99 }], { columns });
+  assert.notStrictEqual(next.data, large.data);
+  assert.strictEqual(next.rowIds, large.rowIds, "row ids are unchanged for cell-only edits");
+  assert.strictEqual(next.data[0], large.data[0], "rows before the change share references");
+  assert.strictEqual(next.data[99_999], large.data[99_999], "rows after the change share references");
+  assert.notStrictEqual(next.data[95_000], large.data[95_000]);
+  assert.equal(next.data[95_000][1], 99);
+  assert.equal(large.data[95_000][1], 95_000);
+  const unchanged = applyChanges(large, [{ rowId: "row-95000", columnId: "weight", value: 95000 }], { columns });
+  assert.strictEqual(unchanged.data, large.data, "no-op does not copy any rows");
+  assert.strictEqual(unchanged.rowIds, large.rowIds);
+});
+
+test("a bulk paste changes each source row only once and keeps all other rows shared", () => {
+  const bulk = { data: Array.from({ length: 1000 }, (_, i) => ["item-" + i, i, "bond", false]),
+    rowIds: Array.from({ length: 1000 }, (_, i) => "row-" + i) };
+  const edits = Array.from({ length: 200 }, (_, i) => [
+    { rowId: "row-" + i, columnId: "name", value: "new-" + i },
+    { rowId: "row-" + i, columnId: "weight", value: 100 + i },
+  ]).flat();
+  const next = applyChanges(bulk, edits, { columns });
+  assert.equal(next.edits.length, 400);
+  assert.equal(next.data[199][1], 299);
+  assert.strictEqual(next.data[200], bulk.data[200]);
+  assert.equal(bulk.data[0][0], "item-0");
+});
+
+test("a row addition preserves the previous rows and makes a new id array", () => {
+  const next = applyChanges(table, [{ rowId: GHOST_ROW_ID, columnId: "name", value: "new" }],
+    { columns, makeId: ids() });
+  assert.strictEqual(next.data[0], table.data[0]);
+  assert.notStrictEqual(next.rowIds, table.rowIds);
+  assert.equal(next.rowIds.length, 3);
+});
+
+test("bulk row deletion uses stable ids", () => {
+  const next = removeRows(table, ["r1", "r1", "no-such-row"]);
+  assert.deepEqual(next.rowIds, ["r2"]);
+  assert.deepEqual(next.edits, [{ kind: "remove", rowIds: ["r1"] }]);
+});
+
+test("complete row ids and their lookup index retain reference identity across edits", () => {
+  assert.strictEqual(rowIdsOf(table.data, table.rowIds), table.rowIds);
+  assert.strictEqual(rowIndexesOf(table.rowIds), rowIndexesOf(table.rowIds));
+  assert.equal(rowIndexesOf(table.rowIds).get("r2"), 1);
+  assert.deepEqual(rowIdsOf([[1], [2]], ["a", undefined]), ["a", 1]);
 });

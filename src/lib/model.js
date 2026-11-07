@@ -25,9 +25,33 @@ const TRUE_TEXT = ["true", "yes", "1", "y", "x"];
 export const newRowId = () =>
   NEW_ROW_PREFIX + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 
-/** The ids of the rows, using positions where the caller gave none. */
-export const rowIdsOf = (data, rowIds) =>
-  data.map((_, idx) => (rowIds && rowIds[idx] !== undefined ? rowIds[idx] : idx));
+const validIds = new WeakMap();
+const rowIndexCache = new WeakMap();
+
+/** The ids of the rows, using positions where the caller gave none.
+ * Reuse a complete supplied id array instead of remapping 100k rows per edit.
+ */
+export const rowIdsOf = (data, rowIds) => {
+  if (Array.isArray(rowIds) && rowIds.length === data.length) {
+    let complete = validIds.get(rowIds);
+    if (complete === undefined) {
+      complete = rowIds.every((id) => id !== undefined);
+      validIds.set(rowIds, complete);
+    }
+    if (complete) return rowIds;
+  }
+  return data.map((_, idx) => (rowIds && rowIds[idx] !== undefined ? rowIds[idx] : idx));
+};
+
+/** Index stable row ids once per immutable rowIds array. */
+export const rowIndexesOf = (rowIds) => {
+  let indexes = rowIndexCache.get(rowIds);
+  if (!indexes) {
+    indexes = new Map(rowIds.map((rowId, idx) => [rowId, idx]));
+    rowIndexCache.set(rowIds, indexes);
+  }
+  return indexes;
+};
 
 /** A column's dropdown options as ReactGrid wants them. */
 export const optionsOf = (column) =>
@@ -157,11 +181,22 @@ export const blankRow = (columns, newRow) =>
  * @returns {object} `{data, rowIds, edits}`.
  */
 export const applyChanges = (table, changes, { columns, newRow, makeId = newRowId }) => {
-  const data = table.data.map((row) => [...row]);
-  const rowIds = [...table.rowIds];
+  // A single edit should copy one row, not every cell of a large table.
+  // Keep the caller's rows untouched and share all rows that did not change.
+  let data = table.data;
+  let rowIds = table.rowIds;
   const edits = [];
   const added = new Map();
-  const columnIds = columns.map((c) => c.columnId);
+  const copied = new Set();
+  const columnIndex = new Map(columns.map((column, index) => [column.columnId, index]));
+  const rowIndex = rowIndexesOf(table.rowIds);
+
+  const mutableData = () => {
+    if (data === table.data) data = table.data.slice();
+  };
+  const mutableRowIds = () => {
+    if (rowIds === table.rowIds) rowIds = table.rowIds.slice();
+  };
 
   const indexOf = (rowId) => {
     if (rowId === GHOST_ROW_ID || (rowId && typeof rowId === "object")) {
@@ -170,8 +205,11 @@ export const applyChanges = (table, changes, { columns, newRow, makeId = newRowI
         // Rows past the end are added in order, so a paste keeps its shape.
         for (let k = added.size; k <= key; k++) {
           if (added.has(k)) continue;
+          mutableData();
+          mutableRowIds();
           const id = makeId();
           added.set(k, data.length);
+          copied.add(data.length); // A new row is already safe to change.
           data.push(blankRow(columns, newRow));
           rowIds.push(id);
           edits.push({ kind: "add", rowId: id });
@@ -179,14 +217,28 @@ export const applyChanges = (table, changes, { columns, newRow, makeId = newRowI
       }
       return added.get(key);
     }
-    return rowIds.indexOf(rowId);
+    return rowIndex.get(rowId) ?? -1;
   };
 
   changes.forEach(({ rowId, columnId, value }) => {
-    const col = columnIds.indexOf(columnId);
+    const col = columnIndex.get(columnId);
+    if (col === undefined) return;
+    // Delete/Backspace on the blank extension row is not an insertion.
+    const ghostKey = rowId === GHOST_ROW_ID ? 0 : rowId && typeof rowId === "object" ? rowId.ghost : null;
+    if (ghostKey !== null && !added.has(ghostKey)) {
+      const type = columns[col].type;
+      const blank = value == null ||
+        (type === "checkbox" && value === false) ||
+        (!["number", "customnumber", "percent", "checkbox", "dropdown", "date", "time"].includes(type) && value === "");
+      if (blank) return;
+    }
     const row = indexOf(rowId);
-    if (col < 0 || row < 0) return;
-    if (Object.is(data[row][col], value)) return;
+    if (row < 0 || Object.is(data[row][col], value)) return;
+    mutableData();
+    if (!copied.has(row)) {
+      data[row] = data[row].slice();
+      copied.add(row);
+    }
     data[row][col] = value;
     edits.push({ kind: "cell", rowId: rowIds[row], columnId, value });
   });
@@ -201,7 +253,8 @@ export const applyChanges = (table, changes, { columns, newRow, makeId = newRowI
  * @returns {object} `{data, rowIds, edits}`.
  */
 export const removeRows = (table, removing) => {
-  const gone = new Set(removing.filter((id) => table.rowIds.includes(id)));
+  const present = new Set(table.rowIds);
+  const gone = new Set(removing.filter((id) => present.has(id)));
   if (gone.size === 0) return { data: table.data, rowIds: table.rowIds, edits: [] };
   const keep = table.rowIds.map((id) => !gone.has(id));
   return {
@@ -214,9 +267,11 @@ export const removeRows = (table, removing) => {
 /** The distinct row ids a set of selected ranges covers, ghost row aside. */
 export const rowsInRanges = (ranges) => {
   const ids = [];
+  const seen = new Set();
   (ranges || []).forEach((range) =>
     (range.rows || []).forEach((row) => {
-      if (row.rowId !== "header" && row.rowId !== GHOST_ROW_ID && !ids.includes(row.rowId)) {
+      if (row.rowId !== "header" && row.rowId !== GHOST_ROW_ID && !seen.has(row.rowId)) {
+        seen.add(row.rowId);
         ids.push(row.rowId);
       }
     })

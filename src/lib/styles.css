@@ -45,3 +45,92 @@
   color: #999999;
   cursor: default;
 }
+
+/* Bounded-page navigation for large datasets. */
+.drg-pager {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+  margin: 0.5rem 0;
+  font-size: 0.9rem;
+}
+.drg-pager input[type="number"] {
+  width: 4.5rem;
+  padding: 0.2rem;
+  margin-left: 0.2rem;
+}
+.drg-pager button {
+  padding: 0.2rem 0.6rem;
+}
+
+/* Save status for the acknowledged, durable sparse-edit queue. */
+.drg-sync-status {
+  margin: 0.4rem 0;
+  font-size: 0.82rem;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.drg-sync-error {
+  color: #9d1717;
+  font-weight: 600;
+}
+.drg-sync-status button {
+  padding: 0.1rem 0.5rem;
+}
+
+/* Server-virtualized grid: ReactGrid owns the visible rows while sparse
+   spacer geometry lets the browser scroll through the full logical height. */
+.drg-virtual-viewport {
+  width: 100%;
+  position: relative;
+  overscroll-behavior: contain;
+}
+.drg-virtual-loading-status {
+  font-size: 0.82rem;
+  padding: 0.25rem 0;
+  color: #555;
+}
+.drg-virtual-error {
+  color: #952323;
+  padding: 0.4rem;
+}
+.drg-virtual-error button {
+  margin-left: 0.5rem;
+}
+.reactgrid .rg-cell.rg-virtual-loading {
+  opacity: 0.55;
+  background: #f4f5f7;
+}
+
+/* Global row selection can span windows that are not mounted in ReactGrid. */
+.drg-virtual-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  padding: 0.45rem 0;
+  font-size: 0.82rem;
+}
+.drg-virtual-toolbar label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.drg-virtual-toolbar input[type=number] {
+  width: 6.2rem;
+  padding: 0.25rem;
+}
+.drg-virtual-toolbar button {
+  padding: 0.25rem 0.5rem;
+}
+.drg-virtual-toolbar a {
+  text-decoration: underline;
+}
+.drg-selection-count {
+  color: #526174;
+}
+.reactgrid .rg-cell.rg-virtual-selected {
+  background: rgba(45, 116, 214, 0.17);
+}

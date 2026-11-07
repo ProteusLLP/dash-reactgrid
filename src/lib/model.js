@@ -1,4 +1,5 @@
 import { calendarDateString, calendarDateFromValue } from "./keyboardEntry.js";
+import { isNumericRows } from "./numericData.js";
 /*
  * The grid's data model, free of React so it can be tested on its own.
  *
@@ -41,7 +42,7 @@ export const rowIdsOf = (data, rowIds) => {
     }
     if (complete) return rowIds;
   }
-  return data.map((_, idx) => (rowIds && rowIds[idx] !== undefined ? rowIds[idx] : idx));
+  return Array.from({length: data.length}, (_, idx) => (rowIds && rowIds[idx] !== undefined ? rowIds[idx] : idx));
 };
 
 /** Index stable row ids once per immutable rowIds array. */
@@ -259,7 +260,7 @@ export const removeRows = (table, removing) => {
   if (gone.size === 0) return { data: table.data, rowIds: table.rowIds, edits: [] };
   const keep = table.rowIds.map((id) => !gone.has(id));
   return {
-    data: table.data.filter((_, idx) => keep[idx]),
+    data: isNumericRows(table.data) ? table.data.selectRows(keep) : table.data.filter((_, idx) => keep[idx]),
     rowIds: table.rowIds.filter((_, idx) => keep[idx]),
     edits: [{ kind: "remove", rowIds: [...gone] }],
   };

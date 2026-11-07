@@ -28,6 +28,8 @@ jobs:
 
       - name: Benchmark large tables
         run: node --experimental-detect-module scripts/benchmark-large-grid.mjs
+      - name: Benchmark numeric binary data transport
+        run: node --experimental-detect-module scripts/benchmark-numpy-data.mjs
       - name: Test stateless provider callbacks
         run: python3 -m unittest discover -s tests -p test_stateless_virtual_callbacks.py -v
       - name: Test optional SQLite fixture protocol
@@ -35,9 +37,11 @@ jobs:
       - name: Test virtual operations against optional SQLite fixture
         run: python3 -m unittest discover -s tests -p test_virtual_grid_store.py -v
       - name: Install Dash and Selenium browser testing
-        run: python3 -m pip install "dash>=3,<5" "selenium>=4,<5"
+        run: python3 -m pip install "dash>=3,<5" "selenium>=4,<5" "numpy>=1.23,<3"
       - name: Test Python column helper
         run: python3 -m unittest tests.test_column -v
+      - name: Test NumPy binary grid transport and callbacks
+        run: python3 -m unittest tests.test_numpy_data -v
       - name: Test Python column and stateless callback contracts
         run: python3 -m unittest tests.test_component_contract -v
       - name: Test full Chrome cell, clipboard and interaction matrix

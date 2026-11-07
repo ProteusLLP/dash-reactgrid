@@ -110,7 +110,21 @@ def run_test():
             print("Virtual reliable browser test passed: scrolling, lost ACK, durable replay, further edit and reload")
         except Exception:
             if driver:
-                print("Browser DOM:",driver.page_source[-13000:])
+                try:
+                    diag=driver.execute_script("""
+                      const v=document.querySelector('#grid .drg-virtual-viewport');
+                      const cells=[...document.querySelectorAll('#grid .rg-text-cell')]
+                        .map(e => e.textContent.trim());
+                      return {scrollTop:v?.scrollTop,scrollHeight:v?.scrollHeight,
+                        visibleCount:cells.length, first:cells.slice(0,8),
+                        last:cells.slice(-8),
+                        row500:cells.includes('Row 500'),
+                        viewport:document.querySelector('#viewport-status')?.textContent,
+                        sync:document.querySelector('#grid .drg-sync-status')?.textContent};
+                    """)
+                    print("Virtual browser diagnostic:",diag)
+                except Exception as error:
+                    print("Could not inspect browser:",error)
             raise
         finally:
             if driver:driver.quit()

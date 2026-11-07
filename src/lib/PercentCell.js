@@ -1,5 +1,6 @@
 import React from 'react';
 import { nativeEditorShortcut } from './nativeEditorShortcut';
+import { isPlainArrow } from './keyboardEntry';
 // NOTE: all modules imported below may be imported from '@silevis/reactgrid'
 
 import { getCellProperty, keyCodes, } from "@silevis/reactgrid";
@@ -12,6 +13,7 @@ export class PercentCellTemplate {
     constructor() {
     }
     wasEscKeyPressed = false;
+    directTyping = false;
 
     getCompatibleCell(uncertainCell) {
         let value;
@@ -27,6 +29,7 @@ export class PercentCellTemplate {
     }
 
     handleKeyDown(cell, keyCode, ctrl, shift, alt) {
+        this.directTyping = keyCode !== keyCodes.POINTER && keyCode !== keyCodes.ENTER;
         if (isNumpadNumericKey(keyCode)) keyCode -= 48;
         const char = String.fromCharCode(keyCode);
         if (!ctrl && !alt && !shift && (inNumericKey(keyCode) || isAllowedOnNumberTypingKey(keyCode))) {
@@ -101,6 +104,10 @@ export class PercentCellTemplate {
             onChange={handleOnChange}
             onBlur={handleOnBlur}
             onKeyDown={(e) => {
+                // Direct typing uses Excel's entry mode: arrows save and move.
+                // Editing opened with a pointer/Enter retains input caret keys.
+                if (this.directTyping && isPlainArrow(e)) return;
+
                 if (nativeEditorShortcut(e)) {
                     e.stopPropagation();
                     return; // keep input selection, paste and undo native

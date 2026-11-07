@@ -153,3 +153,36 @@ test("numeric and percent editors preserve native Ctrl/Cmd shortcuts", () => {
   assert.equal(nativeEditorShortcut({ key:"a", ctrlKey:true, metaKey:false, altKey:true }), false);
   assert.equal(nativeEditorShortcut({ key:"ArrowLeft", ctrlKey:true, metaKey:false, altKey:false }), false);
 });
+
+test("Excel direct-entry arrow navigation excludes modified shortcuts", async () => {
+  const { isPlainArrow, isTypingKey } = await import("../keyboardEntry.js");
+  assert.equal(isPlainArrow({ key:"ArrowRight",ctrlKey:false,metaKey:false,altKey:false,shiftKey:false }),true);
+  assert.equal(isPlainArrow({ key:"ArrowUp",ctrlKey:false,metaKey:false,altKey:false,shiftKey:true }),false);
+  assert.equal(isPlainArrow({ key:"Enter",ctrlKey:false,metaKey:false,altKey:false,shiftKey:false }),false);
+  assert.equal(isTypingKey("A",false,false),true);
+  assert.equal(isTypingKey("!",false,false),true);
+  assert.equal(isTypingKey("A",true,false),false);
+});
+
+test("direct date typing parses ISO and the locale's day/month order and rejects rollovers", async () => {
+  const { parseDateEntry } = await import("../keyboardEntry.js");
+  assert.equal(parseDateEntry("2026-11-14","en-GB").getDate(),14);
+  assert.equal(parseDateEntry("14/11/2026","en-GB").getMonth(),10);
+  assert.equal(parseDateEntry("11/14/2026","en-US").getMonth(),10);
+  assert.equal(parseDateEntry("31/02/2026","en-GB"),null);
+  assert.equal(parseDateEntry("2025-02-29","en-GB"),null);
+  assert.equal(parseDateEntry("2024-02-29","en-GB").getDate(),29);
+  assert.equal(parseDateEntry("bad","en-GB"),null);
+});
+
+test("direct time typing validates 24h time and retains the base date", async () => {
+  const { parseTimeEntry } = await import("../keyboardEntry.js");
+  const base = new Date(2026,10,7,9,10,0);
+  const result = parseTimeEntry("15:45",base);
+  assert.equal(result.getHours(),15);
+  assert.equal(result.getMinutes(),45);
+  assert.equal(result.getDate(),7);
+  assert.equal(parseTimeEntry("24:00",base),null);
+  assert.equal(parseTimeEntry("15:60",base),null);
+  assert.equal(parseTimeEntry("not time",base),null);
+});

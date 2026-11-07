@@ -6,6 +6,7 @@ import "../styles.css"
 import { CustomNumberCellTemplate, numberParser } from '../CustomNumberCell';
 import { PercentCellTemplate, percentParser } from '../PercentCell';
 import { PortalDropdownCellTemplate } from '../PortalDropdownCell';
+import { ExcelTextCellTemplate, ExcelDateCellTemplate, ExcelTimeCellTemplate } from '../ExcelKeyboardCells';
 import { ServerVirtualGrid } from '../ServerVirtualGrid.react';
 import { compileGridColumns, buildGridRows, pageBounds, canPasteOnPage } from '../gridRows';
 import { useReliableGrid } from '../useReliableGrid';
@@ -29,7 +30,9 @@ import { parseClipboardTsv } from '../virtualOperations';
 
 const locale = window.navigator.language
 const parsers = { number: numberParser, percent: percentParser }
-const customCellTemplates = { 'percent': new PercentCellTemplate(), 'customnumber': new CustomNumberCellTemplate() }
+const customCellTemplates = { 'text': new ExcelTextCellTemplate(), 'date': new ExcelDateCellTemplate(),
+  'time': new ExcelTimeCellTemplate(), 'percent': new PercentCellTemplate(),
+  'customnumber': new CustomNumberCellTemplate() }
 // With dropdownMenuPortal, dropdown menus render on the page body instead of
 // inside their cell, so clipping or scrolling ancestors cannot cut them off.
 const portalCellTemplates = { ...customCellTemplates, 'dropdown': new PortalDropdownCellTemplate() }

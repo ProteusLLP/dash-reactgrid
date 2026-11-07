@@ -105,12 +105,13 @@ def attach_state(grid_id, status_id):
         Output(status_id, "children"),
         Input(grid_id, "data"), Input(grid_id, "rowIds"),
         Input(grid_id, "edits"),
-        Input(grid_id, "selectedRowIds"),
+        Input(grid_id, "selectedRowIds"), Input(grid_id, "selectedCell"),
     )
-    def show(rows, row_ids, edits, selected):
+    def show(rows, row_ids, edits, selected, focused):
         return json.dumps({
             "data": rows, "rowIds": row_ids,
             "edits": edits, "selectedRowIds": selected,
+            "selectedCell": focused,
         }, ensure_ascii=False)
 
 

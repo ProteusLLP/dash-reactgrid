@@ -166,76 +166,116 @@ class FeatureMatrixChromeTests(unittest.TestCase):
             # through its onBlur handler by moving focus outside the grid.
             self.driver.find_element(By.TAG_NAME, "h3").click()
 
-    def test_numeric_character_focus_diagnostics(self):
-        self.cell("matrix", "amount", 1).click()
-        self.driver.execute_script("""
-          window.klog=[];
-          for (const type of ['focusin','focusout','keydown','input','change']) {
-            document.addEventListener(type,(e)=>{
-              const tag=e.target.tagName;
-              if(tag!=='INPUT')return;
-              window.klog.push([type,e.key,e.target.className,
-                e.target.value,document.activeElement?.className]);
-            },true);
-          }
-        """)
-        for ch in "31.25":
-            ActionChains(self.driver).send_keys(ch).perform()
-            time.sleep(.08)
-            snap = self.driver.execute_script("""
-              return {
-                active:document.activeElement?.outerHTML.slice(0,350),
-                editor:document.querySelector('#matrix .rg-celleditor')?.outerHTML.slice(0,450),
-                log:window.klog.splice(0,100),
-              }
-            """)
-            print("NUMERIC CHARACTER",repr(ch),snap,
-                  "stored", self.state("matrix")["data"][1][1],flush=True)
+    def type_in_focused(self, value):
+        # Individual physical keystrokes keep keyboard focus synchronized as
+        # a human types, unlike a bundled Selenium keyboard action.
+        for character in value:
+            ActionChains(self.driver).send_keys(character).perform()
 
-    def test_keyboard_typing_navigation_diagnostics(self):
-        """Exercise the Excel workflow using physical Chrome key events."""
+    def expect_focus(self, grid, row_id, column_id):
+        self.waiter.until(lambda _: self.state(grid).get("selectedCell") == {
+            "rowId": row_id, "columnId": column_id,
+        })
+
+    def test_direct_typing_and_arrow_navigation_all_text_numeric_percent(self):
         cases = [
-            ("text", 0, "Typed"),
-            ("amount", 1, "31.25"),
-            ("custom", 0, "14.75"),
-            ("percent", 0, "37"),
-            ("conditional", 0, "Typed"),
-            ("choice", 0, "Finished"),
-            ("flag", 0, Keys.SPACE),
-            ("day", 0, "11/14/2026"),
-            ("clock", 0, "15:45"),
+            ("text", 0, "Direct edit!", 0, "Direct edit!", "amount", "r1"),
+            ("amount", 1, "31.25", 1, 31.25, "custom", "r2"),
+            ("custom", 0, "-14.75", 2, -14.75, "percent", "r1"),
+            ("percent", 0, "37", 3, .37, "choice", "r1"),
+            ("conditional", 0, "Now editable", 8, "Now editable", "fixed", "r1"),
         ]
-        for column, index, typed in cases:
-            self.driver.get(URL)
-            self.waiter.until(lambda _: self.state("matrix").get("data"))
-            self.cell("matrix", column, index).click()
-            ActionChains(self.driver).send_keys(typed).perform()
-            time.sleep(.12)
-            before = self.driver.execute_script("""
-                return {
-                  tag:document.activeElement.tagName,
-                  type:document.activeElement.type,
-                  cls:document.activeElement.className,
-                  value:document.activeElement.value,
-                  cell:document.activeElement.closest('.rg-cell')?.className,
-                }
-            """)
-            ActionChains(self.driver).send_keys(Keys.ARROW_RIGHT).perform()
-            time.sleep(.20)
-            after = self.driver.execute_script("""
-                return {
-                  tag:document.activeElement.tagName,
-                  type:document.activeElement.type,
-                  cls:document.activeElement.className,
-                  value:document.activeElement.value,
-                  focus:document.querySelector('#matrix .rg-focused')?.className,
-                  editor:!!document.querySelector('#matrix .rg-text-celleditor'),
-                }
-            """)
-            print("KEYBOARD DIAGNOSTIC", column, "typed", repr(typed),
-                  "editor", before, "after", after,
-                  "row", self.state("matrix")["data"][index], flush=True)
-        self.assertTrue(True)
+        for column, index, typed, position, expected, next_col, row_id in cases:
+            with self.subTest(column=column):
+                self.driver.get(URL)
+                self.waiter.until(lambda _: self.state("matrix").get("data"))
+                self.cell("matrix", column, index).click()
+                self.type_in_focused(typed)
+                ActionChains(self.driver).send_keys(Keys.ARROW_RIGHT).perform()
+                self.waiter.until(
+                    lambda _: self.state("matrix")["data"][index][position] == expected
+                )
+                self.expect_focus("matrix", row_id, next_col)
+
+    def test_direct_typing_date_and_time_commits_with_arrow(self):
+        self.cell("matrix", "day", 0).click()
+        self.type_in_focused("2026-11-14")
+        ActionChains(self.driver).send_keys(Keys.ARROW_RIGHT).perform()
+        self.waiter.until(lambda _: str(self.state("matrix")["data"][0][6]).startswith("2026-11-14"))
+        self.expect_focus("matrix", "r1", "clock")
+
+        self.type_in_focused("15:45")
+        ActionChains(self.driver).send_keys(Keys.ARROW_RIGHT).perform()
+        self.waiter.until(lambda _: "15:45" in str(self.state("matrix")["data"][0][7]))
+        self.expect_focus("matrix", "r1", "conditional")
+
+    def test_dropdown_type_to_select_then_navigate_and_checkbox_space(self):
+        # Reach the dropdown through keyboard navigation, not a pointer click
+        # that opens the dropdown before any typed characters.
+        self.cell("matrix", "percent", 0).click()
+        ActionChains(self.driver).send_keys(Keys.ARROW_RIGHT).perform()
+        self.expect_focus("matrix", "r1", "choice")
+        self.type_in_focused("F")
+        self.type_in_focused("inished")
+        ActionChains(self.driver).send_keys(Keys.ENTER).perform()
+        self.waiter.until(lambda _: self.state("matrix")["data"][0][4] == "closed")
+        ActionChains(self.driver).send_keys(Keys.ARROW_RIGHT).perform()
+        self.expect_focus("matrix", "r1", "flag")
+
+        ActionChains(self.driver).send_keys(Keys.SPACE).perform()
+        self.waiter.until(lambda _: self.state("matrix")["data"][0][5] is False)
+        ActionChains(self.driver).send_keys(Keys.ARROW_RIGHT).perform()
+        self.expect_focus("matrix", "r1", "day")
+
+    def test_tab_enter_arrows_chain_edits_without_double_click(self):
+        self.cell("target", "label", 0).click()
+        self.type_in_focused("First")
+        ActionChains(self.driver).send_keys(Keys.TAB).perform()
+        self.waiter.until(lambda _: self.state("target")["data"][0][0] == "First")
+        self.expect_focus("target", "target-1", "value")
+
+        self.type_in_focused("99.25")
+        ActionChains(self.driver).send_keys(Keys.ENTER).perform()
+        self.waiter.until(lambda _: self.state("target")["data"][0][1] == 99.25)
+        self.expect_focus("target", "target-2", "value")
+
+        self.type_in_focused("-101.5")
+        ActionChains(self.driver).send_keys(Keys.ARROW_LEFT).perform()
+        self.waiter.until(lambda _: self.state("target")["data"][1][1] == -101.5)
+        self.expect_focus("target", "target-2", "label")
+
+        self.type_in_focused("Second")
+        ActionChains(self.driver).send_keys(Keys.ARROW_UP).perform()
+        self.waiter.until(lambda _: self.state("target")["data"][1][0] == "Second")
+        self.expect_focus("target", "target-1", "label")
+
+    def test_keyboard_direct_entry_respects_locks_and_extendable_rows(self):
+        self.cell("matrix", "amount", 0).click()
+        self.type_in_focused("999")
+        ActionChains(self.driver).send_keys(Keys.ARROW_RIGHT).perform()
+        self.assertEqual(self.state("matrix")["data"][0][1], 10.5)
+
+        self.cell("matrix", "conditional", 1).click()
+        self.type_in_focused("Blocked")
+        ActionChains(self.driver).send_keys(Keys.ARROW_LEFT).perform()
+        self.assertEqual(self.state("matrix")["data"][1][8], "Disabled")
+
+        self.cell("matrix", "fixed", 0).click()
+        self.type_in_focused("Blocked")
+        ActionChains(self.driver).send_keys(Keys.ARROW_LEFT).perform()
+        self.assertEqual(self.state("matrix")["data"][0][9], "Immutable")
+
+        self.cell("readonly", "label", 0).click()
+        self.type_in_focused("Blocked")
+        ActionChains(self.driver).send_keys(Keys.TAB).perform()
+        self.assertEqual(self.state("readonly")["data"][0][0], "Protected")
+
+        self.cell("matrix", "text", 2).click()
+        self.type_in_focused("Third by keyboard")
+        ActionChains(self.driver).send_keys(Keys.TAB).perform()
+        self.waiter.until(lambda _: len(self.state("matrix")["data"]) == 3)
+        self.assertEqual(self.state("matrix")["data"][2][0], "Third by keyboard")
+        self.assertEqual(self.state("matrix")["data"][2][4], "open")
 
     def test_renders_every_column_type_with_conditional_lock_and_hidden_column(self):
         for column in ("text", "amount", "custom", "percent", "choice",
@@ -353,8 +393,6 @@ class FeatureMatrixChromeTests(unittest.TestCase):
         self.driver.find_element(By.CSS_SELECTOR, "#target .rg-header-cell").click()
         ActionChains(self.driver).key_down(Keys.CONTROL).send_keys(
             "z").key_up(Keys.CONTROL).perform()
-        print("PASTE undo focus:", self.driver.execute_script(
-            "return document.activeElement.outerHTML.slice(0,250)"), flush=True)
         self.waiter.until(
             lambda _: self.state("target")["data"] == [
                 ["Target 1", 1], ["Target 2", 2]

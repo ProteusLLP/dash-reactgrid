@@ -80,7 +80,8 @@ to logical row indices.
 cells and updates those cells optimistically, without transmitting full
 `data`. A server should persist these events and refresh or version the
 corresponding row windows. Row insertion/deletion and cross-window copy,
-paste, selection and undo are not yet supported in this mode. Production edits in this mode require `transmitSparseEdits=True`, a stable
+paste, selection and undo are not yet supported in this mode. Production
+cell editing requires `transmitSparseEdits=True`, a stable
 `editDatasetId`, and a transactional `editAck` callback as documented
 below. Otherwise the server-virtual grid is read-only. Pending edits are
 overlaid onto whichever row window is currently loaded.
@@ -99,11 +100,14 @@ overhead but does not reduce ReactGrid's internal matrix.
 
 ### Reliable sparse-edit transmission
 
-For large grids, enable `transmitSparseEdits=True` with a stable `id`,
-`editDatasetId`, and a complete, stable `rowIds` array. The browser keeps
-edited data in memory, but **never returns the full `data` property** on
-edits. The default remains `transmitSparseEdits=False`, which retains
-the original full-data callback behaviour.
+To enable reliable sparse edits, provide a stable `id` and
+`editDatasetId`, and set `transmitSparseEdits=True`. In full-data mode,
+provide a complete, stable `rowIds` array; server-virtualized mode instead
+receives stable row IDs for each requested window. Edits are recorded in
+browser session storage and transmitted as small batches. The default
+`transmitSparseEdits=False` retains full-data callback behaviour in
+ordinary grids, while server-virtualized grids are read-only unless
+reliable sparse editing is enabled.
 
 ```python
 from dash import Input, Output, callback
@@ -139,6 +143,28 @@ grid = DashReactGrid(
 def save_edits(batch):
     return store.apply(batch)
 ```
+
+For a virtual grid using the same backend, pass `data=[]`,
+`rowIds=[]`, `virtualRowCount=store.row_count()`,
+`virtualDatasetId="pricing-v1"`, `transmitSparseEdits=True` and
+`editDatasetId="pricing-v1"`, then add a viewport callback:
+
+```python
+@callback(Output("grid", "virtualData"), Input("grid", "virtualRequest"),
+          prevent_initial_call=True)
+def fetch_window(request):
+    result = store.read_range(request["start"], request["end"])
+    return {
+        "datasetId": request["datasetId"],
+        "requestId": request["requestId"],
+        "start": request["start"],
+        **result,
+    }
+```
+
+The `editAck` callback remains identical, and no full table is sent to
+the browser. See `tests/virtual_reliable_browser_app.py` for a runnable
+combined example.
 
 `examples/sparse_edit_server.py` demonstrates a **transactional** SQLite
 backend. An edit event has this shape:
@@ -189,9 +215,11 @@ The callback must access a durable shared database and return an ACK only
 after a committed transaction. Do not construct the store per request,
 reset server data after each edit, echo stale `data`, or return an ACK from
 a fire-and-forget task. On page reload, load the latest authoritative
-dataset from the store. `data` and `rowIds` prop updates are authoritative:
-unacknowledged batches are replayed over them, or editing is blocked if they
-cannot be reconciled. A persistent user/editor identity and application
+dataset in full-data mode, or serve the requested viewport from the store
+in server-virtual mode. In full-data mode, `data` and `rowIds` prop updates
+are authoritative; in virtual mode, change `virtualDatasetId` to
+invalidate cached windows. Unacknowledged cell edits in virtual mode are
+overlaid onto whichever server window contains their stable row IDs. A persistent user/editor identity and application
 authorization are separate concerns; do not trust a client-supplied
 `datasetId` to authorize access.
 
@@ -202,9 +230,9 @@ storage can provide a guaranteed recovery service. The example uses
 single-editor or last-writer-wins semantics across different streams; it
 does **not** implement collaborative editing conflict resolution. If
 multiple concurrent editors need to preserve all changes, add optimistic
-row versions and conflict handling in the backend. Large initial datasets
-are still fully transferred to the browser; true server-side paging remains
-separate work. Full-table exports should come from the server.
+row versions and conflict handling in the backend. Full-data mode still transfers the
+initial dataset to the browser. Server-virtualized mode avoids this by
+fetching bounded row intervals. Full-table exports should come from the server.
 
 In sparse mode, Dash persistence should generally use
 `persisted_props=["columns"]`, since the `data` prop is an initial

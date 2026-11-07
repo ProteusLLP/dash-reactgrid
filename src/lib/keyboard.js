@@ -75,3 +75,30 @@ export const selectionText = (rows, ranges, textOf) => {
 /** The header is not an editable data row. */
 export const pasteStartRow = (selection) =>
   Math.max(0, selection.first.row.idx - 1);
+
+/**
+ * Turn Delete/Backspace on a grid selection into changes for editable data cells.
+ * Keep the final real row editable and ignore the header and extension row.
+ */
+export const clearSelectedCells = (rows, columns, ranges) => {
+  const changes = [];
+  const seen = new Set();
+  (ranges || []).forEach((selected) => {
+    for (let ri = selected.first.row.idx; ri <= selected.last.row.idx; ri++) {
+      const row = rows[ri];
+      if (!row || row.rowId === "header" || row.rowId === "__ghost__") continue;
+      for (let ci = selected.first.column.idx; ci <= selected.last.column.idx; ci++) {
+        const column = columns[ci];
+        const cell = row.cells[ci];
+        if (!column || !cell || cell.nonEditable) continue;
+        const key = ri + ":" + ci;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const value = cell.type === "checkbox" ? false :
+          cell.type === "text" ? "" : null;
+        changes.push({ rowId: row.rowId, columnId: column.columnId, value });
+      }
+    }
+  });
+  return changes;
+};

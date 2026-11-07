@@ -61,6 +61,8 @@ export const ServerVirtualGrid = (props) => {
   setPropsRef.current = setProps;
   const [scrollTop, setScrollTop] = useState(0);
   const [virtualRowCount, setVirtualRowCount] = useState(suppliedRowCount);
+  const rowCountRef = useRef(virtualRowCount);
+  rowCountRef.current = virtualRowCount;
   const [globalSelection, setGlobalSelection] = useState(null);
   const globalRef = useRef(null);
   const anchor = useRef(null);
@@ -145,8 +147,18 @@ export const ServerVirtualGrid = (props) => {
         !Number.isSafeInteger(ack.revision) ||
         ack.revision <= lastAcknowledgedRevision.current) return;
     lastAcknowledgedRevision.current = ack.revision;
-    if (Number.isSafeInteger(ack.rowCount) && ack.rowCount >= 0)
+    if (Number.isSafeInteger(ack.rowCount) && ack.rowCount >= 0) {
+      if (ack.rowCount !== rowCountRef.current) {
+        // Absolute indices are no longer meaningful after a structural
+        // operation. Drop the old selection rather than copying/deleting
+        // rows at positions shifted by the insert or removal.
+        globalRef.current = null;
+        anchor.current = null;
+        setGlobalSelection(null);
+        setCopyText(null);
+      }
       setVirtualRowCount(ack.rowCount);
+    }
     currentRequest.current = null;
     setCache(new Map());
     setLoadError(null);
@@ -404,6 +416,11 @@ export const ServerVirtualGrid = (props) => {
   }, [virtualRangeData]);
 
   const copySelection = () => {
+    if (globalRef.current &&
+        globalRef.current.end-globalRef.current.start > MAX_RANGE_ROWS) {
+      setCopyError("Use Download CSV for selections exceeding 1,000 rows");
+      return;
+    }
     if (typeof copyText !== "string") {
       if (globalRef.current) {
         // A manual click is a retry even when an earlier prefetch is still
@@ -688,7 +705,7 @@ export const ServerVirtualGrid = (props) => {
           virtualRowCount.toLocaleString() + " rows"}
       </span>
       <button type="button" disabled={!globalSelection ||
-        reliable.pending > 0}
+        selectedCount > MAX_RANGE_ROWS || reliable.pending > 0}
         onClick={copySelection}>
         {typeof copyText === "string" ? "Copy selection" : "Prepare copy"}</button>
       {exportUrl && <a href={exportUrl} download>Download selected CSV</a>}

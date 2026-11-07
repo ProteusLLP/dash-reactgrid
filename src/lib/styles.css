@@ -79,3 +79,27 @@
 .drg-sync-status button {
   padding: 0.1rem 0.5rem;
 }
+
+/* Server-virtualized grid: ReactGrid owns the visible rows while sparse
+   spacer geometry lets the browser scroll through the full logical height. */
+.drg-virtual-viewport {
+  width: 100%;
+  position: relative;
+  overscroll-behavior: contain;
+}
+.drg-virtual-loading-status {
+  font-size: 0.82rem;
+  padding: 0.25rem 0;
+  color: #555;
+}
+.drg-virtual-error {
+  color: #952323;
+  padding: 0.4rem;
+}
+.drg-virtual-error button {
+  margin-left: 0.5rem;
+}
+.reactgrid .rg-cell.rg-virtual-loading {
+  opacity: 0.55;
+  background: #f4f5f7;
+}

@@ -139,3 +139,7 @@ export const pageBounds = (count, size, requestedPage) => {
   const start = page * size;
   return { page, count: pages, start, end: Math.min(start + size, count) };
 };
+
+/** Guard against pasting into rows on a different, non-final page. */
+export const canPasteOnPage = (position, bounds, pageSize) =>
+  !pageSize || bounds.page === bounds.count - 1 || position < bounds.end;

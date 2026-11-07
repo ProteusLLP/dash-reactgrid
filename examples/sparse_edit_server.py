@@ -42,7 +42,8 @@ class SparseGridStore:
                 CREATE TABLE IF NOT EXISTS datasets (
                     dataset_id TEXT PRIMARY KEY,
                     columns_json TEXT NOT NULL,
-                    template_json TEXT NOT NULL
+                    template_json TEXT NOT NULL,
+                    seeded INTEGER NOT NULL DEFAULT 0
                 );
                 CREATE TABLE IF NOT EXISTS grid_rows (
                     dataset_id TEXT NOT NULL,
@@ -74,7 +75,7 @@ class SparseGridStore:
                     raise ValueError("The dataset's column configuration has changed")
             else:
                 db.execute(
-                    "INSERT INTO datasets VALUES(?,?,?)",
+                    "INSERT INTO datasets(dataset_id,columns_json,template_json,seeded) VALUES(?,?,?,0)",
                     (dataset_id, canonical(self.columns), canonical(self.template)),
                 )
 
@@ -90,21 +91,23 @@ class SparseGridStore:
         if any(len(row) != len(self.columns) for row in data):
             raise ValueError("Row width differs from the configured columns")
         with closing(self.connect()) as db, db:
-            # Guard repeated startup; the dataset may legitimately have no rows.
-            marker = db.execute(
-                "SELECT COUNT(*) FROM applied_batches WHERE dataset_id=?",
+            db.execute("BEGIN IMMEDIATE")  # prevent concurrent first-time seeders
+            seeded = db.execute(
+                "SELECT seeded FROM datasets WHERE dataset_id=?",
                 (self.dataset_id,),
-            ).fetchone()[0]
-            count = db.execute(
-                "SELECT COUNT(*) FROM grid_rows WHERE dataset_id=?",
-                (self.dataset_id,),
-            ).fetchone()[0]
-            if count or marker:
+            ).fetchone()
+            if seeded is None:
+                raise ValueError("Dataset is not configured")
+            if seeded[0]:
                 return
             db.executemany(
                 "INSERT INTO grid_rows(dataset_id,row_id,position,values_json) VALUES(?,?,?,?)",
                 [(self.dataset_id, row_key(rid), i, canonical(row))
                  for i, (rid, row) in enumerate(zip(row_ids, data))],
+            )
+            db.execute(
+                "UPDATE datasets SET seeded=1 WHERE dataset_id=?",
+                (self.dataset_id,),
             )
 
     def read(self):

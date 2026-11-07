@@ -1,0 +1,47 @@
+name: Experimental Dash Glide feature matrix
+
+on:
+  pull_request:
+    paths:
+      - 'src/lib/**'
+      - 'package.json'
+      - 'tests/feature_matrix_browser_app.py'
+      - 'tests/test_glide_dash_browser.py'
+      - '.github/workflows/glide-feature-parity.yml'
+  workflow_dispatch:
+
+jobs:
+  dash-glide-matrix:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install experimental JavaScript dependencies
+        run: npm install --legacy-peer-deps --no-audit --no-fund
+      - name: Unit-test the adapter and existing model
+        run: npm run test:js
+      - name: Build experimental Dash component bundle
+        run: npm run build:js
+      - name: Install Python and browser dependencies
+        run: python3 -m pip install "dash>=3,<5" "selenium>=4,<5" "numpy>=1.23,<3"
+      - name: Validate Dash/Python compatibility
+        run: python3 -m unittest tests.test_component_contract tests.test_numpy_data -v
+      - name: Run original complete Chrome feature matrix against ReactGrid
+        run: python3 tests/test_feature_matrix_browser.py
+      - name: Run canvas-compatible Chrome feature matrix against Glide
+        run: python3 tests/test_glide_dash_browser.py
+      - name: Collect prototype build diagnostic
+        if: always()
+        run: |
+          mkdir -p experiment-reports
+          git status --short > experiment-reports/working-tree.txt
+          echo 'The built JS asset is CI-generated and not merge-ready.' > experiment-reports/README.txt
+      - name: Upload diagnostic
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: glide-dash-parity-build
+          path: experiment-reports/

@@ -2,7 +2,6 @@ import { test, expect } from "@playwright/test";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 
-test.describe.configure({ mode: "serial" });
 const observations = [];
 
 for (const renderer of ["reactgrid", "glide", "revogrid"]) {
@@ -17,8 +16,13 @@ for (const renderer of ["reactgrid", "glide", "revogrid"]) {
     expect(snapshot.firstReadyMs).toBeGreaterThan(0);
     expect(errors).toEqual([]);
     await page.evaluate(() => window.__bakeoff.jump(50_000));
-    if (renderer === "reactgrid")
-      await expect(page.locator(".reactgrid-window")).toContainText("50000");
+    if (renderer === "reactgrid") {
+      const range = await page.locator(".reactgrid-window").textContent();
+      const match = /Rows (\\d+) to (\\d+)/.exec(range);
+      expect(match).not.toBeNull();
+      expect(Number(match[1])).toBeLessThanOrEqual(50_000);
+      expect(Number(match[2])).toBeGreaterThanOrEqual(50_000);
+    }
     // Independent read assertions verify the data model, not the library's pixels.
     const value = await page.evaluate(() => window.__bakeoff.read(50_000, 0));
     expect(value).toBe(500.01);

@@ -7,11 +7,11 @@ offscreen range editing, and recovery tests.
 
 | Area | Model/contract | Chrome |
 | --- | --- | --- |
-| Text, number, customnumber, percent, dropdown, checkbox, date, time | Render descriptors, edits, parsing, blank values and serialization | Render all; edit text, number and customnumber, checkbox and dropdown; paste all types |
+| Text, number, customnumber, percent, dropdown, checkbox, date, time | Render descriptors, edits, parsing, blank values and serialization | Render and edit all types, including direct typing, keyboard dropdown choices and checkbox Space; paste all types |
 | Column formatting and visibility | Type-safe values, styles, formatters, original indices, hidden columns | Rendered classes, hidden values retained after paste |
-| Editable rules | Conditional predicates, locked cells, read-only, noneditable columns | Rejected paste into locked/conditional/read-only cells |
+| Editable rules | Conditional predicates, locked cells, read-only, noneditable columns | Rejected keyboard typing and paste into locked/conditional/read-only cells |
 | Clipboard | Excel quoted TSV (tabs, Unicode, embedded line breaks/quotes), ReactGrid copy values, hidden column mapping | Ctrl+A/Ctrl+C, native Ctrl+V, synthetic Excel HTML + TSV, grid-to-grid paste |
-| Extendable grids | Ghost-row additions, multiple-row paste, defaults, blank rows | Ghost editing and defaults |
+| Extendable grids | Ghost-row additions, multiple-row paste, defaults, blank rows | Direct keyboard entry on the ghost row, defaults |
 | History | Multi-cell step, undo/redo reference stacks | Text and checkbox undo/redo; multi-cell clipboard undo/redo |
 | Right-click | Row deletion by stable ID | Context menu Delete row |
 | Paging | Page boundaries and paste guard | Navigation, last-page ghost, paste boundary |
@@ -64,6 +64,41 @@ test_feature_matrix_browser.py. New right-click commands should have a
 direct Chrome assertion for their effect on data or edits. Changes to
 the server virtualisation protocol should be tested against the injected
 Python provider and the existing real Chrome virtual suites.
+
+## Spreadsheet-style keyboard editing
+
+The Chrome suite tests **select once, type immediately, navigate, and commit**
+without double-clicking. It checks the edited source data and the next
+focused row/column in Dash, not just what the cell renders:
+
+* Text and conditional text columns: typing replaces the previous value, and
+  ArrowRight commits it and moves the focus to the next column.
+* Number and customnumber columns: direct entry preserves signed and decimal
+  values. Percentage columns accept a value such as `37` as 37%.
+* Date and time columns: typing begins a whole-cell text entry rather than
+  Chrome's fragmented native date/time input. Dates accept ISO
+  `YYYY-MM-DD` or the browser locale's numeric date order; times accept
+  24-hour `HH:mm`. Invalid dates and times are rejected. Direct time edits
+  preserve the date component of the existing timestamp.
+* Dropdown columns: typing selects a matching option by keyboard and Enter
+  commits it. Checkbox columns respond to Space and remain navigable.
+* Tab and directional arrows are checked in chained edits across columns
+  and rows: the previous value is committed, focus advances, and the next
+  typed value edits the newly focused cell. Enter is additionally tested
+  for committing numeric edits.
+* Editing remains blocked in locked, conditional, noneditable and read-only
+  cells. Direct typing in the extension row creates a row and applies the
+  declared defaults.
+
+Cells opened through the pointer or Enter retain their native in-input caret
+behaviour; direct typing from a selected cell uses spreadsheet-style
+navigation. As a known upstream ReactGrid quirk, Enter following a Tab
+selection can move focus differently from Excel. The browser suite currently
+asserts Enter commits, while ArrowDown is used to verify reliable downwards
+movement after editing.
+
+Desktop Microsoft Excel itself is not driven by Chrome CI. Native Chrome
+clipboard operations and Excel-compatible TSV/HTML interchange are covered.
 
 ## Resolved regression cases
 

@@ -126,7 +126,7 @@ class VirtualGridStore(SparseGridStore):
             removing.append(row["rowId"])
         return {"kind":"remove","rowIds":removing}
 
-    def _paste(self, db, edit):
+    def _paste(self, db, edit, internal=False):
         start=edit.get("start")
         cols=edit.get("columnIds")
         data=edit.get("rows")
@@ -146,7 +146,8 @@ class VirtualGridStore(SparseGridStore):
         updates=[]
         for (row_id,position,values_json),new_values in zip(entries,data):
             values=json.loads(values_json)
-            self._assert_can_edit(json.loads(row_id),cols,values)
+            if not internal:
+                self._assert_can_edit(json.loads(row_id),cols,values)
             previous.append([values[i] for i in indexes])
             for i,v in zip(indexes,new_values):
                 values[i]=v
@@ -160,7 +161,7 @@ class VirtualGridStore(SparseGridStore):
         return {"kind":"setRows","rowIds":[json.loads(row[0]) for row in entries],
                 "columnIds":cols,"rows":previous}
 
-    def _set_rows(self, db, edit):
+    def _set_rows(self, db, edit, internal=False):
         ids=edit.get("rowIds")
         cols=edit.get("columnIds")
         values=edit.get("rows")
@@ -177,14 +178,15 @@ class VirtualGridStore(SparseGridStore):
                                (self.dataset_id,key)).fetchone()
             if current is None:raise ValueError("An edited row has been deleted")
             data=json.loads(current[0])
-            self._assert_can_edit(rid,cols,data)
+            if not internal:
+                self._assert_can_edit(rid,cols,data)
             before.append([data[i] for i in indexes])
             for i,v in zip(indexes,updated):data[i]=v
             updates.append((canonical(data),self.dataset_id,key))
         db.executemany("UPDATE grid_rows SET values_json=? WHERE dataset_id=? AND row_id=?",updates)
         return {"kind":"setRows","rowIds":ids,"columnIds":cols,"rows":before}
 
-    def _operation(self, db, op, stream, current_seq):
+    def _operation(self, db, op, stream, current_seq, internal=False):
         if not isinstance(op,dict):raise ValueError("Edit must be an object")
         kind=op.get("kind")
         if kind=="insert":
@@ -201,12 +203,12 @@ class VirtualGridStore(SparseGridStore):
             if len(entries)!=end-start:raise ValueError("Deletion is outside the dataset")
             return self._remove(db,[json.loads(row[0]) for row in entries])
         if kind=="paste":
-            return self._paste(db,op)
+            return self._paste(db,op,internal=internal)
         if kind=="setRows":
-            return self._set_rows(db,op)
+            return self._set_rows(db,op,internal=internal)
         if kind=="cell":
             return self._set_rows(db,{"rowIds":[op.get("rowId")],
-                "columnIds":[op.get("columnId")],"rows":[[op["value"]]]})
+                "columnIds":[op.get("columnId")],"rows":[[op["value"]]]},internal=internal)
         if kind=="restore":
             return self._restore(db,op.get("rows"))
         if kind=="undo":
@@ -224,7 +226,7 @@ class VirtualGridStore(SparseGridStore):
             # of this sequence is saved as a new receipt.
             actions=[]
             for child in inverse:
-                actions.insert(0,self._operation(db,child,stream,current_seq))
+                actions.insert(0,self._operation(db,child,stream,current_seq,internal=True))
             return {"kind":"sequence","edits":actions}
         if kind=="sequence":
             actions=[]

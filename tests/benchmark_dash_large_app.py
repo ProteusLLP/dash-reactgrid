@@ -50,9 +50,9 @@ else:
         rowIds=[f"r{i}" for i in range(N)],
     )
     if MODE == "paged": kwargs["rowPageSize"]=250
-if SPARSE and MODE!="virtual":
+if SPARSE:
     kwargs["transmitSparseEdits"]=True
-    kwargs["editDatasetId"]=f"perf-{N}-{W}-sparse"
+    kwargs["editDatasetId"]=f"perf-{N}-{W}"
 
 app = Dash(__name__)
 app.layout = html.Div([

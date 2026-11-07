@@ -207,7 +207,7 @@ def main():
       results.append(result)
       print("RESULT",json.dumps(result,ensure_ascii=False),flush=True)
     Path("dash-large-results.json").write_text(json.dumps(results,indent=2)+"\n")
-    return 0 if all("error" not in r for r in results) else 1
+    return 0 if all("error" not in r and "editError" not in r for r in results) else 1
 
 if __name__=="__main__":
     raise SystemExit(main())

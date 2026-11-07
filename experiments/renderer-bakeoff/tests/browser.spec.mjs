@@ -17,11 +17,12 @@ for (const renderer of ["reactgrid", "glide", "revogrid"]) {
     expect(errors).toEqual([]);
     await page.evaluate(() => window.__bakeoff.jump(50_000));
     if (renderer === "reactgrid") {
-      const range = await page.locator(".reactgrid-window").textContent();
-      const match = /Rows (\d+) to (\d+)/.exec(range);
-      expect(match).not.toBeNull();
-      expect(Number(match[1])).toBeLessThanOrEqual(50_000);
-      expect(Number(match[2])).toBeGreaterThanOrEqual(50_000);
+      await expect.poll(async () => {
+        const range = await page.locator(".reactgrid-window").textContent();
+        const match = /Rows (\d+) to (\d+)/.exec(range);
+        return Boolean(match && Number(match[1]) <= 50_000 &&
+          Number(match[2]) >= 50_000);
+      }).toBe(true);
     }
     // Independent read assertions verify the data model, not the library's pixels.
     const value = await page.evaluate(() => window.__bakeoff.read(50_000, 0));

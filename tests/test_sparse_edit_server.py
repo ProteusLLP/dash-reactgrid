@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 SPEC = importlib.util.spec_from_file_location(
-    "sparse_edit_server", Path(__file__).resolve().parents[1] / "examples" / "sparse_edit_server.py"
+    "sparse_edit_server", Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "sqlite_sparse_backend.py"
 )
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)

@@ -115,215 +115,155 @@ For smaller full-data grids, `disableVirtualScrolling=False` reduces DOM
 overhead but does not reduce ReactGrid's internal matrix.
 
 
-### Server-backed range editing reference
+### Stateless server-side integration
 
-The enhanced `examples/virtual_grid_store.py` provides transactional
-operations and persistent inverse journals. It extends the earlier sparse
-edit example and offers an indexed range reader, bounded TSV copy, and
-streamed CSV exports. The recommended production callback pattern is:
+The grid does **not** create or depend on SQLite, a database connection,
+a cache service, or a process-local row store. No full table is kept in the
+component. The application already owns the authoritative data; it supplies
+four functions to Dash:
+
+- **Read a window:** `read_rows(start, end)` returns stable row IDs and values.
+- **Commit a batch:** `commit_batch(batch)` applies commands to the
+  application's data source and returns an acknowledgement.
+- **Read a clipboard range:** `read_rows` can also supply the selected
+  values in chunks.
+- **Export:** a streaming endpoint obtains rows from the same provider.
+
+`examples/stateless_virtual_callbacks.py` contains pure, dependency-free
+request handlers with no global or persistent state. The host application
+injects its own data-access functions. For example:
 
 ```python
 from dash import Dash, Input, Output, callback
 from dash_reactgrid import DashReactGrid
-from examples.virtual_grid_store import VirtualGridStore
+from examples.stateless_virtual_callbacks import (
+    window_response, clipboard_response, edit_ack,
+)
 
-store = VirtualGridStore("grid.sqlite3", "assets-v1", columns,
-                         new_row=new_row)
-store.seed_once(initial_data, initial_row_ids)  # only once
+# These functions already belong to your application. They may access
+# a DataFrame, a file, a database, an existing service, or another model.
+# read_rows(start, end) -> {"rowIds": [...], "data": [[...], ...]}
+# commit_batch(batch) -> {"status": "ok", "rowCount": ..., "revision": ...}
+# count_rows() -> int
+
+DATASET = "assets-v1"
+columns = [
+    {"columnId": "name", "title": "Name", "type": "text"},
+    {"columnId": "value", "title": "Value", "type": "number"},
+]
 app = Dash(__name__)
 app.layout = DashReactGrid(
-    id="grid", columns=columns, data=[], rowIds=[],
-    virtualRowCount=store.row_count(),
-    virtualDatasetId="assets-v1", virtualWindowSize=120,
+    id="grid",
+    columns=columns,
+    data=[],
+    rowIds=[],
+    virtualRowCount=count_rows(),
+    virtualDatasetId=DATASET,
+    virtualWindowSize=120,
     virtualViewportHeight=420,
-    editDatasetId="assets-v1", transmitSparseEdits=True,
-    virtualExportUrl="/grid/export.csv",
+    transmitSparseEdits=True,
+    editDatasetId=DATASET,
 )
 
 @callback(Output("grid", "virtualData"), Input("grid", "virtualRequest"),
           prevent_initial_call=True)
-def fetch_rows(req):
-    return {"datasetId":req["datasetId"], "requestId":req["requestId"],
-            "start":req["start"],
-            **store.read_range(req["start"],req["end"])}
+def fetch_window(request):
+    return window_response(
+        request, dataset_id=DATASET, row_count=count_rows(),
+        columns=columns, fetch_rows=read_rows,
+    )
 
 @callback(Output("grid", "editAck"), Input("grid", "edits"),
           prevent_initial_call=True)
-def commit_changes(batch):
-    return store.apply(batch)
+def save_commands(batch):
+    return edit_ack(batch, dataset_id=DATASET,
+                    apply_batch=commit_batch)
 
 @callback(Output("grid", "virtualRangeData"),
           Input("grid", "virtualRangeRequest"),
           prevent_initial_call=True)
-def prepare_clipboard(req):
-    result={k:req[k] for k in
-            ("datasetId","requestId","start","end","columnStart","columnEnd")}
-    try:
-        result["text"]=store.copy_range(
-            req["start"],req["end"],req["columnStart"],req["columnEnd"])
-    except ValueError as error:
-        result["error"]=str(error)
-    return result
+def prepare_copy(request):
+    return clipboard_response(
+        request, dataset_id=DATASET, row_count=count_rows(),
+        columns=columns, fetch_rows=read_rows,
+    )
 ```
 
-The app must also expose the configured CSV export URL. See
-`tests/virtual_reliable_browser_app.py` for a runnable streaming route
-using `VirtualGridStore.export_csv()`. That route is intentionally
-unauthenticated in the test harness. A production application must
-authorise access to the requested dataset, validate row and column
-boundaries and configure its own HTTPS and CSRF protections. The store
-supports server-side `lockedCells`, `nonEditable` and `editableWhen`
-rules; configure the same column definitions and locks in both the server
-and the component.
+The row provider and commit function in this example are application-supplied,
+not provided by the grid. A production application must authorise access to
+the requested dataset and enforce edit rules on the data source. The helper
+validates window sizes and identities but is not an authentication layer.
 
-Only `edits`, `virtualRequest` and `virtualRangeRequest` are inputs to
-the respective callbacks. Do not add `State("grid", "data")` or output
-the complete table. Server acknowledgements include `rowCount` and
-`revision`, allowing the component to refresh its viewport after each
-committed operation. Undo and redo reference previous transaction sequence
-numbers; the store saves their inverse operations in SQLite. Keep these
-receipts for as long as users need undo, and establish a retention/archival
-policy before a large deployment.
+For large selections, provide `virtualExportUrl` pointing to your own
+authenticated CSV endpoint. `csv_chunks()` is a pure chunk generator that
+can be passed to a streaming HTTP response. No full export is materialised.
 
-### Reliable sparse-edit transmission
+### Delivery and undo contract
 
-To enable reliable sparse edits, provide a stable `id` and
-`editDatasetId`, and set `transmitSparseEdits=True`. In full-data mode,
-provide a complete, stable `rowIds` array; server-virtualized mode instead
-receives stable row IDs for each requested window. Edits are recorded in
-browser session storage and transmitted as small batches. The default
-`transmitSparseEdits=False` retains full-data callback behaviour in
-ordinary grids, while server-virtualized grids are read-only unless
-reliable sparse editing is enabled.
-
-```python
-from dash import Input, Output, callback
-from dash_reactgrid import DashReactGrid
-from examples.sparse_edit_server import SparseGridStore
-
-store = SparseGridStore(
-    "grid-edits.sqlite3", "pricing-v1", columns,
-    new_row=new_row,
-)
-# Seed only once when creating a new dataset. After that, always load
-# the authoritative snapshot from your persistent database.
-store.seed_once(initial_data, initial_row_ids)
-snapshot = store.read()
-
-grid = DashReactGrid(
-    id="grid",
-    columns=columns,
-    data=snapshot["data"],
-    rowIds=snapshot["rowIds"],
-    newRow=new_row,
-    isExtendable=True,
-    rowPageSize=250,
-    transmitSparseEdits=True,
-    editDatasetId="pricing-v1",
-)
-
-@callback(
-    Output("grid", "editAck"),
-    Input("grid", "edits"),
-    prevent_initial_call=True,
-)
-def save_edits(batch):
-    return store.apply(batch)
-```
-
-For a virtual grid using the same backend, pass `data=[]`,
-`rowIds=[]`, `virtualRowCount=store.row_count()`,
-`virtualDatasetId="pricing-v1"`, `transmitSparseEdits=True` and
-`editDatasetId="pricing-v1"`, then add a viewport callback:
-
-```python
-@callback(Output("grid", "virtualData"), Input("grid", "virtualRequest"),
-          prevent_initial_call=True)
-def fetch_window(request):
-    result = store.read_range(request["start"], request["end"])
-    return {
-        "datasetId": request["datasetId"],
-        "requestId": request["requestId"],
-        "start": request["start"],
-        **result,
-    }
-```
-
-The `editAck` callback remains identical, and no full table is sent to
-the browser. See `tests/virtual_reliable_browser_app.py` for a runnable
-combined example.
-
-`examples/sparse_edit_server.py` demonstrates a **transactional** SQLite
-backend. An edit event has this shape:
+Sparse edits are small command batches, not a replacement dataset:
 
 ```json
 {
-  "datasetId": "pricing-v1",
-  "streamId": "cryptographically-generated-per-editor-id",
+  "datasetId": "assets-v1",
+  "streamId": "per-tab-unique-id",
   "seq": 12,
   "attempt": 1,
   "edits": [
-    {"kind": "cell", "rowId": "r2", "columnId": "amount", "value": 2.5}
+    {"kind": "cell", "rowId": "r2", "columnId": "value", "value": 2.5}
   ]
 }
 ```
 
-After committing the whole batch (including its idempotency receipt) in the
-same database transaction, the callback returns:
+A successful application acknowledgement has this shape:
 
 ```json
 {
-  "datasetId": "pricing-v1",
-  "streamId": "cryptographically-generated-per-editor-id",
+  "datasetId": "assets-v1",
+  "streamId": "per-tab-unique-id",
   "seq": 12,
-  "status": "ok"
+  "status": "ok",
+  "rowCount": 100001,
+  "revision": 23
 }
 ```
 
-Only a matching `status: "ok"` ACK removes that batch from the browser's
-outbox. The component sends one batch at a time, in order. Unacknowledged
-batches are retained in browser `sessionStorage`, retried automatically
-with the same `streamId` and `seq` but an incremented `attempt`, and
-replayed locally after a reload of the same browser tab. The server must
-deduplicate by `(datasetId, streamId, seq)`, verify the payload has not
-changed, and store the receipt atomically with the edits. That prevents
-duplicate inserts/deletes if the server committed but its ACK was lost.
-The component displays unsaved counts and blocks further edits on a server
-conflict, corrupt storage, or exhausted storage quota rather than dropping
-pending changes. Changes made through undo/redo are new ordered batches.
+The browser retains an ordered, bounded pending outbox in tab-scoped
+`sessionStorage` and retries an unacknowledged batch with the same
+`datasetId`, `streamId`, `seq` and edits, changing only `attempt`.
+This is **transient client-side edit recovery**, not a server database or
+a copy of the dataset.
 
-Use `status: "retry"` for temporary failures, allowing automatic retries,
-and `status: "error"` or `"conflict"` for problems requiring intervention
-(the user is shown the reason and can retry after it has been resolved).
+**A stateless callback is not enough to guarantee exactly-once effects.**
+If the application commits a range deletion and the acknowledgement is lost,
+a repeated *position-based* deletion could delete different rows. To offer
+the current ordered, retry-safe semantics, the application's authoritative
+data source must implement atomic idempotency for a batch identity, or
+translate commands into intrinsically idempotent, stable-row-ID operations.
+The grid does not prescribe how or where that capability is implemented.
+Return `status:"ok"` only after the underlying edit has committed.
 
-**Operational requirements:** The Dash callback must not take
-`State("grid", "data")`, since that would transmit the entire table.
-The callback must access a durable shared database and return an ACK only
-after a committed transaction. Do not construct the store per request,
-reset server data after each edit, echo stale `data`, or return an ACK from
-a fire-and-forget task. On page reload, load the latest authoritative
-dataset in full-data mode, or serve the requested viewport from the store
-in server-virtual mode. In full-data mode, `data` and `rowIds` prop updates
-are authoritative; in virtual mode, change `virtualDatasetId` to
-invalidate cached windows. Unacknowledged cell edits in virtual mode are
-overlaid onto whichever server window contains their stable row IDs. A persistent user/editor identity and application
-authorization are separate concerns; do not trust a client-supplied
-`datasetId` to authorize access.
+Likewise, undo of edits to unloaded rows needs their previous values.
+The current `undo` command references an earlier sequence number, so an
+application enabling this feature must be able to supply its inverse
+operation. It may use its own existing version history or undo facility.
+There is no SQLite requirement, but an application cannot support durable
+undo without retaining or reconstructing the old values somehow.
 
-**Limits:** `sessionStorage` normally survives reloads in the same tab,
-but not closing that tab or clearing browser data. The component warns
-before navigating away while edits remain unacknowledged, but no browser
-storage can provide a guaranteed recovery service. The example uses
-single-editor or last-writer-wins semantics across different streams; it
-does **not** implement collaborative editing conflict resolution. If
-multiple concurrent editors need to preserve all changes, add optimistic
-row versions and conflict handling in the backend. Full-data mode still transfers the
-initial dataset to the browser. Server-virtualized mode avoids this by
-fetching bounded row intervals. Full-table exports should come from the server.
+After an acknowledged edit, the grid uses `rowCount` and `revision` to
+invalidate the affected viewport cache and fetch the authoritative rows.
+Range selections are represented by their absolute boundaries and do not
+materialise all selected cells. Large paste or delete commands remain
+bounded, and cross-window exports are streamed.
 
-In sparse mode, Dash persistence should generally use
-`persisted_props=["columns"]`, since the `data` prop is an initial
-snapshot rather than the current edited table.
+For temporary failures return `status:"retry"`. For rejected commands
+return `status:"conflict"` or `status:"error"` with a human-readable
+message. Never obtain `State("grid", "data")` in the callbacks for a
+server-virtualised grid, because it would defeat virtualization.
+
+The SQLite files under `tests/fixtures/` are **test-only adapters** used
+to exercise lost acknowledgements, idempotency, inverse operations, and
+cross-window editing. They are not installed dependencies, required runtime
+components, or the recommended application architecture.
 
 ## Editing with stable row ids
 

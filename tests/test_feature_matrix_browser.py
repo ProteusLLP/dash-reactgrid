@@ -166,6 +166,51 @@ class FeatureMatrixChromeTests(unittest.TestCase):
             # through its onBlur handler by moving focus outside the grid.
             self.driver.find_element(By.TAG_NAME, "h3").click()
 
+    def test_keyboard_typing_navigation_diagnostics(self):
+        """Exercise the Excel workflow using physical Chrome key events."""
+        cases = [
+            ("text", 0, "Typed"),
+            ("amount", 1, "31.25"),
+            ("custom", 0, "14.75"),
+            ("percent", 0, "37"),
+            ("conditional", 0, "Typed"),
+            ("choice", 0, "Finished"),
+            ("flag", 0, Keys.SPACE),
+            ("day", 0, "11/14/2026"),
+            ("clock", 0, "15:45"),
+        ]
+        for column, index, typed in cases:
+            self.driver.get(URL)
+            self.waiter.until(lambda _: self.state("matrix").get("data"))
+            self.cell("matrix", column, index).click()
+            ActionChains(self.driver).send_keys(typed).perform()
+            time.sleep(.12)
+            before = self.driver.execute_script("""
+                return {
+                  tag:document.activeElement.tagName,
+                  type:document.activeElement.type,
+                  cls:document.activeElement.className,
+                  value:document.activeElement.value,
+                  cell:document.activeElement.closest('.rg-cell')?.className,
+                }
+            """)
+            ActionChains(self.driver).send_keys(Keys.ARROW_RIGHT).perform()
+            time.sleep(.20)
+            after = self.driver.execute_script("""
+                return {
+                  tag:document.activeElement.tagName,
+                  type:document.activeElement.type,
+                  cls:document.activeElement.className,
+                  value:document.activeElement.value,
+                  focus:document.querySelector('#matrix .rg-focused')?.className,
+                  editor:!!document.querySelector('#matrix .rg-text-celleditor'),
+                }
+            """)
+            print("KEYBOARD DIAGNOSTIC", column, "typed", repr(typed),
+                  "editor", before, "after", after,
+                  "row", self.state("matrix")["data"][index], flush=True)
+        self.assertTrue(True)
+
     def test_renders_every_column_type_with_conditional_lock_and_hidden_column(self):
         for column in ("text", "amount", "custom", "percent", "choice",
                        "flag", "day", "clock", "conditional", "fixed"):

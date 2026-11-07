@@ -187,6 +187,75 @@ class FeatureMatrixChromeTests(unittest.TestCase):
             "rowId": row_id, "columnId": column_id,
         })
 
+    def chord(self, *keys):
+        action = ActionChains(self.driver)
+        for modifier in [Keys.CONTROL, Keys.SHIFT]:
+            if modifier in keys:
+                action.key_down(modifier)
+        for key in keys:
+            if key not in (Keys.CONTROL, Keys.SHIFT):
+                action.send_keys(key)
+        for modifier in [Keys.SHIFT, Keys.CONTROL]:
+            if modifier in keys:
+                action.key_up(modifier)
+        action.perform()
+
+    def test_ctrl_arrows_select_and_fill_down_with_undo(self):
+        self.cell("target", "label", 0).click()
+        self.chord(Keys.CONTROL, Keys.ARROW_DOWN)
+        self.expect_focus("target", "target-2", "label")
+        self.chord(Keys.CONTROL, Keys.ARROW_UP)
+        self.expect_focus("target", "target-1", "label")
+        self.chord(Keys.CONTROL, Keys.ARROW_RIGHT)
+        self.expect_focus("target", "target-1", "value")
+        self.chord(Keys.CONTROL, Keys.ARROW_LEFT)
+        self.expect_focus("target", "target-1", "label")
+        self.chord(Keys.CONTROL, Keys.SHIFT, Keys.ARROW_DOWN)
+        self.waiter.until(
+            lambda _: self.state("target").get("selectedRowIds") ==
+                ["target-1", "target-2"]
+        )
+        copied = self.copy("target", "label")
+        self.assertEqual(copied["plain"], "Target 1\\nTarget 2")
+        self.chord(Keys.CONTROL, "d")
+        self.waiter.until(
+            lambda _: self.state("target")["data"][1][0] == "Target 1"
+        )
+        self.chord(Keys.CONTROL, "z")
+        self.waiter.until(
+            lambda _: self.state("target")["data"][1][0] == "Target 2"
+        )
+
+    def test_shift_enter_applies_one_edit_to_selected_cells(self):
+        self.cell("target", "label", 0).click()
+        self.chord(Keys.SHIFT, Keys.ARROW_DOWN)
+        self.type_in_focused("Broadcast")
+        self.chord(Keys.SHIFT, Keys.ENTER)
+        self.waiter.until(
+            lambda _: [row[0] for row in self.state("target")["data"]] ==
+                ["Broadcast", "Broadcast"]
+        )
+        self.assertEqual(
+            [row[1] for row in self.state("target")["data"]], [1, 2]
+        )
+
+    def test_ctrl_arrow_navigates_across_paged_table(self):
+        self.cell("paged", "label", 0).click()
+        self.chord(Keys.CONTROL, Keys.ARROW_DOWN)
+        self.expect_focus("paged", "p10", "label")
+        self.chord(Keys.CONTROL, Keys.ARROW_UP)
+        self.expect_focus("paged", "p0", "label")
+
+    def test_server_virtual_ctrl_arrow_and_range_selection(self):
+        self.cell("review-virtual", "label", 0).click()
+        self.chord(Keys.CONTROL, Keys.ARROW_DOWN)
+        self.waiter.until(lambda _: "Second" in
+            self.driver.find_element(By.ID, "review-virtual").text)
+        self.chord(Keys.CONTROL, Keys.SHIFT, Keys.ARROW_RIGHT)
+        self.waiter.until(lambda _: len(self.driver.find_elements(
+            By.CSS_SELECTOR, "#review-virtual .rg-virtual-selected"
+        )) >= 2)
+
     def test_direct_typing_and_arrow_navigation_all_text_numeric_percent(self):
         cases = [
             ("text", 0, "Direct edit!", 0, "Direct edit!", "amount", "r1"),

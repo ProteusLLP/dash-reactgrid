@@ -65,8 +65,9 @@ class VirtualGridStore(SparseGridStore):
     def _ordered(self, db, start, end):
         return db.execute(
             """SELECT row_id, position, values_json FROM grid_rows
-               WHERE dataset_id=? ORDER BY position LIMIT ? OFFSET ?""",
-            (self.dataset_id, end - start, start),
+               WHERE dataset_id=? AND position>=? AND position<?
+               ORDER BY position""",
+            (self.dataset_id, start, end),
         ).fetchall()
 
     def _insert(self, db, row_id, position, values):

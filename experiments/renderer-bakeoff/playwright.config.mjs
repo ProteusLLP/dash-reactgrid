@@ -4,7 +4,7 @@ export default defineConfig({
   testMatch: "**/*.spec.mjs",
   timeout: 45_000,
   use: { baseURL: "http://127.0.0.1:4178", browserName: "chromium",
-    viewport: { width: 1450, height: 940 }, headless: true },
+    viewport: { width: 1450, height: 940 }, locale: "en-US", headless: true },
   webServer: { command: "npm run dev -- --port 4178 --strictPort",
     url: "http://127.0.0.1:4178", reuseExistingServer: !process.env.CI,
     timeout: 120_000 },

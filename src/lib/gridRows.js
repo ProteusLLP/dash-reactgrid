@@ -134,7 +134,8 @@ export const pageBounds = (count, size, requestedPage) => {
     return { page: 0, count: 1, start: 0, end: count };
   }
   const pages = Math.max(1, Math.ceil(count / size));
-  const page = Math.max(0, Math.min(pages - 1, requestedPage));
+  const validPage = Number.isFinite(requestedPage) ? Math.trunc(requestedPage) : 0;
+  const page = Math.max(0, Math.min(pages - 1, validPage));
   const start = page * size;
   return { page, count: pages, start, end: Math.min(start + size, count) };
 };

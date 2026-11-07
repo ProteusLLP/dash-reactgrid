@@ -18,7 +18,7 @@ enableRowSelection=NULL, hiddenColumns=NULL,
 highlights=NULL, isExtendable=NULL, lockedCells=NULL,
 newRow=NULL, persisted_props=NULL, persistence=NULL,
 persistence_type=NULL, readOnly=NULL, rowIds=NULL,
-rowPageSize=NULL, selectedCell=NULL, transmitSparseEdits=NULL, selectedRange=NULL, selectedRowIds=NULL,
+rowPageSize=NULL, virtualRowCount=NULL, virtualDatasetId=NULL, virtualRowHeight=NULL, virtualWindowSize=NULL, virtualViewportHeight=NULL, virtualRequest=NULL, virtualData=NULL, selectedCell=NULL, transmitSparseEdits=NULL, selectedRange=NULL, selectedRowIds=NULL,
 stickyBottomRows=NULL, stickyLeftColumns=NULL,
 stickyRightColumns=NULL, stickyTopRows=NULL, style=NULL,
 styleHeader=NULL)
@@ -87,6 +87,20 @@ an object by column id. Blank if omitted.}
 \item{readOnly}{Logical. Whether every cell is locked, no row can be added and none deleted.}
 
 \item{transmitSparseEdits}{Logical. Publish only edits to Dash, keeping changes to the table in browser memory; an external data or rowIds update replaces the local snapshot.}
+
+\item{virtualRowCount}{Total number of logical rows supplied by the server. Setting a nonnegative integer enables continuous server-side virtualization.}
+
+\item{virtualDatasetId}{Stable identity of the ordered server dataset; change when sorting, filtering or rebuilding rows to invalidate cached windows.}
+
+\item{virtualRowHeight}{Fixed row height in pixels, default 25.}
+
+\item{virtualWindowSize}{Target number of rows to request on each scroll window, default 120.}
+
+\item{virtualViewportHeight}{Scrollable grid height in pixels, default 420.}
+
+\item{virtualRequest}{Browser request {datasetId, requestId, start, end}, with zero-based start inclusive and end exclusive.}
+
+\item{virtualData}{Server response {datasetId, requestId, start, rowIds, data} containing exactly the requested rows, or a matching {error}.}
 
 \item{rowPageSize}{Numeric. Maximum data rows displayed per page for very large tables. Selections and clipboard operations are page-local.}
 

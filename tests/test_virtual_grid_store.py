@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from examples.virtual_grid_store import VirtualGridStore
+from tests.fixtures.sqlite_virtual_backend import VirtualGridStore
 
 
 class Operations(unittest.TestCase):
@@ -158,7 +158,7 @@ class Operations(unittest.TestCase):
             self.store.copy_range(-1,12,0,2)
 
     def test_migration_from_preexisting_receipt_store(self):
-        from examples.sparse_edit_server import SparseGridStore
+        from tests.fixtures.sqlite_sparse_backend import SparseGridStore
         other=Path(self.tmp.name)/"migrate.sqlite3"
         orig=SparseGridStore(other,"migrate",["name","value"])
         orig.seed_once([["old",1]],["r1"])

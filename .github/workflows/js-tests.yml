@@ -26,9 +26,11 @@ jobs:
 
       - name: Benchmark large tables
         run: node --experimental-detect-module scripts/benchmark-large-grid.mjs
-      - name: Test transactional Python edit backend
+      - name: Test stateless provider callbacks
+        run: python3 -m unittest discover -s tests -p test_stateless_virtual_callbacks.py -v
+      - name: Test optional SQLite fixture protocol
         run: python3 -m unittest discover -s tests -p test_sparse_edit_server.py -v
-      - name: Test virtual grid range operations and transactional undo
+      - name: Test virtual operations against optional SQLite fixture
         run: python3 -m unittest discover -s tests -p test_virtual_grid_store.py -v
       - name: Install Dash and Selenium browser testing
         run: python3 -m pip install "dash>=3,<5" "selenium>=4,<5"

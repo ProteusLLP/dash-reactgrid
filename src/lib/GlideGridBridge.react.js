@@ -27,6 +27,17 @@ export const GlideGridBridge = ({
   const hostRef = useRef(null);
   const [selection,setSelection] = useState(empty);
   const [menu,setMenu] = useState(null);
+  const [portal,setPortal] = useState(null);
+  useEffect(()=>{
+    let element=document.getElementById("portal");
+    if(!element){
+      element=document.createElement("div");
+      element.id="portal";
+      Object.assign(element.style,{position:"fixed",left:"0",top:"0",zIndex:"9999"});
+      document.body.appendChild(element);
+    }
+    setPortal(element);
+  },[]);
 
   const glideColumns=useMemo(() => columns.map((column,i)=>({
     id: String(column.columnId),
@@ -123,9 +134,10 @@ export const GlideGridBridge = ({
   },[rows,columns,onContextMenu]);
 
   const height=Math.max(86,Math.min(480,(rows.length+1)*GRID_ROW_HEIGHT+12));
+  if(!portal) return <div className="drg-glide-loading" role="status">Loading canvas editor</div>;
   return <div ref={hostRef} className="drg-glide" data-testid="drg-glide"
       style={{position:"relative",width:"100%",height}}>
-    <DataEditor ref={gridRef} columns={glideColumns} rows={Math.max(0,rows.length-1)}
+    <DataEditor ref={gridRef} portalElementRef={{current:portal}} columns={glideColumns} rows={Math.max(0,rows.length-1)}
       width="100%" height={height} rowHeight={GRID_ROW_HEIGHT} headerHeight={32}
       getCellContent={cellContent} getCellsForSelection={cellsForSelection}
       onCellsEdited={onEdits} onPaste={true}

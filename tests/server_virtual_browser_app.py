@@ -2,6 +2,7 @@
 import os
 from dash import Dash, Input, Output, html
 from dash_reactgrid import DashReactGrid
+from examples.stateless_virtual_callbacks import window_response
 
 PORT = int(os.environ.get("VIRTUAL_BROWSER_PORT", "8061"))
 TOTAL_ROWS = 100_000
@@ -31,20 +32,20 @@ app.layout = html.Div([
     prevent_initial_call=True,
 )
 def fetch_window(request):
-    if not request:
-        raise ValueError("Missing viewport request")
-    start = request["start"]
-    end = request["end"]
-    if request["datasetId"] != "synthetic-100k-v1" or not (0 <= start < end <= TOTAL_ROWS):
-        raise ValueError("Invalid viewport request")
-    # Generate only the requested rows. No giant list is ever sent to Dash.
-    return {
-        "datasetId": request["datasetId"],
-        "requestId": request["requestId"],
-        "start": start,
-        "rowIds": [f"r{i}" for i in range(start,end)],
-        "data": [[f"Row {i}",float(i)] for i in range(start,end)],
-    }, f"Fetched {start}:{end} ({end-start} rows)"
+    def rows_for(start, end):
+        # Pure, stateless example provider: the index is authoritative.
+        # This generates only the requested bounded window.
+        return {
+            "rowIds": [f"r{i}" for i in range(start, end)],
+            "data": [[f"Row {i}", float(i)] for i in range(start, end)],
+        }
+
+    response = window_response(
+        request, dataset_id="synthetic-100k-v1",
+        row_count=TOTAL_ROWS, columns=COLUMNS, fetch_rows=rows_for,
+    )
+    start, end = request["start"], request["end"]
+    return response, f"Fetched {start}:{end} ({end-start} rows)"
 
 if __name__ == "__main__":
     app.run(host="127.0.0.1",port=PORT,debug=False)

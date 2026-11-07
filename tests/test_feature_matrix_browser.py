@@ -92,6 +92,10 @@ class FeatureMatrixChromeTests(unittest.TestCase):
                     print("Feature matrix Dash output:", output)
 
     def setUp(self):
+        # The virtual fixture intentionally has no acknowledgement callback.
+        # Do not carry its durable outbox into the next independent test.
+        if self.driver.current_url.startswith(URL):
+            self.driver.execute_script("window.sessionStorage.clear()")
         self.driver.get(URL)
         self.waiter.until(
             lambda d: len(d.find_elements(By.CSS_SELECTOR, "#matrix .rg-col-text.rg-cell")) >= 2
@@ -310,18 +314,7 @@ class FeatureMatrixChromeTests(unittest.TestCase):
             except (ValueError, AttributeError):
                 return False
 
-        try:
-            self.waiter.until(lambda _: emitted())
-        except Exception:
-            print("Virtual Shift+Enter diagnostics:",
-                  self.driver.find_element(By.ID, "review-virtual-edits").text,
-                  self.driver.find_element(By.ID, "review-virtual").text,
-                  self.driver.execute_script("""
-                    return {focused:document.activeElement?.outerHTML?.slice(0,600),
-                      selected:[...document.querySelectorAll('#review-virtual .rg-virtual-selected')]
-                        .map(e=>e.textContent)};
-                  """), file=sys.stderr, flush=True)
-            raise
+        self.waiter.until(lambda _: emitted())
 
     def test_direct_typing_and_arrow_navigation_all_text_numeric_percent(self):
         cases = [

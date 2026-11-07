@@ -108,3 +108,15 @@ test("checkbox clearing uses false rather than null", () => {
     { rowId: "one", columnId: "flag", value: false },
   ]);
 });
+
+test("server-virtualized copy excludes spacer rows and unfetched placeholders", () => {
+  const virtualRows = [
+    rows[0],
+    { rowId:"__drg_virtual_spacer_top__",cells:rows[1].cells },
+    { rowId:"loaded",cells:rows[2].cells },
+    { rowId:"__drg_virtual_loading_123",cells:rows[1].cells },
+    { rowId:"__drg_virtual_spacer_bottom__",cells:rows[1].cells },
+  ];
+  const full = wholeGridRange(virtualRows, columns);
+  assert.equal(selectionText(virtualRows,[full],textOf),"Name\tWeight\nB\t2.5");
+});

@@ -62,7 +62,10 @@ export const selectionText = (rows, ranges, textOf) => {
   const lines = [];
   for (let ri = first.row.idx; ri <= last.row.idx; ri++) {
     const row = rows[ri];
-    if (!row || row.rowId === "__ghost__") continue;
+    if (!row || row.rowId === "__ghost__" ||
+        row.rowId === "__drg_virtual_spacer_top__" ||
+        row.rowId === "__drg_virtual_spacer_bottom__" ||
+        String(row.rowId).startsWith("__drg_virtual_loading_")) continue;
     const cells = [];
     for (let ci = first.column.idx; ci <= last.column.idx; ci++) {
       cells.push(row.cells[ci] ? textOf(row.cells[ci]) : "");

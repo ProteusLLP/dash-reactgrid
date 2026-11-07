@@ -28,6 +28,17 @@ class SparseGridStoreTests(unittest.TestCase):
             "seq": seq, "attempt": attempt, "edits": edits,
         }
 
+    def test_bounded_indexed_viewport_read(self):
+        self.assertEqual(self.store.row_count(), 2)
+        self.assertEqual(self.store.read_range(0, 1),
+                         {"rowIds": ["r1"], "data": [["a", 1]]})
+        self.assertEqual(self.store.read_range(1, 2),
+                         {"rowIds": ["r2"], "data": [["b", 2]]})
+        with self.assertRaisesRegex(ValueError, "end"):
+            self.store.read_range(1, 3)
+        with self.assertRaisesRegex(ValueError, "safety"):
+            self.store.read_range(0, 1001)
+
     def test_single_cell_change_commits_and_acknowledges(self):
         event = self.event(1, [{"kind": "cell", "rowId": "r1", "columnId": "amount", "value": 10}])
         self.assertEqual(self.store.apply(event),

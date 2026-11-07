@@ -310,7 +310,18 @@ class FeatureMatrixChromeTests(unittest.TestCase):
             except (ValueError, AttributeError):
                 return False
 
-        self.waiter.until(lambda _: emitted())
+        try:
+            self.waiter.until(lambda _: emitted())
+        except Exception:
+            print("Virtual Shift+Enter diagnostics:",
+                  self.driver.find_element(By.ID, "review-virtual-edits").text,
+                  self.driver.find_element(By.ID, "review-virtual").text,
+                  self.driver.execute_script("""
+                    return {focused:document.activeElement?.outerHTML?.slice(0,600),
+                      selected:[...document.querySelectorAll('#review-virtual .rg-virtual-selected')]
+                        .map(e=>e.textContent)};
+                  """), file=sys.stderr, flush=True)
+            raise
 
     def test_direct_typing_and_arrow_navigation_all_text_numeric_percent(self):
         cases = [

@@ -6,6 +6,7 @@ import "../styles.css"
 import { CustomNumberCellTemplate, numberParser } from '../CustomNumberCell';
 import { PercentCellTemplate, percentParser } from '../PercentCell';
 import { PortalDropdownCellTemplate } from '../PortalDropdownCell';
+import { ServerVirtualGrid } from '../ServerVirtualGrid.react';
 import { compileGridColumns, buildGridRows, pageBounds, canPasteOnPage } from '../gridRows';
 import {
   GHOST_ROW_ID,
@@ -41,7 +42,9 @@ const DashReactGrid = props => {
   // ReactGrid ignores a class name, so it goes on the container.
   return (
     <div id={typeof id === 'object' ? JSON.stringify(id) : id} style={style} className={className || undefined}>
-      <ReactGridDataHandler {...props} />
+      {Number.isSafeInteger(props.virtualRowCount) && props.virtualRowCount >= 0
+        ? <ServerVirtualGrid {...props} />
+        : <ReactGridDataHandler {...props} />}
     </div>
   );
 }
@@ -412,6 +415,13 @@ DashReactGrid.defaultProps = {
   className: null,
   disableVirtualScrolling: true,
   rowPageSize: null,
+  virtualRowCount: null,
+  virtualDatasetId: null,
+  virtualRowHeight: 25,
+  virtualWindowSize: 120,
+  virtualViewportHeight: 420,
+  virtualRequest: null,
+  virtualData: null,
   dropdownMenuPortal: false,
   persistence_type: 'local',
   persisted_props: ['columns', 'data'],
@@ -513,6 +523,34 @@ DashReactGrid.propTypes = {
    * The whole data array is still transferred to Dash on edits.
    */
   rowPageSize: PropTypes.number,
+  /**
+   * Server-backed continuous virtualization: provide the total number of
+   * logical rows; set data=[] and omit rowIds. The client requests bounded
+   * row windows through virtualRequest and receives them in virtualData.
+   * Supplying a nonnegative integer enables virtual mode instead of paging.
+   */
+  virtualRowCount: PropTypes.number,
+  /**
+   * Stable identifier of the ordered server dataset. Change it when the
+   * sort, filter, contents or revision changes to invalidate cached windows.
+   */
+  virtualDatasetId: PropTypes.string,
+  /** Fixed height in pixels of each data row, default 25. */
+  virtualRowHeight: PropTypes.number,
+  /** Approximate number of rows fetched per request, default 120. */
+  virtualWindowSize: PropTypes.number,
+  /** Height in pixels of the scrollable viewport, default 420. */
+  virtualViewportHeight: PropTypes.number,
+  /**
+   * Read-only row request {datasetId, requestId, start, end}. Start inclusive,
+   * end exclusive. Return exactly end-start rows from the backend.
+   */
+  virtualRequest: PropTypes.object,
+  /**
+   * Server response {datasetId, requestId, start, rowIds, data} or
+   * {datasetId, requestId, start, error}. Must echo the request identity.
+   */
+  virtualData: PropTypes.object,
   /**
    * Whether dropdown menus render in a portal on the page body, with fixed
    * positioning, rather than inside their cell. Turn it on when the grid sits

@@ -145,8 +145,15 @@ def case_run(mode,renderer,n,w,sparse):
           const e=document.querySelector('#grid .drg-virtual-viewport');
           e.scrollTop=0;e.dispatchEvent(new Event('scroll',{bubbles:true}));
         """)
-        wait.until(lambda d:"window=0:" in
-          d.find_element(By.ID,"window-status").text)
+        # The first window may be in the browser cache. Returning to it
+        # does not necessarily invoke a new Dash callback, so wait for the
+        # displayed first row rather than a new window-status update.
+        wait.until(lambda d:(
+          d.execute_script("return document.querySelector('#grid .drg-virtual-viewport').scrollTop")<2
+          and any(cell.text.strip() in ("0","0.00")
+                  for cell in d.find_elements(By.CSS_SELECTOR,
+                      "#grid .rg-col-c0.rg-cell")[:4])
+          and not d.find_elements(By.CSS_SELECTOR,"#grid .rg-virtual-loading")))
       target=driver.find_elements(By.CSS_SELECTOR,"#grid .rg-col-c0.rg-cell")
       if renderer=="glide" and mode!="virtual":
         canvas=driver.find_element(By.CSS_SELECTOR,"#grid .drg-glide")

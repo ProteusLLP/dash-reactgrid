@@ -281,6 +281,26 @@ class FeatureMatrixChromeTests(unittest.TestCase):
 
         self.waiter.until(lambda _: emitted())
 
+    def test_server_virtual_shift_enter_submits_multi_cell_paste(self):
+        self.cell("review-virtual", "label", 0).click()
+        self.chord(Keys.CONTROL, Keys.SHIFT, Keys.ARROW_DOWN)
+        self.type_in_focused("Shared")
+        self.chord(Keys.SHIFT, Keys.ENTER)
+
+        def emitted():
+            try:
+                batch = json.loads(self.driver.find_element(
+                    By.ID, "review-virtual-edits").text)
+                return batch.get("edits") == [{
+                    "kind": "paste", "start": 0,
+                    "columnIds": ["label"],
+                    "rows": [["Shared"], ["Shared"]],
+                }]
+            except (ValueError, AttributeError):
+                return False
+
+        self.waiter.until(lambda _: emitted())
+
     def test_direct_typing_and_arrow_navigation_all_text_numeric_percent(self):
         cases = [
             ("text", 0, "Direct edit!", 0, "Direct edit!", "amount", "r1"),

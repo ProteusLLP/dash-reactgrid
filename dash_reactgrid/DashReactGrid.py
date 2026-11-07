@@ -96,7 +96,17 @@ Keyword arguments:
     Whether every cell is locked, no row can be added and none
     deleted.
 
-- rowPageSize (number; optional):\n    Maximum data rows rendered in a page. Use e.g. 250 for very large\n    tables. Clipboard operations and selections are page-local.\n\n- rowIds (list; optional):
+- transmitSparseEdits (boolean; default False):
+    Publish only the small edits event to Dash, maintaining changed data and
+    row IDs in browser memory. External data or rowIds updates replace that
+    local snapshot. Use with callbacks that consume edits without requesting
+    the full data property.
+
+- rowPageSize (number; optional):
+    Maximum data rows rendered in a page. Use e.g. 250 for very large
+    tables. Clipboard operations and selections are page-local.
+
+- rowIds (list; optional):
     An id per row of `data`. Given, edits name rows by these ids, rows
     the user adds get ids starting `new-`, and rows can be deleted
     from the context menu. Omitted, rows are named by position.
@@ -130,6 +140,7 @@ Keyword arguments:
         data: typing.Optional[typing.Any] = None,
         rowIds: typing.Optional[typing.Sequence] = None,
         rowPageSize: typing.Optional[NumberType] = None,
+        transmitSparseEdits: typing.Optional[bool] = None,
         newRow: typing.Optional[typing.Union[typing.Sequence, dict]] = None,
         lockedCells: typing.Optional[typing.Sequence] = None,
         readOnly: typing.Optional[bool] = None,
@@ -158,9 +169,9 @@ Keyword arguments:
         persisted_props: typing.Optional[typing.Sequence[Literal["columns", "data"]]] = None,
         **kwargs
     ):
-        self._prop_names = ['id', 'className', 'columns', 'data', 'disableVirtualScrolling', 'dropdownMenuPortal', 'edits', 'enableColumnSelection', 'enableFillHandle', 'enableRangeSelection', 'enableRowSelection', 'hiddenColumns', 'highlights', 'isExtendable', 'lockedCells', 'newRow', 'persisted_props', 'persistence', 'persistence_type', 'readOnly', 'rowIds', 'rowPageSize', 'selectedCell', 'selectedRange', 'selectedRowIds', 'stickyBottomRows', 'stickyLeftColumns', 'stickyRightColumns', 'stickyTopRows', 'style', 'styleHeader']
+        self._prop_names = ['id', 'className', 'columns', 'data', 'disableVirtualScrolling', 'dropdownMenuPortal', 'edits', 'enableColumnSelection', 'enableFillHandle', 'enableRangeSelection', 'enableRowSelection', 'hiddenColumns', 'highlights', 'isExtendable', 'lockedCells', 'newRow', 'persisted_props', 'persistence', 'persistence_type', 'readOnly', 'rowIds', 'rowPageSize', 'selectedCell', 'transmitSparseEdits', 'selectedRange', 'selectedRowIds', 'stickyBottomRows', 'stickyLeftColumns', 'stickyRightColumns', 'stickyTopRows', 'style', 'styleHeader']
         self._valid_wildcard_attributes =            []
-        self.available_properties = ['id', 'className', 'columns', 'data', 'disableVirtualScrolling', 'dropdownMenuPortal', 'edits', 'enableColumnSelection', 'enableFillHandle', 'enableRangeSelection', 'enableRowSelection', 'hiddenColumns', 'highlights', 'isExtendable', 'lockedCells', 'newRow', 'persisted_props', 'persistence', 'persistence_type', 'readOnly', 'rowIds', 'rowPageSize', 'selectedCell', 'selectedRange', 'selectedRowIds', 'stickyBottomRows', 'stickyLeftColumns', 'stickyRightColumns', 'stickyTopRows', 'style', 'styleHeader']
+        self.available_properties = ['id', 'className', 'columns', 'data', 'disableVirtualScrolling', 'dropdownMenuPortal', 'edits', 'enableColumnSelection', 'enableFillHandle', 'enableRangeSelection', 'enableRowSelection', 'hiddenColumns', 'highlights', 'isExtendable', 'lockedCells', 'newRow', 'persisted_props', 'persistence', 'persistence_type', 'readOnly', 'rowIds', 'rowPageSize', 'selectedCell', 'transmitSparseEdits', 'selectedRange', 'selectedRowIds', 'stickyBottomRows', 'stickyLeftColumns', 'stickyRightColumns', 'stickyTopRows', 'style', 'styleHeader']
         self.available_wildcard_properties =            []
         _explicit_args = kwargs.pop('_explicit_args')
         _locals = locals()

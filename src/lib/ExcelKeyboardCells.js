@@ -104,6 +104,15 @@ export class ExcelDateCellTemplate extends DateCellTemplate {
 }
 
 export class ExcelTimeCellTemplate extends TimeCellTemplate {
+  // ReactGrid's default TimeCellTemplate.update parses the display text
+  // into a 1970-anchored timestamp, losing the source date. Preserve the
+  // Date that the editor already validated instead.
+  update(cell, incoming) {
+    if (incoming.time instanceof Date && !Number.isNaN(incoming.time.getTime()))
+      return this.getCompatibleCell({ ...cell, time: incoming.time });
+    return super.update(cell, incoming);
+  }
+
   directTyping = false;
   initialKey = "";
   cancelEntry = false;

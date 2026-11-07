@@ -166,11 +166,20 @@ class FeatureMatrixChromeTests(unittest.TestCase):
             # through its onBlur handler by moving focus outside the grid.
             self.driver.find_element(By.TAG_NAME, "h3").click()
 
-    def type_in_focused(self, value):
-        # Individual physical keystrokes keep keyboard focus synchronized as
-        # a human types, unlike a bundled Selenium keyboard action.
-        for character in value:
+    def type_in_focused(self, value, expect_editor=True):
+        # The first keystroke creates an input asynchronously. Do not send a
+        # second key to ReactGrid's hidden focus element before it is mounted:
+        # Selenium can otherwise drop a digit at unrealistically high speed.
+        for index, character in enumerate(value):
             ActionChains(self.driver).send_keys(character).perform()
+            if expect_editor and index == 0:
+                WebDriverWait(self.driver, 5).until(
+                    lambda d: d.execute_script("""
+                        const e=document.activeElement;
+                        return e?.tagName==='INPUT' &&
+                          !e.classList.contains('rg-hidden-element');
+                    """)
+                )
 
     def keyboard_debug(self, grid, label):
         print("KEYBOARD CHECK", label, self.state(grid),
@@ -269,12 +278,12 @@ class FeatureMatrixChromeTests(unittest.TestCase):
 
     def test_keyboard_direct_entry_respects_locks_and_extendable_rows(self):
         self.cell("matrix", "amount", 0).click()
-        self.type_in_focused("999")
+        self.type_in_focused("999", expect_editor=False)
         ActionChains(self.driver).send_keys(Keys.ARROW_RIGHT).perform()
         self.assertEqual(self.state("matrix")["data"][0][1], 10.5)
 
         self.cell("matrix", "conditional", 1).click()
-        self.type_in_focused("Blocked")
+        self.type_in_focused("Blocked", expect_editor=False)
         ActionChains(self.driver).send_keys(Keys.ARROW_LEFT).perform()
         self.assertEqual(self.state("matrix")["data"][1][8], "Disabled")
 
@@ -284,7 +293,7 @@ class FeatureMatrixChromeTests(unittest.TestCase):
         self.assertEqual(self.state("matrix")["data"][0][9], "Immutable")
 
         self.cell("readonly", "label", 0).click()
-        self.type_in_focused("Blocked")
+        self.type_in_focused("Blocked", expect_editor=False)
         ActionChains(self.driver).send_keys(Keys.TAB).perform()
         self.assertEqual(self.state("readonly")["data"][0][0], "Protected")
 

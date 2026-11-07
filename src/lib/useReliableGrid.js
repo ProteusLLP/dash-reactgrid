@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { editsPayload, initialGridSnapshot, reconcileGridSnapshot } from "./sparseEdits.js";
+import { editsPayload, initialGridSnapshot } from "./sparseEdits.js";
 import {
   acknowledgeEdits, enqueueEdits, loadOutbox, outboxStorageKey,
   replayPendingEdits, retryHead, saveOutbox,
@@ -17,12 +17,13 @@ const newStreamId = () => {
 const makeSession = ({ enabled, id, datasetId, data, rowIds, columns, newRow }) => {
   if (!enabled) return {
     enabled: false, sourceData: data, sourceRowIds: rowIds,
-    snapshot: initialGridSnapshot(data, rowIds, false),
+    sourceColumns: columns, sourceNewRow: newRow,
     table: initialGridSnapshot(data, rowIds, false).table,
     outbox: null, key: null, error: null,
   };
   const partial = {
     enabled: true, sourceData: data, sourceRowIds: rowIds,
+    sourceColumns: columns, sourceNewRow: newRow,
     key: null, outbox: null, table: initialGridSnapshot(data, rowIds, true).table,
     error: null,
   };
@@ -50,13 +51,15 @@ const reconcileSession = (session, config) => {
   if (session.enabled !== config.enabled ||
       session.key !== (config.enabled ? outboxStorageKey(config.id, config.datasetId) : null))
     return makeSession(config);
-  if (session.sourceData === config.data && session.sourceRowIds === config.rowIds)
+  if (session.sourceData === config.data && session.sourceRowIds === config.rowIds &&
+      session.sourceColumns === config.columns && session.sourceNewRow === config.newRow)
     return session;
   // An authoritative prop update does not discard unacknowledged edits.
   const source = initialGridSnapshot(config.data, config.rowIds, config.enabled);
   try {
     return {
       ...session, sourceData: config.data, sourceRowIds: config.rowIds,
+      sourceColumns: config.columns, sourceNewRow: config.newRow,
       table: config.enabled && session.outbox
         ? replayPendingEdits(source.table, session.outbox.queue, config.columns, config.newRow)
         : source.table,

@@ -21,7 +21,7 @@ import {
   textOf,
   valueOf,
 } from '../model';
-import { isCellEditorTarget, pasteStartRow, selectAllRanges, selectionText } from '../keyboard';
+import { clearSelectedCells, focusedRange, isCellEditorTarget, pasteStartRow, selectAllRanges, selectionText } from '../keyboard';
 
 const locale = window.navigator.language
 const parsers = { number: numberParser, percent: percentParser }
@@ -295,6 +295,19 @@ const ReactGridDataHandler = (props) => {
   // While a cell is being typed in, its own input undoes the typing.
   const handleKeyDown = (e) => {
     if (isCellEditorTarget(e.target)) return
+    if (!e.ctrlKey && !e.metaKey && !e.altKey && (e.key === "Delete" || e.key === "Backspace")) {
+      // Handle clearing here instead of relying on ReactGrid's last-row
+      // behaviour. The blank extension row is never a data edit.
+      const ranges = selection.current?.length ? selection.current :
+        [focusedRange(rows, columns, focused.current)].filter(Boolean)
+      const changes = readOnly ? [] : clearSelectedCells(rows, columns, ranges)
+      if (changes.length) {
+        e.preventDefault()
+        e.stopPropagation()
+        change(changes)
+      }
+      return
+    }
     if ((!isMacOs() && e.ctrlKey) || e.metaKey) {
       switch (e.key.toLowerCase()) {
         case "a":

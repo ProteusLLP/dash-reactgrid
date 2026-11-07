@@ -14,16 +14,16 @@ const newStreamId = () => {
   return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
 };
 
-const makeSession = ({ enabled, id, datasetId, data, rowIds, columns, newRow }) => {
+const makeSession = ({ enabled, id, datasetId, data, rowIds, columns, newRow, windowed = false }) => {
   if (!enabled) return {
     enabled: false, sourceData: data, sourceRowIds: rowIds,
-    sourceColumns: columns, sourceNewRow: newRow,
+    sourceColumns: columns, sourceNewRow: newRow, windowed,
     table: initialGridSnapshot(data, rowIds, false).table,
     outbox: null, key: null, error: null,
   };
   const partial = {
     enabled: true, sourceData: data, sourceRowIds: rowIds,
-    sourceColumns: columns, sourceNewRow: newRow,
+    sourceColumns: columns, sourceNewRow: newRow, windowed,
     key: null, outbox: null, table: initialGridSnapshot(data, rowIds, true).table,
     error: null,
   };
@@ -40,7 +40,10 @@ const makeSession = ({ enabled, id, datasetId, data, rowIds, columns, newRow }) 
     const outbox = loadOutbox(storage, key, datasetId, newStreamId);
     return {
       ...partial, key, outbox,
-      table: replayPendingEdits(partial.table, outbox.queue, columns, newRow),
+      // Windowed mode does not have the full dataset locally. Pending
+      // cell edits are overlaid on each loaded viewport instead.
+      table: windowed ? partial.table :
+        replayPendingEdits(partial.table, outbox.queue, columns, newRow),
     };
   } catch (error) {
     return { ...partial, error: "Cannot recover/persist pending grid edits: " + error.message };
@@ -48,7 +51,7 @@ const makeSession = ({ enabled, id, datasetId, data, rowIds, columns, newRow }) 
 };
 
 const reconcileSession = (session, config) => {
-  if (session.enabled !== config.enabled ||
+  if (session.enabled !== config.enabled || session.windowed !== config.windowed ||
       session.key !== (config.enabled ? outboxStorageKey(config.id, config.datasetId) : null))
     return makeSession(config);
   if (session.sourceData === config.data && session.sourceRowIds === config.rowIds &&
@@ -60,7 +63,7 @@ const reconcileSession = (session, config) => {
     return {
       ...session, sourceData: config.data, sourceRowIds: config.rowIds,
       sourceColumns: config.columns, sourceNewRow: config.newRow,
-      table: config.enabled && session.outbox
+      table: config.enabled && session.outbox && !config.windowed
         ? replayPendingEdits(source.table, session.outbox.queue, config.columns, config.newRow)
         : source.table,
     };
@@ -76,8 +79,9 @@ const reconcileSession = (session, config) => {
  */
 export const useReliableGrid = ({
   enabled, id, datasetId, editAck, data, rowIds, columns, newRow, setProps,
+  windowed = false,
 }) => {
-  const config = { enabled, id, datasetId, data, rowIds, columns, newRow };
+  const config = { enabled, id, datasetId, data, rowIds, columns, newRow, windowed };
   const [session, setSession] = useState(() => makeSession(config));
   const current = useRef(session);
   const fullSequence = useRef(0);
@@ -132,7 +136,7 @@ export const useReliableGrid = ({
       saveOutbox(window.sessionStorage, before.key, queued);
       update({
         ...before, outbox: queued,
-        table: { data: next.data, rowIds: next.rowIds },
+        table: windowed ? before.table : { data: next.data, rowIds: next.rowIds },
       });
       if (shouldSend) sendPropsRef.current({ edits: queued.queue[0] });
       return true;
@@ -202,5 +206,6 @@ export const useReliableGrid = ({
     table: state.table, tableRef,
     publish, retryFailed, error: state.error || state.outbox?.blocked || null,
     pending: state.outbox?.queue.length || 0,
+    outbox: state.outbox,
   };
 };

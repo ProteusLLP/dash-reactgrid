@@ -122,6 +122,16 @@ const ReactGridDataHandler = (props) => {
   }, [columns, renderColumns, allColumns, table, pageStart, pageEnd,
     newRow, locked, readOnly, styleHeader, showGhost, openDropdown]);
 
+  // Highlights may reference rows on other pages. Passing them directly
+  // makes ReactGrid reject them as inconsistent with its current cell matrix.
+  const pageHighlights = useMemo(() => {
+    if (!pageSize || !highlights?.length) return highlights
+    const ids = new Set(rows.map((row) => row.rowId))
+    const visible = new Set(columnIds)
+    return highlights.filter((highlight) =>
+      ids.has(highlight.rowId) && visible.has(highlight.columnId))
+  }, [highlights, pageSize, rows, columns])
+
   // ReactGrid fails when nothing is left to scroll, as when every column of
   // a one-column table is sticky, so at least one row and column scroll.
   const sticky = stickyCounts(props, columns.length, rows.length)
@@ -339,7 +349,7 @@ const ReactGridDataHandler = (props) => {
       enableRangeSelection={enableRangeSelection}
       enableRowSelection={enableRowSelection}
       enableColumnSelection={enableColumnSelection}
-      onContextMenu={onContextMenu} highlights={highlights}
+      onContextMenu={onContextMenu} highlights={pageHighlights}
       stickyLeftColumns={sticky.left}
       stickyRightColumns={sticky.right}
       stickyTopRows={sticky.top}
@@ -348,7 +358,7 @@ const ReactGridDataHandler = (props) => {
       onSelectionChanged={onSelectionChanged}
       disableVirtualScrolling={disableVirtualScrolling}
     />
-  ), [rows, columns, readOnly, highlights, sticky.left, sticky.right, sticky.top, sticky.bottom,
+  ), [rows, columns, readOnly, pageHighlights, sticky.left, sticky.right, sticky.top, sticky.bottom,
     enableFillHandle, enableRangeSelection, enableRowSelection, enableColumnSelection, disableVirtualScrolling,
     dropdownMenuPortal, pageSize, page])
 

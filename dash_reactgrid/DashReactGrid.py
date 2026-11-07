@@ -110,6 +110,27 @@ Keyword arguments:
     local snapshot. Use with callbacks that consume edits without requesting
     the full data property.
 
+- virtualRowCount (number; optional):
+    Total number of logical rows supplied by the server. Setting a nonnegative integer enables continuous server-side virtualization.
+
+- virtualDatasetId (string; optional):
+    Stable identity of the ordered server dataset; change when sorting, filtering or rebuilding rows to invalidate cached windows.
+
+- virtualRowHeight (number; optional):
+    Fixed row height in pixels, default 25.
+
+- virtualWindowSize (number; optional):
+    Target number of rows to request on each scroll window, default 120.
+
+- virtualViewportHeight (number; optional):
+    Scrollable grid height in pixels, default 420.
+
+- virtualRequest (dict; optional):
+    Browser request {datasetId, requestId, start, end}, with zero-based start inclusive and end exclusive.
+
+- virtualData (dict; optional):
+    Server response {datasetId, requestId, start, rowIds, data} containing exactly the requested rows, or a matching {error}.
+
 - rowPageSize (number; optional):
     Maximum data rows rendered in a page. Use e.g. 250 for very large
     tables. Clipboard operations and selections are page-local.
@@ -148,6 +169,13 @@ Keyword arguments:
         data: typing.Optional[typing.Any] = None,
         rowIds: typing.Optional[typing.Sequence] = None,
         rowPageSize: typing.Optional[NumberType] = None,
+        virtualRowCount: typing.Optional[NumberType] = None,
+        virtualDatasetId: typing.Optional[str] = None,
+        virtualRowHeight: typing.Optional[NumberType] = None,
+        virtualWindowSize: typing.Optional[NumberType] = None,
+        virtualViewportHeight: typing.Optional[NumberType] = None,
+        virtualRequest: typing.Optional[dict] = None,
+        virtualData: typing.Optional[dict] = None,
         transmitSparseEdits: typing.Optional[bool] = None,
         editAck: typing.Optional[dict] = None,
         editDatasetId: typing.Optional[str] = None,
@@ -179,9 +207,9 @@ Keyword arguments:
         persisted_props: typing.Optional[typing.Sequence[Literal["columns", "data"]]] = None,
         **kwargs
     ):
-        self._prop_names = ['id', 'className', 'columns', 'data', 'disableVirtualScrolling', 'dropdownMenuPortal', 'edits', 'editAck', 'editDatasetId', 'enableColumnSelection', 'enableFillHandle', 'enableRangeSelection', 'enableRowSelection', 'hiddenColumns', 'highlights', 'isExtendable', 'lockedCells', 'newRow', 'persisted_props', 'persistence', 'persistence_type', 'readOnly', 'rowIds', 'rowPageSize', 'selectedCell', 'transmitSparseEdits', 'selectedRange', 'selectedRowIds', 'stickyBottomRows', 'stickyLeftColumns', 'stickyRightColumns', 'stickyTopRows', 'style', 'styleHeader']
+        self._prop_names = ['id', 'className', 'columns', 'data', 'disableVirtualScrolling', 'dropdownMenuPortal', 'edits', 'editAck', 'editDatasetId', 'enableColumnSelection', 'enableFillHandle', 'enableRangeSelection', 'enableRowSelection', 'hiddenColumns', 'highlights', 'isExtendable', 'lockedCells', 'newRow', 'persisted_props', 'persistence', 'persistence_type', 'readOnly', 'rowIds', 'rowPageSize', 'virtualRowCount', 'virtualDatasetId', 'virtualRowHeight', 'virtualWindowSize', 'virtualViewportHeight', 'virtualRequest', 'virtualData', 'selectedCell', 'transmitSparseEdits', 'selectedRange', 'selectedRowIds', 'stickyBottomRows', 'stickyLeftColumns', 'stickyRightColumns', 'stickyTopRows', 'style', 'styleHeader']
         self._valid_wildcard_attributes =            []
-        self.available_properties = ['id', 'className', 'columns', 'data', 'disableVirtualScrolling', 'dropdownMenuPortal', 'edits', 'editAck', 'editDatasetId', 'enableColumnSelection', 'enableFillHandle', 'enableRangeSelection', 'enableRowSelection', 'hiddenColumns', 'highlights', 'isExtendable', 'lockedCells', 'newRow', 'persisted_props', 'persistence', 'persistence_type', 'readOnly', 'rowIds', 'rowPageSize', 'selectedCell', 'transmitSparseEdits', 'selectedRange', 'selectedRowIds', 'stickyBottomRows', 'stickyLeftColumns', 'stickyRightColumns', 'stickyTopRows', 'style', 'styleHeader']
+        self.available_properties = ['id', 'className', 'columns', 'data', 'disableVirtualScrolling', 'dropdownMenuPortal', 'edits', 'editAck', 'editDatasetId', 'enableColumnSelection', 'enableFillHandle', 'enableRangeSelection', 'enableRowSelection', 'hiddenColumns', 'highlights', 'isExtendable', 'lockedCells', 'newRow', 'persisted_props', 'persistence', 'persistence_type', 'readOnly', 'rowIds', 'rowPageSize', 'virtualRowCount', 'virtualDatasetId', 'virtualRowHeight', 'virtualWindowSize', 'virtualViewportHeight', 'virtualRequest', 'virtualData', 'selectedCell', 'transmitSparseEdits', 'selectedRange', 'selectedRowIds', 'stickyBottomRows', 'stickyLeftColumns', 'stickyRightColumns', 'stickyTopRows', 'style', 'styleHeader']
         self.available_wildcard_properties =            []
         _explicit_args = kwargs.pop('_explicit_args')
         _locals = locals()

@@ -14,7 +14,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
-from examples.virtual_grid_store import VirtualGridStore
+from tests.fixtures.sqlite_virtual_backend import VirtualGridStore
 PORT=8063
 URL=f"http://127.0.0.1:{PORT}"
 COLUMNS=[{"columnId":"name","type":"text"},{"columnId":"value","type":"number"}]

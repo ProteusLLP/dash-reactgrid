@@ -33,6 +33,7 @@ CASES=[
     ("paged","glide",100000,12,True),
     ("virtual","reactgrid",100000,12,True),
     ("virtual","glide",100000,12,True), # actual renderer is ReactGrid fallback
+    ("virtual","reactgrid",1000000,12,True), # CSS scroll-height cap exercised
 ]
 def bytes_read(url):
     with urllib.request.urlopen(url,timeout=45) as resp:

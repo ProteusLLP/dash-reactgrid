@@ -16,6 +16,7 @@ import {
   pastedValue,
   removeRows,
   rowIdsOf,
+  rowIndexesOf,
   rowsInRanges,
   rulesHold,
   stickyCounts,
@@ -150,7 +151,7 @@ const ReactGridDataHandler = (props) => {
       // Undo restores values, not rows, so a new row starts a new history.
       setHistory(NO_HISTORY)
     } else if (remember && next.edits.length) {
-      const rowIndex = new Map(table.rowIds.map((id, index) => [id, index]))
+      const rowIndex = rowIndexesOf(table.rowIds)
       const step = next.edits.map((edit) => ({
         rowId: edit.rowId,
         columnId: edit.columnId,
@@ -218,6 +219,8 @@ const ReactGridDataHandler = (props) => {
     const changes = []
     clipboardCells(e.clipboardData).forEach((cells, ri) => {
       const position = pageStart + pasteStartRow(ranges[0]) + ri // the header is not a data row
+      // Do not silently modify data on a page the user cannot see.
+      if (pageSize && page !== pageCount - 1 && position >= pageEnd) return
       let rowId
       if (position < table.data.length) {
         rowId = table.rowIds[position]

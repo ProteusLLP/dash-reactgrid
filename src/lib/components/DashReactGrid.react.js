@@ -104,6 +104,7 @@ const ReactGridDataHandler = (props) => {
   const suppressNativeSelection = useRef(false)
   const [shortcutHighlight, setShortcutHighlight] = useState(null)
   const [jumpLocation, setJumpLocation] = useState(null)
+  const keyboardHost = useRef(null)
   const [keyboardError, setKeyboardError] = useState(null)
   const multiCommit = useRef(false)
   const lastMultiSelection = useRef(null)
@@ -514,6 +515,15 @@ const ReactGridDataHandler = (props) => {
   const onColumnResized = useCallback((...args) => latest.current.resizeColumn(...args), [])
   const onFocusLocationChanged = useCallback((location) => latest.current.handleFocus(location), [])
 
+  // Switching pages remounts ReactGrid. focusLocation selects the target
+  // logically, but browser keystrokes still need its hidden focus input.
+  useEffect(() => {
+    if (!jumpLocation || !rows.some((row) => row.rowId === jumpLocation.rowId))
+      return
+    keyboardHost.current?.querySelector("input.rg-hidden-element")
+      ?.focus({preventScroll:true})
+  }, [jumpLocation, page, rows])
+
   const { enableFillHandle, enableRangeSelection, enableRowSelection, enableColumnSelection, disableVirtualScrolling, dropdownMenuPortal } = props
   const visibleJump = jumpLocation && rows.some((row) => row.rowId === jumpLocation.rowId)
     ? jumpLocation : undefined
@@ -559,7 +569,7 @@ const ReactGridDataHandler = (props) => {
   }
 
   return (
-    <div onPasteCapture={handlePaste} onCopy={handleCopy}
+    <div ref={keyboardHost} onPasteCapture={handlePaste} onCopy={handleCopy}
       onPointerDownCapture={() => {
         suppressNativeSelection.current=false
         shortcutRange.current=null

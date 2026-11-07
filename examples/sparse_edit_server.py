@@ -58,6 +58,8 @@ class SparseGridStore:
                     last_seq INTEGER NOT NULL,
                     PRIMARY KEY (dataset_id, stream_id)
                 );
+                CREATE INDEX IF NOT EXISTS idx_grid_rows_position
+                    ON grid_rows(dataset_id, position);
                 CREATE TABLE IF NOT EXISTS applied_batches (
                     dataset_id TEXT NOT NULL,
                     stream_id TEXT NOT NULL,
@@ -116,6 +118,33 @@ class SparseGridStore:
                 "SELECT row_id, values_json FROM grid_rows WHERE dataset_id=? ORDER BY position",
                 (self.dataset_id,),
             ).fetchall()
+        return {
+            "rowIds": [json.loads(row_id) for row_id, _ in rows],
+            "data": [json.loads(values) for _, values in rows],
+        }
+
+    def row_count(self):
+        """Number of rows in the authoritative table, without loading them."""
+        with closing(self.connect()) as db:
+            return db.execute(
+                "SELECT COUNT(*) FROM grid_rows WHERE dataset_id=?",
+                (self.dataset_id,),
+            ).fetchone()[0]
+
+    def read_range(self, start, end):
+        """Load one bounded viewport by absolute row offset."""
+        if not isinstance(start, int) or not isinstance(end, int) or start < 0 or end < start:
+            raise ValueError("Invalid requested row interval")
+        if end - start > 1000:
+            raise ValueError("Viewport request exceeds the configured safety limit")
+        with closing(self.connect()) as db:
+            rows = db.execute(
+                """SELECT row_id, values_json FROM grid_rows
+                   WHERE dataset_id=? ORDER BY position LIMIT ? OFFSET ?""",
+                (self.dataset_id, end - start, start),
+            ).fetchall()
+        if len(rows) != end - start:
+            raise ValueError("Viewport request extends past the end of the dataset")
         return {
             "rowIds": [json.loads(row_id) for row_id, _ in rows],
             "data": [json.loads(values) for _, values in rows],

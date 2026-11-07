@@ -50,8 +50,10 @@ try {
       const jumpStart = performance.now();
       await page.evaluate(row => window.__bakeoff.jump(row), Math.floor(rows / 2));
       // Dispatch-to-two-paints, not a measured time until all cells load.
-      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(
-        () => requestAnimationFrame(resolve))));
+      await page.evaluate(() => Promise.race([
+        new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+        new Promise(resolve => setTimeout(resolve, 300)),
+      ]));
       const jumpDispatchMs = performance.now() - jumpStart;
       results.push({renderer, mode, rows, cols,
         startupWallMs:+wallMs.toFixed(1),

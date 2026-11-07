@@ -1,3 +1,4 @@
+import { nativeEditorShortcut } from "../nativeEditorShortcut.js";
 /* Regression tests for keyboard selection and clipboard handling. */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -141,4 +142,89 @@ test("clipboard round-trips embedded tabs, line breaks and literal quotes", () =
     ["Tab\there",'Quote "and"\nnewline'],
     ['"whole quoted value"',"ordinary"],
   ]);
+});
+
+test("numeric and percent editors preserve native Ctrl/Cmd shortcuts", () => {
+  for (const key of ["a", "c", "v", "x", "z", "y"]) {
+    assert.equal(nativeEditorShortcut({ key, ctrlKey:true, metaKey:false, altKey:false }), true);
+    assert.equal(nativeEditorShortcut({ key:key.toUpperCase(), ctrlKey:false, metaKey:true, altKey:false }), true);
+  }
+  assert.equal(nativeEditorShortcut({ key:"a", ctrlKey:false, metaKey:false, altKey:false }), false);
+  assert.equal(nativeEditorShortcut({ key:"a", ctrlKey:true, metaKey:false, altKey:true }), false);
+  assert.equal(nativeEditorShortcut({ key:"ArrowLeft", ctrlKey:true, metaKey:false, altKey:false }), false);
+});
+
+test("Excel direct-entry arrow navigation excludes modified shortcuts", async () => {
+  const { isPlainArrow, isTypingKey } = await import("../keyboardEntry.js");
+  assert.equal(isPlainArrow({ key:"ArrowRight",ctrlKey:false,metaKey:false,altKey:false,shiftKey:false }),true);
+  assert.equal(isPlainArrow({ key:"ArrowUp",ctrlKey:false,metaKey:false,altKey:false,shiftKey:true }),false);
+  assert.equal(isPlainArrow({ key:"Enter",ctrlKey:false,metaKey:false,altKey:false,shiftKey:false }),false);
+  assert.equal(isTypingKey("A",false,false),true);
+  assert.equal(isTypingKey("!",false,false),true);
+  assert.equal(isTypingKey("A",true,false),false);
+});
+
+test("direct date typing parses ISO and the locale's day/month order and rejects rollovers", async () => {
+  const { parseDateEntry } = await import("../keyboardEntry.js");
+  assert.equal(parseDateEntry("2026-11-14","en-GB").getDate(),14);
+  assert.equal(parseDateEntry("14/11/2026","en-GB").getMonth(),10);
+  assert.equal(parseDateEntry("11/14/2026","en-US").getMonth(),10);
+  assert.equal(parseDateEntry("31/02/2026","en-GB"),null);
+  assert.equal(parseDateEntry("2025-02-29","en-GB"),null);
+  assert.equal(parseDateEntry("2024-02-29","en-GB").getDate(),29);
+  assert.equal(parseDateEntry("bad","en-GB"),null);
+});
+
+test("direct time typing validates 24h time and retains the base date", async () => {
+  const { parseTimeEntry } = await import("../keyboardEntry.js");
+  const base = new Date(2026,10,7,9,10,0);
+  const result = parseTimeEntry("15:45",base);
+  assert.equal(result.getHours(),15);
+  assert.equal(result.getMinutes(),45);
+  assert.equal(result.getDate(),7);
+  assert.equal(parseTimeEntry("24:00",base),null);
+  assert.equal(parseTimeEntry("15:60",base),null);
+  assert.equal(parseTimeEntry("not time",base),null);
+});
+
+test("calendar dates accept year-first and year-last locale orders", async () => {
+  const { parseDateEntry } = await import("../keyboardEntry.js");
+  for (const [input, locale] of [
+    ["2026-11-14", "en-US"],
+    ["2026/11/14", "ja-JP"],
+    ["2026.11.14", "ko-KR"],
+    ["14/11/2026", "en-GB"],
+    ["11/14/2026", "en-US"],
+  ]) {
+    const date = parseDateEntry(input, locale);
+    assert.ok(date instanceof Date, input + " / " + locale);
+    assert.equal(date.getFullYear(), 2026);
+    assert.equal(date.getMonth(), 10);
+    assert.equal(date.getDate(), 14);
+  }
+  assert.equal(parseDateEntry("14/11/2026", "ja-JP"), null);
+  assert.equal(parseDateEntry("2026/13/14", "ja-JP"), null);
+  assert.equal(parseDateEntry("2026/02/29", "ja-JP"), null);
+  assert.equal(parseDateEntry("2024/02/29", "ja-JP").getDate(), 29);
+  assert.equal(parseDateEntry("2026/11-14", "ja-JP"), null);
+});
+
+test("date-only values round-trip through the model as calendar dates", async () => {
+  const { parseDateEntry, calendarDateString, calendarDateFromValue } =
+    await import("../keyboardEntry.js");
+  const { valueOf } = await import("../model.js");
+  const { compileGridColumns, buildGridRows } = await import("../gridRows.js");
+  const date = parseDateEntry("2026-11-14", "en-GB");
+  assert.equal(calendarDateString(date), "2026-11-14");
+  assert.equal(valueOf({ type: "date" }, { date }), "2026-11-14");
+  assert.equal(valueOf({ type: "date" }, { date: new Date(NaN) }), null);
+  assert.equal(calendarDateFromValue("2026-11-14").getDate(), 14);
+  const columns = [{ columnId: "day", title: "Date", type: "date" }];
+  const rendered = buildGridRows({
+    columns, descriptors: compileGridColumns(columns, columns, "en-GB"),
+    allColumns: columns, data: [["2026-11-14"]], rowIds: ["r1"],
+    readOnly: false, locked: new Set(), showGhost: false,
+  });
+  assert.equal(rendered.rows[1].cells[0].date.getDate(), 14);
+  assert.equal(valueOf(columns[0], rendered.rows[1].cells[0]), "2026-11-14");
 });

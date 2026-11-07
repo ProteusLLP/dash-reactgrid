@@ -1,4 +1,6 @@
 import React from 'react';
+import { nativeEditorShortcut } from './nativeEditorShortcut';
+import { isPlainArrow } from './keyboardEntry';
 // NOTE: all modules imported below may be imported from '@silevis/reactgrid'
 
 import { getCellProperty,keyCodes,  } from "@silevis/reactgrid";
@@ -12,6 +14,7 @@ export class CustomNumberCellTemplate {
       }
 
     wasEscKeyPressed = false;
+    directTyping = false;
 
     getCompatibleCell(uncertainCell) {
         let value;
@@ -27,6 +30,7 @@ export class CustomNumberCellTemplate {
     }
 
     handleKeyDown(cell, keyCode, ctrl,shift, alt){
+        this.directTyping = keyCode !== keyCodes.POINTER && keyCode !== keyCodes.ENTER;
         if (isNumpadNumericKey(keyCode)) keyCode -= 48;
         const char = String.fromCharCode(keyCode);
         if (!ctrl && !alt && !shift && (inNumericKey(keyCode) || isAllowedOnNumberTypingKey(keyCode)) ) {
@@ -96,6 +100,20 @@ export class CustomNumberCellTemplate {
             onChange={handleOnChange}
             onBlur={handleOnBlur}
             onKeyDown={(e) => {
+                // Direct typing uses Excel's entry mode: arrows save and move.
+                // Editing opened with a pointer/Enter retains input caret keys.
+                if (this.directTyping && (isPlainArrow(e) || e.key === "Tab" || e.key === "Enter")) {
+                    onCellChanged(this.getCompatibleCell({
+                        ...cell, value: numberParser.parse(e.currentTarget.value),
+                    }), false);
+                    return;
+                }
+
+                if (nativeEditorShortcut(e)) {
+                    e.stopPropagation();
+                    return; // keep input selection, paste and undo native
+                }
+
                 if (
                   inNumericKey(e.keyCode) ||
                   ((this.input.selectionStart!=this.input.value.length || this.input.selectionEnd!=this.input.value.length) && isNavigationKey(e.keyCode)) ||

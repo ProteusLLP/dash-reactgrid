@@ -36,6 +36,10 @@ jobs:
         run: python3 -m unittest discover -s tests -p test_virtual_grid_store.py -v
       - name: Install Dash and Selenium browser testing
         run: python3 -m pip install "dash>=3,<5" "selenium>=4,<5"
+      - name: Test Python column and stateless callback contracts
+        run: python3 -m unittest tests.test_component_contract -v
+      - name: Test full Chrome cell, clipboard and interaction matrix
+        run: python3 tests/test_feature_matrix_browser.py
       - name: Test real-browser sparse edit and ACK
         run: python3 tests/test_sparse_browser.py
       - name: Test server virtualization in Chrome

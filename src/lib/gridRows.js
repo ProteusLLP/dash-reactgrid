@@ -1,3 +1,4 @@
+import { calendarDateFromValue } from "./keyboardEntry.js";
 /*
  * Compile column metadata once and build only the requested rows.
  * ReactGrid still builds a cell matrix for every row passed to it.
@@ -18,7 +19,7 @@ export const compileGridColumns = (visible, allColumns, locale) => {
   const indexes = new Map(allColumns.map((column, idx) => [column.columnId, idx]));
   return visible.map((column) => {
     let format;
-    if (column.type === "number") {
+    if (column.type === "number" || column.type === "customnumber") {
       format = new Intl.NumberFormat(locale, { ...column.formatOptions });
     } else if (column.type === "percent") {
       format = new Intl.NumberFormat(locale, { ...column.formatOptions, style: "percent" });
@@ -53,6 +54,7 @@ const makeCell = (render, value, locked, open) => {
   const base = { style, nonEditable: locked, className };
   switch (column.type) {
     case "number":
+    case "customnumber":
       return { ...base, type: "customnumber", value: value ?? NaN, format };
     case "percent":
       return { ...base, type: "percent", value: value ?? NaN, format };
@@ -61,7 +63,7 @@ const makeCell = (render, value, locked, open) => {
     case "checkbox":
       return { ...base, type: "checkbox", checked: Boolean(value) };
     case "date":
-      return { ...base, type: "date", date: value ? new Date(value) : undefined, format };
+      return { ...base, type: "date", date: calendarDateFromValue(value), format };
     case "time":
       return { ...base, type: "time", time: value ? new Date(value) : undefined, format };
     default:

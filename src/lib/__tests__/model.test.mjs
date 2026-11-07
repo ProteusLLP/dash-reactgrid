@@ -116,3 +116,33 @@ test("a column's class is safe in a selector", async () => {
   assert.equal(columnClass("cf_face_value"), "rg-col-cf_face_value");
   assert.equal(columnClass('["USD","Model","x"]'), "rg-col-__USD___Model___x__");
 });
+
+
+test("Delete or Backspace on the final real cell clears it without adding a row", () => {
+  const next = applyChanges(table, [{ rowId: "r2", columnId: "kind", value: null }], { columns, makeId: ids() });
+  assert.deepEqual(next.rowIds, ["r1", "r2"]);
+  assert.equal(next.data[1][2], null);
+  assert.deepEqual(next.edits, [{ kind: "cell", rowId: "r2", columnId: "kind", value: null }]);
+});
+
+test("Delete on the final blank extension cell must not add an empty row", () => {
+  const next = applyChanges(table, [
+    { rowId: GHOST_ROW_ID, columnId: "name", value: "" },
+    { rowId: GHOST_ROW_ID, columnId: "weight", value: null },
+    { rowId: GHOST_ROW_ID, columnId: "kind", value: null },
+    { rowId: GHOST_ROW_ID, columnId: "credit", value: false },
+  ], { columns, newRow: { kind: "bond" }, makeId: ids() });
+  assert.deepEqual(next.rowIds, table.rowIds);
+  assert.deepEqual(next.data, table.data);
+  assert.deepEqual(next.edits, []);
+});
+
+test("blank trailing paste rows do not grow an extendable table", () => {
+  const next = applyChanges(table, [
+    { rowId: { ghost: 0 }, columnId: "name", value: "C" },
+    { rowId: { ghost: 1 }, columnId: "name", value: "" },
+    { rowId: { ghost: 1 }, columnId: "weight", value: null },
+  ], { columns, makeId: ids() });
+  assert.deepEqual(next.rowIds, ["r1", "r2", "new-1"]);
+  assert.equal(next.data[2][0], "C");
+});

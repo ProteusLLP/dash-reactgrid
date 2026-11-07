@@ -100,6 +100,43 @@ class Operations(unittest.TestCase):
                                                 "position":4,"values":["A",0]}))
         self.assertEqual(duplicate["status"],"conflict")
 
+    def test_server_enforces_locks_and_dynamic_edit_rules(self):
+        path=Path(self.tmp.name)/"protected.sqlite3"
+        columns=[
+            {"columnId":"type"},
+            {"columnId":"value","editableWhen":[{"columnId":"type","in":["open"]}]},
+            {"columnId":"locked","nonEditable":True},
+        ]
+        store=VirtualGridStore(path,"protected",columns)
+        store.seed_once([["open",1,"x"],["closed",2,"y"]],["r0","r1"])
+        base={"datasetId":"protected","streamId":"editor"}
+        def submit(seq,ops):
+            return store.apply({**base,"seq":seq,"edits":ops})
+        rejected=submit(1,[{"kind":"paste","start":1,
+                             "columnIds":["value"],"rows":[[5]]}])
+        self.assertEqual(rejected["status"],"conflict")
+        self.assertEqual(store.read_range(1,2)["data"],[["closed",2,"y"]])
+        self.assertEqual(submit(1,[{"kind":"cell","rowId":"r0",
+                                   "columnId":"locked","value":"BAD"}])["status"],"conflict")
+        self.assertEqual(submit(1,[{"kind":"cell","rowId":"r0",
+                                   "columnId":"value","value":99}])["status"],"ok")
+        self.assertEqual(submit(2,[{"kind":"cell","rowId":"r0",
+                                   "columnId":"type","value":"closed"}])["status"],"ok")
+        # Undoing a historically valid edit is allowed even if a later edit
+        # changed the row condition on which permission depends.
+        self.assertEqual(submit(3,[{"kind":"undo","targetSeq":1}])["status"],"ok")
+        self.assertEqual(store.read_range(0,1)["data"],[["closed",1,"x"]])
+
+    def test_read_only_store_rejects_changes(self):
+        store=VirtualGridStore(Path(self.tmp.name)/"readonly.sqlite3",
+                               "read-only",[{"columnId":"x"}],read_only=True)
+        store.seed_once([["original"]],["a"])
+        ack=store.apply({"datasetId":"read-only","streamId":"editor",
+                         "seq":1,"edits":[{"kind":"paste","start":0,
+                           "columnIds":["x"],"rows":[["bad"]]}]})
+        self.assertEqual(ack["status"],"conflict")
+        self.assertEqual(store.read()["data"],[["original"]])
+
     def test_clipboard_reads_across_unloaded_windows_and_export(self):
         self.assertEqual(self.store.copy_range(3,6,0,2),
                          "Row 3\t3\nRow 4\t4\nRow 5\t5")

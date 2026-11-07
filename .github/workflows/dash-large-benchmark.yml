@@ -26,8 +26,9 @@ jobs:
       - name: Install Dash, NumPy and Chrome controls
         run: python3 -m pip install "dash>=3,<5" "numpy>=1.23,<3" "selenium>=4,<5"
       - name: Measure full-data, paged and stateless virtual scenarios
-        continue-on-error: true
-        run: python3 tests/benchmark_dash_large_browser.py virtual-reactgrid-sparse virtual-glide-sparse | tee dash-large-run.log
+        run: |
+          set -o pipefail
+          python3 tests/benchmark_dash_large_browser.py | tee dash-large-run.log
       - name: Upload raw measurements
         if: always()
         uses: actions/upload-artifact@v4

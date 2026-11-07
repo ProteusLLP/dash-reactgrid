@@ -289,7 +289,8 @@ export const ServerVirtualGrid = (props) => {
   };
 
   const grid = useMemo(() => rows.length ? (
-    <ReactGrid rows={rows} columns={columns}
+    <ReactGrid key={String(virtualDatasetId) + ":" + range.start + ":" + range.end}
+      rows={rows} columns={columns}
       onCellsChanged={onCellsChanged}
       onSelectionChanged={onSelectionChanged}
       onFocusLocationChanged={onFocusLocationChanged}

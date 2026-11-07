@@ -140,8 +140,9 @@ class SparseGridStore:
         with closing(self.connect()) as db:
             rows = db.execute(
                 """SELECT row_id, values_json FROM grid_rows
-                   WHERE dataset_id=? ORDER BY position LIMIT ? OFFSET ?""",
-                (self.dataset_id, end - start, start),
+                   WHERE dataset_id=? AND position>=? AND position<?
+                   ORDER BY position""",
+                (self.dataset_id, start, end),
             ).fetchall()
         if len(rows) != end - start:
             raise ValueError("Viewport request extends past the end of the dataset")

@@ -15,6 +15,7 @@ class Column(dict):
             checkbox, date or time).
         tooltip: Optional text shown on hovering over the column header.
         width: Column width in pixels.
+        resizable: Whether the column can be resized (enabled by default).
         align: One of "left", "center" or "right".
         style: CSS styles applied to data cells.
         header_style: CSS styles applied to this header.
@@ -27,7 +28,7 @@ class Column(dict):
 
     def __init__(
         self, column_id, title=None, type="text", *, tooltip=None, width=None,
-        align=None, style=None, header_style=None, format_options=None,
+        resizable=None, align=None, style=None, header_style=None, format_options=None,
         values=None, non_editable=None, class_name=None, editable_when=None,
     ):
         if not isinstance(column_id, str) or not column_id:
@@ -43,7 +44,8 @@ class Column(dict):
 
         super().__init__(columnId=column_id, title=title, type=type)
         options = {
-            "tooltip": tooltip, "width": width, "align": align,
+            "tooltip": tooltip, "width": width, "resizable": resizable,
+            "align": align,
             "style": style, "headerStyle": header_style,
             "formatOptions": format_options, "values": values,
             "nonEditable": non_editable, "className": class_name,

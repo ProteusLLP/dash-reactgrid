@@ -7,7 +7,7 @@ import { numberParser } from '../CustomNumberCell';
 import { percentParser } from '../PercentCell';
 import { createCellTemplates } from '../cellTemplates';
 import { ServerVirtualGrid } from '../ServerVirtualGrid.react';
-import { compileGridColumns, buildGridRows, pageBounds, canPasteOnPage } from '../gridRows';
+import { compileGridColumns, buildGridRows, pageBounds, canPasteOnPage, visibleGridColumns, resizeGridColumns } from '../gridRows';
 import { useReliableGrid } from '../useReliableGrid';
 import { decodeGridData } from '../numericData';
 import {
@@ -53,10 +53,8 @@ const ReactGridDataHandler = (props) => {
   const cellTemplates = useMemo(() => createCellTemplates(Boolean(props.dropdownMenuPortal)), [props.dropdownMenuPortal]);
 
   // Hidden columns keep their place in `data`; the grid sees only the rest.
-  const columns = useMemo(() => {
-    const hidden = new Set(hiddenColumns || [])
-    return allColumns.filter((column) => !hidden.has(column.columnId))
-  }, [allColumns, hiddenColumns])
+  const columns = useMemo(() =>
+    visibleGridColumns(allColumns, hiddenColumns), [allColumns, hiddenColumns])
   const allColumnIds = allColumns.map((column) => column.columnId)
 
   const tracked = Array.isArray(rowIds)
@@ -98,7 +96,10 @@ const ReactGridDataHandler = (props) => {
 
   // The server sends new columns only when it remounts the table, which
   // starts a new history; the grid's own changes never touch them.
-  useEffect(() => setHistory(NO_HISTORY), [allColumns])
+  const columnSchema = useMemo(() => JSON.stringify(allColumns.map(
+    ({width, ...metadata}) => metadata
+  )), [allColumns])
+  useEffect(() => setHistory(NO_HISTORY), [columnSchema])
   // An authoritative server replacement invalidates local undo history.
   // In normal mode, data changes on every edit and must NOT reset history.
   useEffect(() => {
@@ -253,7 +254,7 @@ const ReactGridDataHandler = (props) => {
         const column = columns[col]
         const values = typeof rowId === "object" ? blankRow(allColumns, newRow) : table.data[position]
         if (!rulesHold(column, values, allColumnIds)) return
-        if (typeof rowId !== "object" && isLocked(rowId, column.columnId, column)) return
+        if (isLocked(typeof rowId === "object" ? GHOST_ROW_ID : rowId, column.columnId, column)) return
         changes.push({ rowId, columnId: column.columnId, value: pastedValue(column, cell, parsers) })
       })
     })
@@ -338,6 +339,11 @@ const ReactGridDataHandler = (props) => {
     handleChanges,
     handleContextMenu,
     handleSelectionChanged,
+    resizeColumn: (columnId, width, selectedColIds) => {
+      const next = resizeGridColumns(allColumns, columnId, width, selectedColIds)
+      if (next.some((column, index) => column !== allColumns[index]))
+        setProps({columns: next})
+    },
     handleFocus: (location) => {
       focused.current = location
       setProps({ selectedCell: location })
@@ -346,12 +352,14 @@ const ReactGridDataHandler = (props) => {
   const onCellsChanged = useCallback((changes) => latest.current.handleChanges(changes), [])
   const onContextMenu = useCallback((...args) => latest.current.handleContextMenu(...args), [])
   const onSelectionChanged = useCallback((ranges) => latest.current.handleSelectionChanged(ranges), [])
+  const onColumnResized = useCallback((...args) => latest.current.resizeColumn(...args), [])
   const onFocusLocationChanged = useCallback((location) => latest.current.handleFocus(location), [])
 
   const { enableFillHandle, enableRangeSelection, enableRowSelection, enableColumnSelection, disableVirtualScrolling, dropdownMenuPortal } = props
   const grid = useMemo(() => (
     <ReactGrid key={pageSize ? `page-${page}` : 'all'} rows={rows} columns={columns} onCellsChanged={onCellsChanged}
       onFocusLocationChanged={onFocusLocationChanged}
+      onColumnResized={onColumnResized}
       enableFillHandle={enableFillHandle && !editingBlocked}
       enableRangeSelection={enableRangeSelection}
       enableRowSelection={enableRowSelection}
@@ -463,7 +471,8 @@ DashReactGrid.propTypes = {
    * dropdown, checkbox, date or time), and optionally `width`, `align`,
    * `style`, `headerStyle`, `tooltip` (hover text for the header),
    * `formatOptions` (Intl.NumberFormat options),
-   * `values` (a dropdown's options), `nonEditable`, `className` (every cell
+   * `values` (a dropdown's options), `resizable` (true by default),
+   * `nonEditable`, `className` (every cell
    * also has `rg-col-<columnId>`) and
    * `editableWhen` (rules on the row's other values, see `rulesHold`; a
    * cell whose rules fail is locked and has the class `rg-cell-na`). A cell

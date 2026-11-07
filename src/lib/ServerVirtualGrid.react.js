@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { ReactGrid } from "@silevis/reactgrid";
 import { useReliableGrid } from "./useReliableGrid";
 import { overlayVirtualEdits } from "./virtualOverlay";
-import { compileGridColumns } from "./gridRows";
+import { compileGridColumns, visibleGridColumns, resizeGridColumns } from "./gridRows";
 import { decodeGridData, isPackedNumericData } from "./numericData";
 import {
   addViewportCache, buildVirtualRows, loadedRow, validViewportResponse,
@@ -90,10 +90,8 @@ export const ServerVirtualGrid = (props) => {
   const selection = useRef([]);
   const focused = useRef(null);
 
-  const columns = useMemo(() => {
-    const hidden = new Set(hiddenColumns || []);
-    return allColumns.filter((column) => !hidden.has(column.columnId));
-  }, [allColumns, hiddenColumns]);
+  const columns = useMemo(() =>
+    visibleGridColumns(allColumns, hiddenColumns), [allColumns, hiddenColumns]);
   const descriptors = useMemo(() =>
     compileGridColumns(columns, allColumns, window.navigator.language),
     [columns, allColumns]);
@@ -537,6 +535,11 @@ export const ServerVirtualGrid = (props) => {
         }
       }
     },
+    resizeColumn: (columnId, width, selectedColIds) => {
+      const next = resizeGridColumns(allColumns, columnId, width, selectedColIds);
+      if (next.some((column, index) => column !== allColumns[index]))
+        setProps({columns: next});
+    },
     contextMenu: (selectedRowIds,selectedColIds,selectionMode,menuOptions) =>
       editingBlocked || !globalSelection ? menuOptions : [...(menuOptions || []), {
         id:"deleteVirtualSelection",label:"Delete selected rows",
@@ -566,6 +569,7 @@ export const ServerVirtualGrid = (props) => {
   const onCellsChanged = useCallback((changes) => latest.current.handleChanges(changes),[]);
   const onSelectionChanged = useCallback((ranges) => latest.current.selectionChanged(ranges),[]);
   const onFocusLocationChanged = useCallback((loc) => latest.current.focusChanged(loc),[]);
+  const onColumnResized = useCallback((...args) => latest.current.resizeColumn(...args),[]);
   const onContextMenu = useCallback((...args) => latest.current.contextMenu(...args),[]);
 
   const handleCopy = (e) => {
@@ -631,6 +635,10 @@ export const ServerVirtualGrid = (props) => {
       return;
     }
     const cols=columns.slice(sel.columnStart,sel.columnEnd);
+    if (cols.some((col) => col.nonEditable)) {
+      setCommandError("Cannot clear non-editable columns");
+      return;
+    }
     const blanks=cols.map((col)=>col.type==="checkbox"?false:
       ["number","percent","dropdown","date","time"].includes(col.type)?null:"");
     submitOperation([{kind:"paste",start:sel.start,
@@ -677,6 +685,7 @@ export const ServerVirtualGrid = (props) => {
       onCellsChanged={onCellsChanged}
       onSelectionChanged={onSelectionChanged}
       onFocusLocationChanged={onFocusLocationChanged}
+      onColumnResized={onColumnResized}
       onContextMenu={onContextMenu}
       highlights={visibleHighlights}
       stickyTopRows={1}

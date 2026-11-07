@@ -39,7 +39,8 @@ for (const renderer of ["reactgrid", "glide", "revogrid"]) {
     // grid-internal edit method: this probes genuine keyboard-first behaviour.
     const stage = await page.getByTestId("grid-stage").boundingBox();
     expect(stage).toBeTruthy();
-    await page.mouse.click(stage.x + 83, stage.y + 77);
+    const firstRowY = stage.y + (renderer === "glide" ? 56 : 77);
+    await page.mouse.click(stage.x + 83, firstRowY);
     await page.keyboard.type("Probe", { delay: 15 });
     await page.keyboard.press("Enter");
     await page.waitForTimeout(180);
@@ -50,7 +51,7 @@ for (const renderer of ["reactgrid", "glide", "revogrid"]) {
     let clipboard = "";
     let clipboardError = "";
     try {
-      await page.mouse.click(stage.x + 83, stage.y + 77);
+      await page.mouse.click(stage.x + 83, firstRowY);
       await page.keyboard.press("ControlOrMeta+c");
       clipboard = await page.evaluate(() => navigator.clipboard.readText());
     } catch (error) { clipboardError = String(error); }

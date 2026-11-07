@@ -2,7 +2,7 @@
 import os
 from pathlib import Path
 
-from dash import Dash, Input, Output, html
+from dash import Dash, Input, Output, html, no_update
 from dash_reactgrid import DashReactGrid
 from examples.sparse_edit_server import SparseGridStore
 
@@ -14,6 +14,8 @@ COLUMNS = [
 ]
 store = SparseGridStore(DB, "browser-test", COLUMNS, new_row={"value": 0})
 store.seed_once([["Alpha", 1], ["Beta", 2]], ["r1", "r2"])
+WITHHOLD_FIRST_ACK = os.environ.get("SPARSE_BROWSER_DROP_FIRST_ACK") == "1"
+withheld_batches = set()
 
 app = Dash(__name__)
 def layout():
@@ -36,6 +38,12 @@ app.layout = layout
               Input("grid", "edits"), prevent_initial_call=True)
 def save(batch):
     response = store.apply(batch)
+    identity = (batch["streamId"], batch["seq"])
+    if WITHHOLD_FIRST_ACK and response["status"] == "ok" and identity not in withheld_batches:
+        withheld_batches.add(identity)
+        # Simulate a server commit followed by a lost response. The browser
+        # must retry the SAME delivery and receive the deduplicated ACK.
+        return no_update, "Stored without ACK: " + str(response["seq"])
     return response, "Committed: " + str(response["seq"]) + " / " + response["status"]
 
 if __name__ == "__main__":

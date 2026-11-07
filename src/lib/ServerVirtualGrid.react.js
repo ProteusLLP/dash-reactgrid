@@ -9,12 +9,17 @@ import {
   VIRTUAL_SPACER_TOP, VIRTUAL_SPACER_BOTTOM,
 } from "./serverVirtual";
 import {
-  applyChanges, pastedValue, rowIdsOf, rowsInRanges, textOf, valueOf,
+  applyChanges, blankRow, newRowId, pastedValue, rowsInRanges, textOf, valueOf,
 } from "./model";
 import {
   clearSelectedCells, focusedRange, isCellEditorTarget,
   selectAllRanges, selectionText,
 } from "./keyboard";
+import {
+  boundedSelection, extendSelection, copyRequestFor, matchesCopyResponse,
+  makeRangePaste, historyStorageKey, initialHistory, loadHistory,
+  saveHistory, nextHistory, MAX_RANGE_ROWS,
+} from "./virtualOperations";
 import { numberParser } from "./CustomNumberCell";
 import { percentParser } from "./PercentCell";
 import { CustomNumberCellTemplate } from "./CustomNumberCell";
@@ -44,7 +49,8 @@ const isDataId = (id) => id !== "header" &&
  */
 export const ServerVirtualGrid = (props) => {
   const {
-    columns: allColumns, hiddenColumns, virtualRowCount, virtualData,
+    columns: allColumns, hiddenColumns, virtualRowCount: suppliedRowCount,
+    virtualData, virtualRangeData,
     virtualDatasetId, virtualRowHeight = 25, virtualWindowSize = 120,
     virtualViewportHeight = 420, setProps, readOnly, lockedCells,
     styleHeader, highlights, dropdownMenuPortal,
@@ -52,6 +58,19 @@ export const ServerVirtualGrid = (props) => {
 
   const viewportRef = useRef(null);
   const [scrollTop, setScrollTop] = useState(0);
+  const [virtualRowCount, setVirtualRowCount] = useState(suppliedRowCount);
+  const [globalSelection, setGlobalSelection] = useState(null);
+  const globalRef = useRef(null);
+  const anchor = useRef(null);
+  const shiftPointer = useRef(false);
+  const [fromInput, setFromInput] = useState("1");
+  const [toInput, setToInput] = useState("1");
+  const [commandError, setCommandError] = useState(null);
+  const [copyText, setCopyText] = useState(null);
+  const [copyError, setCopyError] = useState(null);
+  const copyCounter = useRef(0);
+  const copyPending = useRef(null);
+  const lastAcknowledgedRevision = useRef(-1);
   const [cache, setCache] = useState(() => new Map());
   const [loadError, setLoadError] = useState(null);
   const [openDropdown, setOpenDropdown] = useState(null);
@@ -96,13 +115,39 @@ export const ServerVirtualGrid = (props) => {
     editAck: props.editAck, data: EMPTY_DATA, rowIds: EMPTY_IDS,
     columns: allColumns, newRow: props.newRow, setProps, windowed: true,
   });
-  const editingBlocked = readOnly || !props.transmitSparseEdits || Boolean(reliable.error);
+  // Inserting or deleting shifts row offsets; pause further editing until
+  // the database commits and the viewport has been invalidated.
+  const pendingStructure = Boolean(reliable.outbox?.queue.some((batch) =>
+    batch.edits.some((edit) => !["cell", "paste"].includes(edit.kind))));
+  const editingBlocked = readOnly || !props.transmitSparseEdits ||
+    Boolean(reliable.error) || pendingStructure;
   const cachedPage = cache.get(key);
   const page = useMemo(
     () => overlayVirtualEdits(cachedPage, reliable.outbox?.queue, allColumns),
     [cachedPage, reliable.outbox, allColumns],
   );
   const loading = valid && virtualRowCount > 0 && !cachedPage;
+
+  useEffect(() => {
+    setVirtualRowCount(suppliedRowCount);
+    lastAcknowledgedRevision.current = -1;
+  }, [suppliedRowCount, virtualDatasetId]);
+
+  // ACKs from durable transactions carry authoritative row counts. Refresh
+  // the viewport after every committed operation, preserving scroll offset.
+  useEffect(() => {
+    const ack = props.editAck;
+    if (!ack || ack.status !== "ok" ||
+        ack.datasetId !== props.editDatasetId ||
+        !Number.isSafeInteger(ack.revision) ||
+        ack.revision <= lastAcknowledgedRevision.current) return;
+    lastAcknowledgedRevision.current = ack.revision;
+    if (Number.isSafeInteger(ack.rowCount) && ack.rowCount >= 0)
+      setVirtualRowCount(ack.rowCount);
+    currentRequest.current = null;
+    setCache(new Map());
+    setLoadError(null);
+  }, [props.editAck, props.editDatasetId]);
 
   // Invalidate old windows whenever the identity of the ordered server
   // dataset changes, such as a new sort, filter or revision.

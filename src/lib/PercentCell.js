@@ -1,4 +1,5 @@
 import React from 'react';
+import { nativeEditorShortcut } from './nativeEditorShortcut';
 // NOTE: all modules imported below may be imported from '@silevis/reactgrid'
 
 import { getCellProperty, keyCodes, } from "@silevis/reactgrid";
@@ -100,6 +101,11 @@ export class PercentCellTemplate {
             onChange={handleOnChange}
             onBlur={handleOnBlur}
             onKeyDown={(e) => {
+                if (nativeEditorShortcut(e)) {
+                    e.stopPropagation();
+                    return; // keep input selection, paste and undo native
+                }
+
                 if (
                     inNumericKey(e.keyCode) ||
                     ((this.input.selectionStart != this.input.value.length - 1 || this.input.selectionEnd != this.input.value.length - 1) && isNavigationKey(e.keyCode)) ||

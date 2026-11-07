@@ -1,3 +1,4 @@
+import { nativeEditorShortcut } from "../nativeEditorShortcut.js";
 /* Regression tests for keyboard selection and clipboard handling. */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -141,4 +142,14 @@ test("clipboard round-trips embedded tabs, line breaks and literal quotes", () =
     ["Tab\there",'Quote "and"\nnewline'],
     ['"whole quoted value"',"ordinary"],
   ]);
+});
+
+test("numeric and percent editors preserve native Ctrl/Cmd shortcuts", () => {
+  for (const key of ["a", "c", "v", "x", "z", "y"]) {
+    assert.equal(nativeEditorShortcut({ key, ctrlKey:true, metaKey:false, altKey:false }), true);
+    assert.equal(nativeEditorShortcut({ key:key.toUpperCase(), ctrlKey:false, metaKey:true, altKey:false }), true);
+  }
+  assert.equal(nativeEditorShortcut({ key:"a", ctrlKey:false, metaKey:false, altKey:false }), false);
+  assert.equal(nativeEditorShortcut({ key:"a", ctrlKey:true, metaKey:false, altKey:true }), false);
+  assert.equal(nativeEditorShortcut({ key:"ArrowLeft", ctrlKey:true, metaKey:false, altKey:false }), false);
 });

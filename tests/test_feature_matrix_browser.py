@@ -189,12 +189,9 @@ class FeatureMatrixChromeTests(unittest.TestCase):
         self.edit("matrix", "text", "Changed")
         self.waiter.until(lambda _: self.state("matrix")["data"][0][0] == "Changed")
 
-    @unittest.expectedFailure
     def test_number_direct_edit_regression(self):
-        # Pasting numeric values works, but the editable number column did not
-        # publish a direct edit in Chrome, even after leaving the cell.
+        # Ctrl+A replaces the existing numeric value inside its input.
         self.edit("matrix", "amount", "31.25", index=1)
-        print("NUMERIC after blur:", self.state("matrix"), flush=True)
         self.waiter.until(lambda _: self.state("matrix")["data"][1][1] == 31.25)
 
     def test_text_edit_undo_redo_regression(self):
@@ -203,7 +200,6 @@ class FeatureMatrixChromeTests(unittest.TestCase):
         self.edit("matrix", "text", "Changed")
         self.waiter.until(lambda _: self.state("matrix")["data"][0][0] == "Changed")
         self.press("z", "matrix", "fixed")
-        print("TEXT undo:", self.state("matrix"), flush=True)
         self.waiter.until(lambda _: self.state("matrix")["data"][0][0] == "Alpha")
         self.press("y", "matrix", "fixed")
         self.waiter.until(lambda _: self.state("matrix")["data"][0][0] == "Changed")
@@ -281,14 +277,20 @@ class FeatureMatrixChromeTests(unittest.TestCase):
             "target", "Changed\t100\nAnother\t200", column="label"
         )["prevented"])
         self.waiter.until(lambda _: self.state("target")["data"][0][0] == "Changed")
-        self.press("z", "target", "value", 1)
-        print("PASTE undo:", self.state("target"), flush=True)
+        # A header cannot open an editor. Send the real shortcut from the
+        # grid focus, instead of clicking an editable cell before Ctrl+Z.
+        self.driver.find_element(By.CSS_SELECTOR, "#target .rg-header-cell").click()
+        ActionChains(self.driver).key_down(Keys.CONTROL).send_keys(
+            "z").key_up(Keys.CONTROL).perform()
+        print("PASTE undo focus:", self.driver.execute_script(
+            "return document.activeElement.outerHTML.slice(0,250)"), flush=True)
         self.waiter.until(
             lambda _: self.state("target")["data"] == [
                 ["Target 1", 1], ["Target 2", 2]
             ]
         )
-        self.press("y", "target", "value", 1)
+        ActionChains(self.driver).key_down(Keys.CONTROL).send_keys(
+            "y").key_up(Keys.CONTROL).perform()
         self.waiter.until(
             lambda _: self.state("target")["data"] == [
                 ["Changed", 100], ["Another", 200]

@@ -54,11 +54,10 @@ test("all supported built-in cell types and customnumber produce the expected Re
   const {rows}=render();
   const cells=rows[1].cells;
   assert.deepEqual(cells.map(x=>x.type),[
-    "text","customnumber","text","percent","dropdown","checkbox",
+    "text","customnumber","customnumber","percent","dropdown","checkbox",
     "date","time","text","text",
   ]);
-  // The customnumber column currently falls through the renderer to text.
-  // See the expected-failure browser test for its direct-editing regression.
+  // Both numeric columns use the custom numeric editor, retaining a typed value.
   assert.equal(cells[0].text,"A");
   assert.equal(cells[1].value,12.5);
   assert.equal(cells[3].value,0.325);
@@ -70,7 +69,7 @@ test("all supported built-in cell types and customnumber produce the expected Re
   assert.ok(cells[6].date instanceof Date);
   assert.ok(cells[7].time instanceof Date);
   assert.equal(cells[6].date.toISOString().slice(0,10),"2026-10-31");
-  assert.equal(cells[2].text,"1.25");
+  assert.equal(cells[2].value,1.25);
   assert.equal(rows[2].cells[6].date,undefined);
   assert.equal(rows[2].cells[7].time,undefined);
   assert.equal(rows[0].cells.length,10,"hidden columns do not enter the DOM");

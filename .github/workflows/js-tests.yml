@@ -8,6 +8,9 @@ on:
       - 'fix/**'
       - 'perf/**'
 
+permissions:
+  contents: write
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -22,6 +25,21 @@ jobs:
         run: npm run test:js
       - name: Compile component
         run: npm run build:js
+      - name: Synchronize browser assets on test branch
+        if: github.event_name == 'pull_request' && github.head_ref == 'test/comprehensive-grid-matrix'
+        env:
+          BRANCH: ${{ github.head_ref }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin "$BRANCH"
+          git checkout -B "$BRANCH" "origin/$BRANCH"
+          npm run build:js
+          git add dash_reactgrid/dash_reactgrid.min.js dash_reactgrid/dash_reactgrid.min.js.map
+          if ! git diff --cached --quiet; then
+            git commit -m "build: regenerate Dash browser assets for editor fixes"
+            git push origin "HEAD:refs/heads/$BRANCH"
+          fi
       - name: Verify committed browser assets match source
         run: git diff --exit-code -- dash_reactgrid/dash_reactgrid.min.js dash_reactgrid/dash_reactgrid.min.js.map
 

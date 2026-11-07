@@ -184,8 +184,19 @@ export const applyChanges = (table, changes, { columns, newRow, makeId = newRowI
 
   changes.forEach(({ rowId, columnId, value }) => {
     const col = columnIds.indexOf(columnId);
+    if (col < 0) return;
+    // Clearing a blank extension cell must not create an empty data row.
+    // In particular, Delete on the final (ghost) cell produces an empty value.
+    const ghostKey = rowId === GHOST_ROW_ID ? 0 : rowId && typeof rowId === "object" ? rowId.ghost : null;
+    if (ghostKey !== null && !added.has(ghostKey)) {
+      const type = columns[col].type;
+      const blank = value == null ||
+        (type === "checkbox" && value === false) ||
+        (!["number", "customnumber", "percent", "checkbox", "dropdown", "date", "time"].includes(type) && value === "");
+      if (blank) return;
+    }
     const row = indexOf(rowId);
-    if (col < 0 || row < 0) return;
+    if (row < 0) return;
     if (Object.is(data[row][col], value)) return;
     data[row][col] = value;
     edits.push({ kind: "cell", rowId: rowIds[row], columnId, value });

@@ -39,7 +39,7 @@ app.layout = layout
 def save(batch):
     response = store.apply(batch)
     identity = (batch["streamId"], batch["seq"])
-    if WITHHOLD_FIRST_ACK and response["status"] == "ok" and identity not in withheld_batches:
+    if WITHHOLD_FIRST_ACK and response["status"] == "ok" and not withheld_batches:
         withheld_batches.add(identity)
         # Simulate a server commit followed by a lost response. The browser
         # must retry the SAME delivery and receive the deduplicated ACK.

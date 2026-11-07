@@ -86,6 +86,18 @@ class Operations(unittest.TestCase):
         self.submit(3,{"kind":"undo","targetSeq":2})
         self.assertEqual(self.store.row_count(),9)
 
+    def test_server_row_window_uses_position_index(self):
+        with self.store.connect() as db:
+            plan=db.execute("""
+                EXPLAIN QUERY PLAN SELECT row_id,values_json FROM grid_rows
+                WHERE dataset_id=? AND position>=? AND position<?
+                ORDER BY position
+            """,("test",50000,50120)).fetchall()
+        summary=" ".join(str(row) for row in plan)
+        self.assertIn("idx_grid_rows_position",summary)
+        # SQL range predicates allow direct index seeks at distant positions,
+        # rather than scanning the first 50k rows with OFFSET.
+
     def test_large_range_limits_are_enforced(self):
         ack=self.store.apply(self.event(1,{"kind":"removeRange","start":0,"end":1001}))
         self.assertEqual(ack["status"],"conflict")

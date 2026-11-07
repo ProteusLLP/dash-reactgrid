@@ -27,7 +27,11 @@
   "dependencies": {
     "@silevis/reactgrid": "^4.1.3",
     "ramda": "^0.29.1",
-    "react-select": "^5.10.2"
+    "react-select": "^5.10.2",
+    "@glideapps/glide-data-grid": "6.0.3",
+    "lodash": "^4.17.21",
+    "marked": "^4.3.0",
+    "react-responsive-carousel": "^3.2.23"
   },
   "devDependencies": {
     "@babel/core": "^7.29.6",
@@ -45,9 +49,9 @@
     "eslint-plugin-import": "^2.18.0",
     "eslint-plugin-react": "^7.14.2",
     "prop-types": "^15.8.1",
-    "react": "^16.8.6",
+    "react": "^18.3.1",
     "react-docgen": "^5.4.3",
-    "react-dom": "^16.8.6",
+    "react-dom": "^18.3.1",
     "style-loader": "^3.3.3",
     "styled-jsx": "^5.1.2",
     "ts-loader": "^9.4.4",

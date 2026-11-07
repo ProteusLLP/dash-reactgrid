@@ -24,3 +24,5 @@ jobs:
         run: npm run build:js
       - name: Benchmark large tables
         run: node --experimental-detect-module scripts/benchmark-large-grid.mjs
+      - name: Test transactional Python edit backend
+        run: python3 -m unittest discover -s tests -p test_sparse_edit_server.py -v

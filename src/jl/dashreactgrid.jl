@@ -48,6 +48,13 @@ an object by column id. Blank if omitted.
 - `editAck` (Dict; optional): Server ACK for a committed sparse edit batch.
 - `editDatasetId` (String; optional): Stable dataset identifier required in sparse mode.
 - `transmitSparseEdits` (Bool; optional): Publish only edits to Dash; changes remain in browser memory.
+- `virtualRowCount` (optional): Total number of logical rows supplied by the server. Setting a nonnegative integer enables continuous server-side virtualization.
+- `virtualDatasetId` (optional): Stable identity of the ordered server dataset; change when sorting, filtering or rebuilding rows to invalidate cached windows.
+- `virtualRowHeight` (optional): Fixed row height in pixels, default 25.
+- `virtualWindowSize` (optional): Target number of rows to request on each scroll window, default 120.
+- `virtualViewportHeight` (optional): Scrollable grid height in pixels, default 420.
+- `virtualRequest` (optional): Browser request {datasetId, requestId, start, end}, with zero-based start inclusive and end exclusive.
+- `virtualData` (optional): Server response {datasetId, requestId, start, rowIds, data} containing exactly the requested rows, or a matching {error}.
 - `rowPageSize` (Real; optional): Maximum data rows displayed per page for very large tables.\n- `rowIds` (Array; optional): An id per row of `data`. Given, edits name rows by these ids, rows the
 user adds get ids starting `new-`, and rows can be deleted from the
 context menu. Omitted, rows are named by position.
@@ -62,7 +69,7 @@ context menu. Omitted, rows are named by position.
 - `styleHeader` (Dict; optional)
 """
 function dashreactgrid(; kwargs...)
-        available_props = Symbol[:id, :className, :columns, :data, :disableVirtualScrolling, :dropdownMenuPortal, :edits, :editAck, :editDatasetId, :enableColumnSelection, :enableFillHandle, :enableRangeSelection, :enableRowSelection, :hiddenColumns, :highlights, :isExtendable, :lockedCells, :newRow, :persisted_props, :persistence, :persistence_type, :readOnly, :rowIds, :rowPageSize, :selectedCell, :transmitSparseEdits, :selectedRange, :selectedRowIds, :stickyBottomRows, :stickyLeftColumns, :stickyRightColumns, :stickyTopRows, :style, :styleHeader]
+        available_props = Symbol[:id, :className, :columns, :data, :disableVirtualScrolling, :dropdownMenuPortal, :edits, :editAck, :editDatasetId, :enableColumnSelection, :enableFillHandle, :enableRangeSelection, :enableRowSelection, :hiddenColumns, :highlights, :isExtendable, :lockedCells, :newRow, :persisted_props, :persistence, :persistence_type, :readOnly, :rowIds, :rowPageSize, :virtualRowCount, :virtualDatasetId, :virtualRowHeight, :virtualWindowSize, :virtualViewportHeight, :virtualRequest, :virtualData, :selectedCell, :transmitSparseEdits, :selectedRange, :selectedRowIds, :stickyBottomRows, :stickyLeftColumns, :stickyRightColumns, :stickyTopRows, :style, :styleHeader]
         wild_props = Symbol[]
         return Component("dashreactgrid", "DashReactGrid", "dash_reactgrid", available_props, wild_props; kwargs...)
 end

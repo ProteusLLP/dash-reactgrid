@@ -109,5 +109,3 @@ context menu. Omitted, rows are named by position.}
 
 \value{named list of JSON elements corresponding to React.js properties and their values}
 
-
-\item{rowPageSize}{Maximum data rows displayed per page for very large tables.}

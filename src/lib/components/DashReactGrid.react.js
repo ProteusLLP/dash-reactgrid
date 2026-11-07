@@ -7,6 +7,7 @@ import { CustomNumberCellTemplate, numberParser } from '../CustomNumberCell';
 import { PercentCellTemplate, percentParser } from '../PercentCell';
 import { PortalDropdownCellTemplate } from '../PortalDropdownCell';
 import { compileGridColumns, buildGridRows, pageBounds, canPasteOnPage } from '../gridRows';
+import { initialGridSnapshot, reconcileGridSnapshot, commitGridSnapshot, editsPayload } from '../sparseEdits';
 import {
   GHOST_ROW_ID,
   applyChanges,
@@ -57,7 +58,19 @@ const ReactGridDataHandler = (props) => {
   const allColumnIds = allColumns.map((column) => column.columnId)
 
   const tracked = Array.isArray(rowIds)
-  const table = useMemo(() => ({ data, rowIds: rowIdsOf(data, rowIds) }), [data, rowIds])
+  const transmitSparseEdits = Boolean(props.transmitSparseEdits)
+  const propTable = useMemo(() => ({ data, rowIds: rowIdsOf(data, rowIds) }), [data, rowIds])
+  // In sparse mode Dash owns the starting snapshot while subsequent edits
+  // live locally. Updating the server's data/rowIds props replaces the
+  // browser snapshot, but publishing edits alone never resets it.
+  const [localSnapshot, setLocalSnapshot] = useState(
+    () => initialGridSnapshot(data, rowIds, transmitSparseEdits),
+  )
+  const syncedSnapshot = reconcileGridSnapshot(localSnapshot, data, rowIds, transmitSparseEdits)
+  if (syncedSnapshot !== localSnapshot) setLocalSnapshot(syncedSnapshot)
+  const table = transmitSparseEdits ? syncedSnapshot.table : propTable
+  const tableRef = useRef(table)
+  tableRef.current = table
   const extendable = isExtendable && !readOnly
   const columnIds = columns.map((column) => column.columnId)
   const displayedColumnIndex = useMemo(
@@ -90,6 +103,11 @@ const ReactGridDataHandler = (props) => {
   // The server sends new columns only when it remounts the table, which
   // starts a new history; the grid's own changes never touch them.
   useEffect(() => setHistory(NO_HISTORY), [allColumns])
+  // An authoritative server replacement invalidates local undo history.
+  // In normal mode, data changes on every edit and must NOT reset history.
+  useEffect(() => {
+    if (transmitSparseEdits) setHistory(NO_HISTORY)
+  }, [data, rowIds, transmitSparseEdits])
 
   const locked = useMemo(
     () => new Set((lockedCells || []).map(([rowId, columnId]) => `${rowId}\u0000${columnId}`)),
@@ -136,18 +154,24 @@ const ReactGridDataHandler = (props) => {
   // a one-column table is sticky, so at least one row and column scroll.
   const sticky = stickyCounts(props, columns.length, rows.length)
 
-  /** Publish a new table and the edits that made it. */
+  /** Publish the edit batch; sparse mode retains the table only in the browser. */
   const publish = (next) => {
     if (next.edits.length === 0) return
     sequence.current += 1
-    const update = { data: next.data, edits: { seq: sequence.current, edits: next.edits } }
-    if (tracked) update.rowIds = next.rowIds
-    setProps(update)
+    if (transmitSparseEdits) {
+      // Keep the latest version available to successive edits even before
+      // React commits its next render.
+      tableRef.current = { data: next.data, rowIds: next.rowIds }
+      setLocalSnapshot((current) =>
+        commitGridSnapshot(reconcileGridSnapshot(current, data, rowIds, transmitSparseEdits), next))
+    }
+    setProps(editsPayload(next, sequence.current, transmitSparseEdits, tracked))
   }
 
   /** Apply value changes, remembering cell edits for undo. */
   const change = (changes, remember = true) => {
-    const next = applyChanges(table, changes, { columns: allColumns, newRow })
+    const currentTable = transmitSparseEdits ? tableRef.current : table
+    const next = applyChanges(currentTable, changes, { columns: allColumns, newRow })
     publish(next)
     if (pageSize && next.edits.some((edit) => edit.kind === "add") &&
         next.data.length > (page + 1) * pageSize) {
@@ -161,11 +185,11 @@ const ReactGridDataHandler = (props) => {
       // Undo restores values, not rows, so a new row starts a new history.
       setHistory(NO_HISTORY)
     } else if (remember && next.edits.length) {
-      const rowIndex = rowIndexesOf(table.rowIds)
+      const rowIndex = rowIndexesOf(currentTable.rowIds)
       const step = next.edits.map((edit) => ({
         rowId: edit.rowId,
         columnId: edit.columnId,
-        before: table.data[rowIndex.get(edit.rowId)][allColumnIndex.get(edit.columnId)] ?? null,
+        before: currentTable.data[rowIndex.get(edit.rowId)][allColumnIndex.get(edit.columnId)] ?? null,
         after: edit.value,
       }))
       setHistory({ changes: [...history.changes.slice(0, history.index + 1), step], index: history.index + 1 })
@@ -278,7 +302,7 @@ const ReactGridDataHandler = (props) => {
         id: DELETE_ROWS_OPTION,
         label: removing.length === 1 ? "Delete row" : `Delete ${removing.length} rows`,
         handler: () => {
-          publish(removeRows(table, removing))
+          publish(removeRows(transmitSparseEdits ? tableRef.current : table, removing))
           setHistory(NO_HISTORY)
         },
       },
@@ -412,6 +436,7 @@ DashReactGrid.defaultProps = {
   className: null,
   disableVirtualScrolling: true,
   rowPageSize: null,
+  transmitSparseEdits: false,
   dropdownMenuPortal: false,
   persistence_type: 'local',
   persisted_props: ['columns', 'data'],
@@ -513,6 +538,13 @@ DashReactGrid.propTypes = {
    * The whole data array is still transferred to Dash on edits.
    */
   rowPageSize: PropTypes.number,
+  /**
+   * When true, publish only {edits: {seq, edits}} through setProps.
+   * The changed table is retained locally in the browser, including new
+   * and deleted rows, and is replaced only by an external data/rowIds
+   * update. Default false publishes full data as before.
+   */
+  transmitSparseEdits: PropTypes.bool,
   /**
    * Whether dropdown menus render in a portal on the page body, with fixed
    * positioning, rather than inside their cell. Turn it on when the grid sits

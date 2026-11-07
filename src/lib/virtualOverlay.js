@@ -13,6 +13,22 @@ export const overlayVirtualEdits = (page, queue, columns) => {
   const copied = new Set();
   for (const batch of queue) {
     for (const edit of batch.edits) {
+      if (edit.kind === "paste" && Number.isSafeInteger(page.start)) {
+        const colIndices = edit.columnIds.map((id) => cols.get(id));
+        for (let j = 0; j < edit.rows.length; j++) {
+          const ri = edit.start + j - page.start;
+          if (ri < 0 || ri >= data.length) continue;
+          if (colIndices.some((idx) => idx === undefined)) continue;
+          if (data === page.data) data = data.slice();
+          if (!copied.has(ri)) {
+            data[ri] = data[ri].slice();
+            copied.add(ri);
+          }
+          for (let k = 0; k < colIndices.length; k++)
+            data[ri][colIndices[k]] = edit.rows[j][k];
+        }
+        continue;
+      }
       if (edit.kind !== "cell") continue;
       const ri = rows.get(edit.rowId);
       const ci = cols.get(edit.columnId);

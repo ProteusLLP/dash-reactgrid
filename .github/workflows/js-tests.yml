@@ -22,3 +22,5 @@ jobs:
         run: npm ci --legacy-peer-deps
       - name: Compile component
         run: npm run build:js
+      - name: Benchmark large tables
+        run: node --experimental-detect-module scripts/benchmark-large-grid.mjs

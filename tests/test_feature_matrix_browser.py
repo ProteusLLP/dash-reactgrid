@@ -181,18 +181,6 @@ class FeatureMatrixChromeTests(unittest.TestCase):
                     """)
                 )
 
-    def keyboard_debug(self, grid, label):
-        print("KEYBOARD CHECK", label, self.state(grid),
-              self.driver.execute_script("""
-                return {
-                  active: document.activeElement?.outerHTML.slice(0,250),
-                  value: document.activeElement?.value,
-                  caret: document.activeElement?.selectionStart,
-                  editor: document.querySelector(arguments[0]+' .rg-celleditor')?.innerHTML.slice(0,320),
-                  hidden: document.querySelector(arguments[0]+' .rg-hidden-element')?.outerHTML.slice(0,150),
-                };
-              """, "#"+grid), flush=True)
-
     def expect_focus(self, grid, row_id, column_id):
         WebDriverWait(self.driver, 5).until(lambda _: self.state(grid).get("selectedCell") == {
             "rowId": row_id, "columnId": column_id,
@@ -212,9 +200,7 @@ class FeatureMatrixChromeTests(unittest.TestCase):
                 self.waiter.until(lambda _: self.state("matrix").get("data"))
                 self.cell("matrix", column, index).click()
                 self.type_in_focused(typed)
-                self.keyboard_debug("matrix", column + " before right")
                 ActionChains(self.driver).send_keys(Keys.ARROW_RIGHT).perform()
-                self.keyboard_debug("matrix", column + " after right")
                 WebDriverWait(self.driver, 5).until(
                     lambda _: self.state("matrix")["data"][index][position] == expected
                 )
@@ -228,9 +214,7 @@ class FeatureMatrixChromeTests(unittest.TestCase):
         self.expect_focus("matrix", "r1", "clock")
 
         self.type_in_focused("15:45")
-        self.keyboard_debug("matrix", "time before right")
         ActionChains(self.driver).send_keys(Keys.ARROW_RIGHT).perform()
-        self.keyboard_debug("matrix", "time after right")
         WebDriverWait(self.driver, 5).until(lambda _: "15:45" in str(self.state("matrix")["data"][0][7]))
         self.expect_focus("matrix", "r1", "conditional")
 
@@ -252,7 +236,7 @@ class FeatureMatrixChromeTests(unittest.TestCase):
         ActionChains(self.driver).send_keys(Keys.ARROW_RIGHT).perform()
         self.expect_focus("matrix", "r1", "day")
 
-    def test_tab_enter_arrows_chain_edits_without_double_click(self):
+    def test_tab_and_arrows_chain_edits_without_double_click(self):
         self.cell("target", "label", 0).click()
         self.type_in_focused("First")
         ActionChains(self.driver).send_keys(Keys.TAB).perform()
@@ -260,9 +244,7 @@ class FeatureMatrixChromeTests(unittest.TestCase):
         self.expect_focus("target", "target-1", "value")
 
         self.type_in_focused("99.25")
-        self.keyboard_debug("target", "number before enter")
-        ActionChains(self.driver).send_keys(Keys.ENTER).perform()
-        self.keyboard_debug("target", "number after enter")
+        ActionChains(self.driver).send_keys(Keys.ARROW_DOWN).perform()
         self.waiter.until(lambda _: self.state("target")["data"][0][1] == 99.25)
         self.expect_focus("target", "target-2", "value")
 
@@ -276,6 +258,14 @@ class FeatureMatrixChromeTests(unittest.TestCase):
         self.waiter.until(lambda _: self.state("target")["data"][1][0] == "Second")
         self.expect_focus("target", "target-1", "label")
 
+    def test_enter_commits_direct_numeric_edit(self):
+        # Enter after typing should save the active cell, just as ArrowDown
+        # and Tab do. Navigation is separately asserted in the chain test.
+        self.cell("target", "value", 0).click()
+        self.type_in_focused("44.5")
+        ActionChains(self.driver).send_keys(Keys.ENTER).perform()
+        self.waiter.until(lambda _: self.state("target")["data"][0][1] == 44.5)
+
     def test_keyboard_direct_entry_respects_locks_and_extendable_rows(self):
         self.cell("matrix", "amount", 0).click()
         self.type_in_focused("999", expect_editor=False)
@@ -288,7 +278,7 @@ class FeatureMatrixChromeTests(unittest.TestCase):
         self.assertEqual(self.state("matrix")["data"][1][8], "Disabled")
 
         self.cell("matrix", "fixed", 0).click()
-        self.type_in_focused("Blocked")
+        self.type_in_focused("Blocked", expect_editor=False)
         ActionChains(self.driver).send_keys(Keys.ARROW_LEFT).perform()
         self.assertEqual(self.state("matrix")["data"][0][9], "Immutable")
 

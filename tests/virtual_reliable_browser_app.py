@@ -2,8 +2,9 @@
 import os
 from pathlib import Path
 from dash import Dash, Input, Output, html, no_update
+from flask import Response, request, abort, stream_with_context
 from dash_reactgrid import DashReactGrid
-from examples.sparse_edit_server import SparseGridStore
+from examples.virtual_grid_store import VirtualGridStore
 
 PORT=int(os.environ.get("VIRTUAL_RELIABLE_PORT","8063"))
 DB=Path(os.environ["VIRTUAL_RELIABLE_DB"])
@@ -12,7 +13,7 @@ COLUMNS=[
     {"columnId":"name","title":"Name","type":"text","width":170},
     {"columnId":"value","title":"Value","type":"number","width":100},
 ]
-store=SparseGridStore(DB,DATASET,COLUMNS)
+store=VirtualGridStore(DB,DATASET,COLUMNS)
 store.seed_once([[f"Row {i}",i] for i in range(1000)],[f"r{i}" for i in range(1000)])
 WITHHOLD_ACK=os.environ.get("VIRTUAL_RELIABLE_DROP_ACK")=="1"
 withheld=set()
@@ -27,6 +28,7 @@ def layout():
             virtualRowHeight=25,virtualWindowSize=100,
             virtualViewportHeight=420,
             transmitSparseEdits=True,editDatasetId=DATASET,
+            virtualExportUrl="/export.csv",
             persisted_props=["columns"],
         ),
         html.Div(id="commit-status"),
@@ -46,6 +48,37 @@ def fetch_window(request):
         "datasetId":DATASET,"requestId":request["requestId"],"start":start,
         **window,
     }, f"Fetched {start}:{end}"
+
+@app.callback(Output("grid","virtualRangeData"),
+              Input("grid","virtualRangeRequest"),prevent_initial_call=True)
+def copy_range(request):
+    if not request:
+        raise ValueError("Missing clipboard request")
+    identity={key:request[key] for key in
+              ("datasetId","requestId","start","end","columnStart","columnEnd")}
+    if request["datasetId"]!=DATASET:
+        return {**identity,"error":"Dataset mismatch"}
+    try:
+        text=store.copy_range(request["start"],request["end"],
+                              request["columnStart"],request["columnEnd"])
+        return {**identity,"text":text}
+    except ValueError as error:
+        return {**identity,"error":str(error)}
+
+@app.server.route("/export.csv")
+def download_csv():
+    # This test endpoint has no authentication. Production applications must
+    # authorise the requesting user and dataset before streaming records.
+    try:
+        if request.args.get("datasetId")!=DATASET:abort(403)
+        bounds=[int(request.args[n]) for n in
+                ("start","end","columnStart","columnEnd")]
+        stream=store.export_csv(*bounds)
+        return Response(stream_with_context(stream),mimetype="text/csv",
+                        headers={"Content-Disposition":
+                                 "attachment; filename=selected-grid-rows.csv"})
+    except (ValueError,KeyError):
+        abort(400)
 
 @app.callback(Output("grid","editAck"),Output("commit-status","children"),
               Input("grid","edits"),prevent_initial_call=True)

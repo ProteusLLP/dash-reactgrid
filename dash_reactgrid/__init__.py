@@ -9,6 +9,10 @@ import dash as _dash
 # noinspection PyUnresolvedReferences
 from ._imports_ import *
 from ._imports_ import __all__
+from .numpy_data import encode_numpy_data, decode_numpy_data, install_numpy_support
+
+# Keep the generated component class and its Dash registration intact.
+install_numpy_support(DashReactGrid)
 
 if not hasattr(_dash, '__plotly_dash') and not hasattr(_dash, 'development'):
     print('Dash was not successfully imported. '

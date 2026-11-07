@@ -29,15 +29,25 @@ def _dataset(request, dataset_id):
     return request
 
 
-def _valid_rows(result, expected, width):
+def _valid_rows(result, expected, width, *, encode=False):
     if not isinstance(result, dict):
         raise ValueError("The provider must return a rowIds/data dictionary")
     ids, rows = result.get("rowIds"), result.get("data")
-    if not isinstance(ids, list) or not isinstance(rows, list):
+    # A numeric viewport can be a NumPy matrix. It remains binary for
+    # window_response; clipboard/export materialize only the bounded window.
+    ndarray = any(base.__module__ == "numpy" and base.__name__ == "ndarray"
+                  for base in type(rows).__mro__)
+    if ndarray:
+        import numpy as np
+        ndarray = isinstance(rows, np.ndarray)
+    if not isinstance(ids, list) or (not isinstance(rows, list) and not ndarray):
         raise ValueError("The provider must return rowIds and data arrays")
     if len(ids) != expected or len(rows) != expected:
         raise ValueError("The provider returned the wrong number of rows")
-    if any(not isinstance(row, list) or len(row) != width for row in rows):
+    if ndarray:
+        if rows.ndim != 2 or rows.shape[1] != width:
+            raise ValueError("The provider returned rows with an invalid width")
+    elif any(not isinstance(row, list) or len(row) != width for row in rows):
         raise ValueError("The provider returned rows with an invalid width")
     if any(isinstance(row_id, bool) or
            (not isinstance(row_id, str) and
@@ -46,6 +56,12 @@ def _valid_rows(result, expected, width):
         raise ValueError("Row IDs must be strings or JavaScript-safe integers; encode large IDs as strings")
     if len(set(ids)) != len(ids):
         raise ValueError("A row window contains duplicate IDs")
+    if ndarray:
+        if encode:
+            from dash_reactgrid.numpy_data import encode_numpy_data
+            rows = encode_numpy_data(rows)
+        else:
+            rows = rows.tolist()
     return {"rowIds": ids, "data": rows}
 
 
@@ -78,7 +94,8 @@ def window_response(request, *, dataset_id, row_count, columns, fetch_rows,
     end = _bounded_int(request.get("end"), "end", start, count)
     if not 0 < end - start <= max_rows:
         raise ValueError("Requested viewport exceeds its bounded row limit")
-    result = _valid_rows(fetch_rows(start, end), end - start, len(columns))
+    result = _valid_rows(fetch_rows(start, end), end - start, len(columns),
+                         encode=True)
     return {"datasetId": dataset_id, "requestId": request.get("requestId"),
             "start": start, **result}
 

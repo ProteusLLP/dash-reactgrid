@@ -295,6 +295,21 @@ class FeatureMatrixChromeTests(unittest.TestCase):
         self.assertEqual(self.state("matrix")["data"][2][0], "Third by keyboard")
         self.assertEqual(self.state("matrix")["data"][2][4], "open")
 
+    def test_numpy_backed_normal_and_server_virtual_grids(self):
+        self.waiter.until(lambda _: len(self.cells("numeric", "a")) >= 2)
+        self.assertIn("1.25", self.cell("numeric", "a", 0).text)
+        self.assertIn("2.5", self.cell("numeric", "b", 0).text)
+        # Existing editing path must publish ordinary rows, not a typed-array
+        # object, when the user has selected full-data transmission.
+        self.edit("numeric", "b", "9.5", 0)
+        self.waiter.until(lambda _: self.state("numeric").get("data") is not None
+                          and isinstance(self.state("numeric")["data"], list)
+                          and self.state("numeric")["data"][0][1] == 9.5)
+        self.assertIn("-4.5", self.cell("numeric", "a", 1).text)
+        self.waiter.until(lambda _: len(self.cells("numeric-virtual", "a")) >= 2)
+        self.assertIn("0", self.cell("numeric-virtual", "a", 0).text)
+        self.assertIn("1", self.cell("numeric-virtual", "b", 0).text)
+
     def test_renders_every_column_type_with_conditional_lock_and_hidden_column(self):
         for column in ("text", "amount", "custom", "percent", "choice",
                        "flag", "day", "clock", "conditional", "fixed"):

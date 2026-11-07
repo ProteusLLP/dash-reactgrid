@@ -3,6 +3,7 @@ import { ReactGrid } from "@silevis/reactgrid";
 import { useReliableGrid } from "./useReliableGrid";
 import { overlayVirtualEdits } from "./virtualOverlay";
 import { compileGridColumns } from "./gridRows";
+import { decodeGridData, isPackedNumericData } from "./numericData";
 import {
   addViewportCache, buildVirtualRows, loadedRow, validViewportResponse,
   virtualRowWindow, viewportKey, VIRTUAL_LOADING_PREFIX,
@@ -43,12 +44,23 @@ const isDataId = (id) => id !== "header" &&
 export const ServerVirtualGrid = (props) => {
   const {
     columns: allColumns, hiddenColumns, virtualRowCount: suppliedRowCount,
-    virtualData, virtualRangeData,
+    virtualData: sourceVirtualData, virtualRangeData,
     virtualDatasetId, virtualRowHeight = 25, virtualWindowSize = 120,
     virtualViewportHeight = 420, setProps, readOnly, lockedCells,
     styleHeader, highlights, dropdownMenuPortal,
   } = props;
 
+  const virtualData = useMemo(() => {
+    if (!sourceVirtualData || !isPackedNumericData(sourceVirtualData.data))
+      return sourceVirtualData;
+    try {
+      // Server windows are bounded: expose normal rows to the existing cache.
+      const decoded = decodeGridData(sourceVirtualData.data);
+      return { ...sourceVirtualData, data: decoded.toArray() };
+    } catch (error) {
+      return { ...sourceVirtualData, error: "Invalid binary viewport: " + error.message };
+    }
+  }, [sourceVirtualData]);
   const cellTemplates = useMemo(() => createCellTemplates(Boolean(dropdownMenuPortal)), [dropdownMenuPortal]);
   const viewportRef = useRef(null);
   const setPropsRef = useRef(setProps);

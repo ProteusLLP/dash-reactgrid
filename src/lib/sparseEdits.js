@@ -7,6 +7,7 @@
  * No React dependency, so the synchronisation and wire format can be tested.
  */
 import { rowIdsOf } from "./model.js";
+import { isNumericRows } from "./numericData.js";
 
 /** Start with the server-supplied snapshot (without copying its rows). */
 export const initialGridSnapshot = (data, rowIds, sparseEdits) => ({
@@ -35,7 +36,7 @@ export const editsPayload = (next, seq, sparseEdits, hasRowIds) => {
   if (!next.edits.length) return null;
   const update = { edits: { seq, edits: next.edits } };
   if (!sparseEdits) {
-    update.data = next.data;
+    update.data = isNumericRows(next.data) ? next.data.toArray() : next.data;
     if (hasRowIds) update.rowIds = next.rowIds;
   }
   return update;

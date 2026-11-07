@@ -3,9 +3,21 @@ import csv
 import io
 import unittest
 
-from examples.stateless_virtual_callbacks import (
-    window_response, clipboard_response, csv_chunks, edit_ack,
+import importlib.util
+from pathlib import Path
+
+# Keep the pure adapter test runnable before Dash browser dependencies are
+# installed; loading the package itself would import Dash unnecessarily.
+spec = importlib.util.spec_from_file_location(
+    "stateless_virtual", Path(__file__).resolve().parents[1] /
+    "dash_reactgrid" / "stateless_virtual.py"
 )
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+window_response = module.window_response
+clipboard_response = module.clipboard_response
+csv_chunks = module.csv_chunks
+edit_ack = module.edit_ack
 
 
 class StatelessVirtualCallbacksTests(unittest.TestCase):

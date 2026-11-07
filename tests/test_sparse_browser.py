@@ -33,7 +33,8 @@ def await_server():
 def run_test():
     with tempfile.TemporaryDirectory() as folder:
         env = {**os.environ, "SPARSE_BROWSER_DB": str(Path(folder) / "data.sqlite3"),
-               "SPARSE_BROWSER_PORT": str(PORT)}
+               "SPARSE_BROWSER_PORT": str(PORT),
+               "SPARSE_BROWSER_DROP_FIRST_ACK": "1"}
         process = subprocess.Popen(
             [sys.executable, "-m", "tests.sparse_browser_app"],
             cwd=ROOT, env=env, stdout=subprocess.PIPE,
@@ -47,6 +48,7 @@ def run_test():
             opts.add_argument("--no-sandbox")
             opts.add_argument("--disable-dev-shm-usage")
             opts.add_argument("--window-size=1200,900")
+            opts.set_capability("unhandledPromptBehavior", "accept")
             driver = webdriver.Chrome(options=opts)
             wait = WebDriverWait(driver, 20)
             driver.get(URL)
@@ -54,24 +56,47 @@ def run_test():
                 By.CSS_SELECTOR, "#grid .rg-pane-center-middle .rg-text-cell")
             wait.until(lambda _: len(cells()) >= 2)
             assert cells()[0].text == "Alpha", "Initial grid must show Alpha"
-            ActionChains(driver).double_click(cells()[0]).perform()
-            editor = wait.until(
-                lambda _: driver.find_element(
-                    By.CSS_SELECTOR, "#grid .rg-text-celleditor input"))
-            editor.send_keys(Keys.CONTROL, "a")
-            editor.send_keys("Edited")
-            editor.send_keys(Keys.TAB)
+            def edit_text_cell(cell_index, text):
+                ActionChains(driver).double_click(cells()[cell_index]).perform()
+                editor = wait.until(
+                    lambda _: driver.find_element(
+                        By.CSS_SELECTOR, "#grid .rg-text-celleditor input"))
+                editor.send_keys(Keys.CONTROL, "a")
+                editor.send_keys(text)
+                editor.send_keys(Keys.TAB)
+
+            edit_text_cell(0, "Edited")
+            wait.until(lambda _: "Stored without ACK: 1" in
+                       driver.find_element(By.ID, "last-commit").text)
+            assert "unacknowledged" in driver.find_element(
+                By.CSS_SELECTOR, "#grid .drg-sync-status").text
+
+            # Reload after a committed edit whose ACK was withheld. The browser
+            # must replay sessionStorage, retry with the SAME stream/seq, then
+            # accept an idempotent server acknowledgement.
+            driver.refresh()
+            wait.until(lambda _: len(cells()) >= 2 and cells()[0].text == "Edited")
             wait.until(lambda _: "Committed: 1 / ok" in
                        driver.find_element(By.ID, "last-commit").text)
             wait.until(lambda _: "All edits acknowledged" in
                        driver.find_element(
                            By.CSS_SELECTOR, "#grid .drg-sync-status").text)
-            wait.until(lambda _: cells()[0].text == "Edited")
+
+            # A subsequent batch must use the next sequence number, and a
+            # fresh server layout must read the durable rows, not stale props.
+            edit_text_cell(1, "EditedTwo")
+            wait.until(lambda _: "Committed: 2 / ok" in
+                       driver.find_element(By.ID, "last-commit").text)
+            wait.until(lambda _: "All edits acknowledged" in
+                       driver.find_element(
+                           By.CSS_SELECTOR, "#grid .drg-sync-status").text)
             driver.refresh()
-            wait.until(lambda _: len(cells()) >= 2 and cells()[0].text == "Edited")
-            assert "All edits acknowledged" in driver.find_element(
-                By.CSS_SELECTOR, "#grid .drg-sync-status").text
-            print("Browser integration passed: edit -> Dash -> commit -> ACK -> reload")
+            wait.until(lambda _: len(cells()) >= 2 and
+                       cells()[0].text == "Edited" and
+                       cells()[1].text == "EditedTwo")
+            print("Browser integration passed: lost ACK -> reload -> replay -> " +
+                  "idempotent ACK -> next edit -> reload")
+
         except Exception:
             if driver:
                 print("Browser DOM for diagnosis:", driver.page_source[-10000:])

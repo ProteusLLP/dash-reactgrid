@@ -30,3 +30,5 @@ jobs:
         run: python3 -m pip install "dash>=3,<5" "selenium>=4,<5"
       - name: Test real-browser sparse edit and ACK
         run: python3 tests/test_sparse_browser.py
+      - name: Test server virtualization in Chrome
+        run: python3 tests/test_server_virtual_browser.py

@@ -405,11 +405,14 @@ export const ServerVirtualGrid = (props) => {
 
   const copySelection = () => {
     if (typeof copyText !== "string") {
-      if (globalRef.current && !copyPending.current) {
+      if (globalRef.current) {
+        // A manual click is a retry even when an earlier prefetch is still
+        // outstanding. Dash receives a fresh requestId to trigger the callback.
         const request=copyRequestFor(virtualDatasetId,
           ++copyCounter.current,globalRef.current);
         copyPending.current=request;
         setPropsRef.current({virtualRangeRequest:request});
+        setCopyError(null);
       }
       return;
     }

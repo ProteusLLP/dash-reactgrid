@@ -128,6 +128,18 @@ Keyword arguments:
 - virtualRequest (dict; optional):
     Browser request {datasetId, requestId, start, end}, with zero-based start inclusive and end exclusive.
 
+- virtualRangeRequest (dict; optional):
+    Read-only absolute-range clipboard request containing datasetId, requestId, start, end, columnStart, columnEnd.
+
+- virtualRangeData (dict; optional):
+    Server response echoing clipboard request boundaries with text or error.
+
+- virtualSelection (dict; optional):
+    Compact absolute selection with half-open row/column indices, including unloaded rows.
+
+- virtualExportUrl (str; optional):
+    Optional app-provided authenticated URL for streaming selected rows as CSV.
+
 - virtualData (dict; optional):
     Server response {datasetId, requestId, start, rowIds, data} containing exactly the requested rows, or a matching {error}.
 
@@ -176,6 +188,10 @@ Keyword arguments:
         virtualViewportHeight: typing.Optional[NumberType] = None,
         virtualRequest: typing.Optional[dict] = None,
         virtualData: typing.Optional[dict] = None,
+        virtualRangeRequest: typing.Optional[dict] = None,
+        virtualRangeData: typing.Optional[dict] = None,
+        virtualSelection: typing.Optional[dict] = None,
+        virtualExportUrl: typing.Optional[str] = None,
         transmitSparseEdits: typing.Optional[bool] = None,
         editAck: typing.Optional[dict] = None,
         editDatasetId: typing.Optional[str] = None,
@@ -207,9 +223,9 @@ Keyword arguments:
         persisted_props: typing.Optional[typing.Sequence[Literal["columns", "data"]]] = None,
         **kwargs
     ):
-        self._prop_names = ['id', 'className', 'columns', 'data', 'disableVirtualScrolling', 'dropdownMenuPortal', 'edits', 'editAck', 'editDatasetId', 'enableColumnSelection', 'enableFillHandle', 'enableRangeSelection', 'enableRowSelection', 'hiddenColumns', 'highlights', 'isExtendable', 'lockedCells', 'newRow', 'persisted_props', 'persistence', 'persistence_type', 'readOnly', 'rowIds', 'rowPageSize', 'virtualRowCount', 'virtualDatasetId', 'virtualRowHeight', 'virtualWindowSize', 'virtualViewportHeight', 'virtualRequest', 'virtualData', 'selectedCell', 'transmitSparseEdits', 'selectedRange', 'selectedRowIds', 'stickyBottomRows', 'stickyLeftColumns', 'stickyRightColumns', 'stickyTopRows', 'style', 'styleHeader']
+        self._prop_names = ['id', 'className', 'columns', 'data', 'disableVirtualScrolling', 'dropdownMenuPortal', 'edits', 'editAck', 'editDatasetId', 'enableColumnSelection', 'enableFillHandle', 'enableRangeSelection', 'enableRowSelection', 'hiddenColumns', 'highlights', 'isExtendable', 'lockedCells', 'newRow', 'persisted_props', 'persistence', 'persistence_type', 'readOnly', 'rowIds', 'rowPageSize', 'virtualRowCount', 'virtualDatasetId', 'virtualRowHeight', 'virtualWindowSize', 'virtualViewportHeight', 'virtualRequest', 'virtualData', 'virtualRangeRequest', 'virtualRangeData', 'virtualSelection', 'virtualExportUrl', 'selectedCell', 'transmitSparseEdits', 'selectedRange', 'selectedRowIds', 'stickyBottomRows', 'stickyLeftColumns', 'stickyRightColumns', 'stickyTopRows', 'style', 'styleHeader']
         self._valid_wildcard_attributes =            []
-        self.available_properties = ['id', 'className', 'columns', 'data', 'disableVirtualScrolling', 'dropdownMenuPortal', 'edits', 'editAck', 'editDatasetId', 'enableColumnSelection', 'enableFillHandle', 'enableRangeSelection', 'enableRowSelection', 'hiddenColumns', 'highlights', 'isExtendable', 'lockedCells', 'newRow', 'persisted_props', 'persistence', 'persistence_type', 'readOnly', 'rowIds', 'rowPageSize', 'virtualRowCount', 'virtualDatasetId', 'virtualRowHeight', 'virtualWindowSize', 'virtualViewportHeight', 'virtualRequest', 'virtualData', 'selectedCell', 'transmitSparseEdits', 'selectedRange', 'selectedRowIds', 'stickyBottomRows', 'stickyLeftColumns', 'stickyRightColumns', 'stickyTopRows', 'style', 'styleHeader']
+        self.available_properties = ['id', 'className', 'columns', 'data', 'disableVirtualScrolling', 'dropdownMenuPortal', 'edits', 'editAck', 'editDatasetId', 'enableColumnSelection', 'enableFillHandle', 'enableRangeSelection', 'enableRowSelection', 'hiddenColumns', 'highlights', 'isExtendable', 'lockedCells', 'newRow', 'persisted_props', 'persistence', 'persistence_type', 'readOnly', 'rowIds', 'rowPageSize', 'virtualRowCount', 'virtualDatasetId', 'virtualRowHeight', 'virtualWindowSize', 'virtualViewportHeight', 'virtualRequest', 'virtualData', 'virtualRangeRequest', 'virtualRangeData', 'virtualSelection', 'virtualExportUrl', 'selectedCell', 'transmitSparseEdits', 'selectedRange', 'selectedRowIds', 'stickyBottomRows', 'stickyLeftColumns', 'stickyRightColumns', 'stickyTopRows', 'style', 'styleHeader']
         self.available_wildcard_properties =            []
         _explicit_args = kwargs.pop('_explicit_args')
         _locals = locals()

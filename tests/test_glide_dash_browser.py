@@ -274,6 +274,11 @@ class GlideDashBrowserTests(unittest.TestCase):
 
     def test_17_numpy_data_edit_uses_Dash_callback(self):
         self.click("numeric","a",0)
+        # The NumPy table is far below the viewport. Chrome's CDP pointer
+        # dispatch and Dash selection update are asynchronous; make the
+        # focused-cell precondition of direct keyboard entry observable.
+        self.waiter.until(lambda _: self.state("numeric").get("selectedCell") ==
+            {"rowId":"n0","columnId":"a"})
         self.type("9.5")
         self.chord(Keys.ENTER)
 

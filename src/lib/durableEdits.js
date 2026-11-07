@@ -7,6 +7,7 @@
  * Server processing MUST be transactional, ordered and idempotent by key.
  */
 import { blankRow, rowIndexesOf } from "./model.js";
+import { isNumericRows } from "./numericData.js";
 
 export const OUTBOX_VERSION = 1;
 export const MAX_PENDING_BATCHES = 500;
@@ -150,16 +151,13 @@ export const replayPendingEdits = (table, queue, columns, newRow) => {
         if (![...removed].some((id) => index.has(id))) continue;
         ensureMutableData();
         ensureMutableIds();
-        const nextData = [];
-        const nextIds = [];
-        for (let i = 0; i < rowIds.length; i++) {
-          if (!removed.has(rowIds[i])) {
-            nextData.push(data[i]);
-            nextIds.push(rowIds[i]);
-          }
-        }
-        data = nextData;
-        rowIds = nextIds;
+        const keep = rowIds.map((id) => !removed.has(id));
+        // NumericRows holds the original typed buffer and sparse overrides.
+        // Remap its logical row indices without decoding every surviving row.
+        data = isNumericRows(data)
+          ? data.selectRows(keep)
+          : data.filter((_, row) => keep[row]);
+        rowIds = rowIds.filter((_, row) => keep[row]);
         copied.clear();
         rebuildIndex();
       } else {

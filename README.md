@@ -7,6 +7,65 @@ Get started with:
 2. Run `python usage.py`
 3. Visit http://localhost:8050 in your web browser
 
+## NumPy data transport
+
+NumPy is an optional dependency. Two-dimensional homogeneous numeric arrays
+can be passed directly as `data`. DashReactGrid transfers their bytes as a
+base64-encoded, little-endian numeric buffer, and the browser retains this
+as a typed array, materializing only the rows needed for rendering.
+
+```python
+import numpy as np
+from dash_reactgrid import DashReactGrid
+
+values = np.random.default_rng(12).normal(size=(100_000, 8))
+columns = [{"columnId": str(i), "title": str(i), "type": "number"}
+           for i in range(values.shape[1])]
+
+grid = DashReactGrid(
+    id="grid", columns=columns, data=values,
+    rowIds=[f"row-{i}" for i in range(len(values))],
+    transmitSparseEdits=True, editDatasetId="numeric-v1",
+    rowPageSize=250,  # bound ReactGrid rendering; use virtualization for larger datasets
+)
+```
+
+Supported dtypes are float32/float64, signed and unsigned 8/16/32-bit
+integers, booleans, and float16 (promoted to float32). int64/uint64
+values are transferred as float64 only within the JavaScript safe
+integer range. Out-of-range integers are rejected rather than rounded.
+Non-finite floats render as blank cells; Unicode and object arrays
+fall back to nested-list JSON, subject to normal Dash serialization rules.
+Masked NumPy arrays are rejected because this binary protocol has no mask
+bitmap and must not expose hidden backing values. For floating-point masked
+arrays, use `array.filled(np.nan)`; otherwise supply nested Python lists
+with explicit `None` values.
+
+The data supplied to Python callback inputs remains the encoded dictionary
+until decoded with `from dash_reactgrid import decode_numpy_data`. In full
+data-publishing mode, a cell edit sends nested lists as before. Use
+`transmitSparseEdits=True` for large editable arrays to avoid transmitting
+the complete grid after each edit. The existing durable-ACK semantics apply.
+
+Stateless virtualisation also accepts a NumPy viewport from a provider:
+
+```python
+from dash_reactgrid.stateless_virtual import window_response
+
+def fetch_rows(start, end):
+    return {"rowIds": [str(i) for i in range(start, end)],
+            "data": values[start:end]}
+
+# In the virtualRequest callback:
+response = window_response(request, dataset_id="numeric-v1",
+                           row_count=len(values), columns=columns,
+                           fetch_rows=fetch_rows)
+```
+
+Use `decode_numpy_data(response["data"])` to recover a read-only
+NumPy view of a binary payload. Clipboard and CSV helpers continue to
+work with list-backed or NumPy-backed provider windows.
+
 ## Large tables: continuous server-side virtualization
 
 **Recommended for hundreds of thousands of rows or millions of cells:**

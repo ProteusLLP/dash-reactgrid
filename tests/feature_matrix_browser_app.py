@@ -4,6 +4,7 @@ No database or external services. A fresh page load restores the seed rows.
 """
 import json
 import os
+import numpy as np
 
 from dash import Dash, Input, Output, html
 from dash_reactgrid import DashReactGrid
@@ -59,6 +60,14 @@ VIRTUAL_REVIEW_DATA = [
     ["Second", "2026-11-02", "2026-11-02T14:30:00Z"],
 ]
 VIRTUAL_REVIEW_DATASET = "review-virtual-types-v1"
+
+NUMERIC_COLUMNS = [
+    {"columnId": "a", "title": "A", "type": "number", "width": 120},
+    {"columnId": "b", "title": "B", "type": "number", "width": 120},
+]
+NUMERIC_DATA = np.array([[1.25, 2.5], [-4.5, 3.75]], dtype=np.float64)
+NUMERIC_VIRTUAL_DATA = np.arange(40, dtype=np.float32).reshape(20, 2)
+NUMERIC_VIRTUAL_DATASET = "numeric-virtual-v1"
 
 
 app = Dash(__name__)
@@ -118,6 +127,20 @@ def layout():
             persisted_props=[],
         ),
         html.Pre(id="review-virtual-edits"),
+        html.H3("NumPy-backed normal grid"),
+        DashReactGrid(
+            id="numeric", columns=NUMERIC_COLUMNS, data=NUMERIC_DATA,
+            rowIds=["n0", "n1"], persisted_props=[],
+        ),
+        html.Pre(id="numeric-state"),
+        html.H3("NumPy-backed virtual grid"),
+        DashReactGrid(
+            id="numeric-virtual", columns=NUMERIC_COLUMNS, data=[],
+            virtualRowCount=len(NUMERIC_VIRTUAL_DATA),
+            virtualDatasetId=NUMERIC_VIRTUAL_DATASET,
+            virtualWindowSize=20, virtualViewportHeight=200,
+            persisted_props=[],
+        ),
     ], style={"fontFamily": "Arial", "padding": "12px"})
 
 
@@ -166,6 +189,23 @@ def review_virtual_edits(batch):
     return json.dumps(batch, ensure_ascii=False)
 
 
+@app.callback(
+    Output("numeric-virtual", "virtualData"),
+    Input("numeric-virtual", "virtualRequest"),
+    prevent_initial_call=True,
+)
+def numeric_virtual_window(request):
+    return window_response(
+        request, dataset_id=NUMERIC_VIRTUAL_DATASET,
+        row_count=len(NUMERIC_VIRTUAL_DATA), columns=NUMERIC_COLUMNS,
+        fetch_rows=lambda a, b: {
+            "rowIds": [f"nr-{i}" for i in range(a, b)],
+            "data": NUMERIC_VIRTUAL_DATA[a:b],
+        },
+    )
+
+
+attach_state("numeric", "numeric-state")
 attach_state("matrix", "matrix-state")
 attach_state("target", "target-state")
 attach_state("paged", "paged-state")

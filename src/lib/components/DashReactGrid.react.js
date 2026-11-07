@@ -9,6 +9,7 @@ import { createCellTemplates } from '../cellTemplates';
 import { ServerVirtualGrid } from '../ServerVirtualGrid.react';
 import { compileGridColumns, buildGridRows, pageBounds, canPasteOnPage } from '../gridRows';
 import { useReliableGrid } from '../useReliableGrid';
+import { decodeGridData } from '../numericData';
 import {
   GHOST_ROW_ID,
   applyChanges,
@@ -47,7 +48,8 @@ const DashReactGrid = props => {
 }
 
 const ReactGridDataHandler = (props) => {
-  const { columns: allColumns, data, rowIds, newRow, lockedCells, readOnly, hiddenColumns, styleHeader, isExtendable, highlights, setProps } = props;
+  const { columns: allColumns, data: sourceData, rowIds, newRow, lockedCells, readOnly, hiddenColumns, styleHeader, isExtendable, highlights, setProps } = props;
+  const data = useMemo(() => decodeGridData(sourceData), [sourceData]);
   const cellTemplates = useMemo(() => createCellTemplates(Boolean(props.dropdownMenuPortal)), [props.dropdownMenuPortal]);
 
   // Hidden columns keep their place in `data`; the grid sees only the rest.

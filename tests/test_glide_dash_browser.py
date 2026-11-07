@@ -114,6 +114,19 @@ class GlideDashBrowserTests(unittest.TestCase):
         self.driver.execute_cdp_cmd("Input.dispatchMouseEvent",{
             "type":"mouseReleased","x":pos["x"],"y":pos["y"],
             "button":"left","clickCount":1})
+        ids={
+            "matrix":["r1","r2"],
+            "source":["source-1","source-2"],
+            "target":["target-1","target-2"],
+            "paged":[f"p{i}" for i in range(11)],
+            "readonly":["protected"],
+            "numeric":["n0","n1"],
+        }
+        if grid in ids and not (grid=="matrix" and column=="flag"):
+            expected={"rowId":ids[grid][row],"columnId":column}
+            # Genuine keyboard entry requires a focused cell. CDP's pointer
+            # events return before Glide's selection event / Dash callback.
+            self.waiter.until(lambda _:self.state(grid).get("selectedCell")==expected)
         return pos
 
     def type(self,text):

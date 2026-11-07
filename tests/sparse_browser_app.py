@@ -4,7 +4,7 @@ from pathlib import Path
 
 from dash import Dash, Input, Output, html, no_update
 from dash_reactgrid import DashReactGrid
-from examples.sparse_edit_server import SparseGridStore
+from tests.fixtures.sqlite_sparse_backend import SparseGridStore
 
 DB = Path(os.environ["SPARSE_BROWSER_DB"])
 PORT = int(os.environ.get("SPARSE_BROWSER_PORT", "8059"))

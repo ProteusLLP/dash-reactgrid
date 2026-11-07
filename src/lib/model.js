@@ -1,3 +1,4 @@
+import { calendarDateString } from "./keyboardEntry.js";
 /*
  * The grid's data model, free of React so it can be tested on its own.
  *
@@ -77,7 +78,7 @@ export const valueOf = (column, cell) => {
     case "checkbox":
       return Boolean(cell.checked);
     case "date":
-      return cell.date ?? null;
+      return calendarDateString(cell.date);
     case "time":
       return cell.time ?? null;
     default:

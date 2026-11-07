@@ -54,6 +54,7 @@ class FeatureMatrixChromeTests(unittest.TestCase):
             options.add_argument("--no-sandbox")
             options.add_argument("--disable-dev-shm-usage")
             options.add_argument("--window-size=1650,1100")
+            options.set_capability("unhandledPromptBehavior", "accept")
             cls.driver = webdriver.Chrome(options=options)
             cls.driver.execute_cdp_cmd("Browser.grantPermissions", {
                 "origin": URL,

@@ -23,19 +23,11 @@ import {
 } from "./virtualOperations";
 import { numberParser } from "./CustomNumberCell";
 import { percentParser } from "./PercentCell";
-import { CustomNumberCellTemplate } from "./CustomNumberCell";
-import { PercentCellTemplate } from "./PercentCell";
-import { PortalDropdownCellTemplate } from "./PortalDropdownCell";
+import { createCellTemplates } from "./cellTemplates";
 
 const parsers = { number: numberParser, percent: percentParser };
 const EMPTY_DATA = [];
 const EMPTY_IDS = [];
-const customCellTemplates = {
-  customnumber: new CustomNumberCellTemplate(),
-  percent: new PercentCellTemplate(),
-};
-const portalTemplates = { ...customCellTemplates,
-  dropdown: new PortalDropdownCellTemplate() };
 const isDataId = (id) => id !== "header" &&
   id !== VIRTUAL_SPACER_TOP && id !== VIRTUAL_SPACER_BOTTOM &&
   !String(id).startsWith(VIRTUAL_LOADING_PREFIX);
@@ -57,6 +49,7 @@ export const ServerVirtualGrid = (props) => {
     styleHeader, highlights, dropdownMenuPortal,
   } = props;
 
+  const cellTemplates = useMemo(() => createCellTemplates(Boolean(dropdownMenuPortal)), [dropdownMenuPortal]);
   const viewportRef = useRef(null);
   const setPropsRef = useRef(setProps);
   setPropsRef.current = setProps;
@@ -682,13 +675,13 @@ export const ServerVirtualGrid = (props) => {
       enableColumnSelection={props.enableColumnSelection !== false}
       enableFillHandle={props.enableFillHandle !== false && !editingBlocked}
       disableVirtualScrolling={false}
-      customCellTemplates={dropdownMenuPortal ? portalTemplates : customCellTemplates}
+      customCellTemplates={cellTemplates}
     />
   ) : null,
   [rows,columns,onCellsChanged,onSelectionChanged,onFocusLocationChanged,onContextMenu,
    visibleHighlights,props.stickyLeftColumns,props.stickyRightColumns,
    props.enableRangeSelection,props.enableRowSelection,props.enableColumnSelection,
-   props.enableFillHandle,editingBlocked,dropdownMenuPortal]);
+   props.enableFillHandle,editingBlocked,dropdownMenuPortal,cellTemplates]);
 
   if (!valid) return <div role="alert" className="drg-virtual-error">
     Server virtualization needs a stable virtualDatasetId, nonnegative virtualRowCount,

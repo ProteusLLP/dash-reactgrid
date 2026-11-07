@@ -3,10 +3,9 @@ import PropTypes from 'prop-types';
 import { ReactGrid } from "@silevis/reactgrid";
 import "@silevis/reactgrid/styles.css";
 import "../styles.css"
-import { CustomNumberCellTemplate, numberParser } from '../CustomNumberCell';
-import { PercentCellTemplate, percentParser } from '../PercentCell';
-import { PortalDropdownCellTemplate } from '../PortalDropdownCell';
-import { ExcelTextCellTemplate, ExcelDateCellTemplate, ExcelTimeCellTemplate } from '../ExcelKeyboardCells';
+import { numberParser } from '../CustomNumberCell';
+import { percentParser } from '../PercentCell';
+import { createCellTemplates } from '../cellTemplates';
 import { ServerVirtualGrid } from '../ServerVirtualGrid.react';
 import { compileGridColumns, buildGridRows, pageBounds, canPasteOnPage } from '../gridRows';
 import { useReliableGrid } from '../useReliableGrid';
@@ -30,12 +29,6 @@ import { parseClipboardTsv } from '../virtualOperations';
 
 const locale = window.navigator.language
 const parsers = { number: numberParser, percent: percentParser }
-const customCellTemplates = { 'text': new ExcelTextCellTemplate(), 'date': new ExcelDateCellTemplate(),
-  'time': new ExcelTimeCellTemplate(), 'percent': new PercentCellTemplate(),
-  'customnumber': new CustomNumberCellTemplate() }
-// With dropdownMenuPortal, dropdown menus render on the page body instead of
-// inside their cell, so clipping or scrolling ancestors cannot cut them off.
-const portalCellTemplates = { ...customCellTemplates, 'dropdown': new PortalDropdownCellTemplate() }
 const DELETE_ROWS_OPTION = "deleteRows"
 const NO_HISTORY = { changes: [], index: -1 }
 
@@ -55,6 +48,7 @@ const DashReactGrid = props => {
 
 const ReactGridDataHandler = (props) => {
   const { columns: allColumns, data, rowIds, newRow, lockedCells, readOnly, hiddenColumns, styleHeader, isExtendable, highlights, setProps } = props;
+  const cellTemplates = useMemo(() => createCellTemplates(Boolean(props.dropdownMenuPortal)), [props.dropdownMenuPortal]);
 
   // Hidden columns keep their place in `data`; the grid sees only the rest.
   const columns = useMemo(() => {
@@ -365,13 +359,13 @@ const ReactGridDataHandler = (props) => {
       stickyRightColumns={sticky.right}
       stickyTopRows={sticky.top}
       stickyBottomRows={sticky.bottom}
-      customCellTemplates={dropdownMenuPortal ? portalCellTemplates : customCellTemplates}
+      customCellTemplates={cellTemplates}
       onSelectionChanged={onSelectionChanged}
       disableVirtualScrolling={disableVirtualScrolling}
     />
   ), [rows, columns, editingBlocked, pageHighlights, sticky.left, sticky.right, sticky.top, sticky.bottom,
     enableFillHandle, enableRangeSelection, enableRowSelection, enableColumnSelection, disableVirtualScrolling,
-    dropdownMenuPortal, pageSize, page])
+    dropdownMenuPortal, cellTemplates, pageSize, page])
 
   const goToPage = (requested) => {
     if (!Number.isFinite(requested)) {

@@ -186,3 +186,45 @@ test("direct time typing validates 24h time and retains the base date", async ()
   assert.equal(parseTimeEntry("15:60",base),null);
   assert.equal(parseTimeEntry("not time",base),null);
 });
+
+test("calendar dates accept year-first and year-last locale orders", async () => {
+  const { parseDateEntry } = await import("../keyboardEntry.js");
+  for (const [input, locale] of [
+    ["2026-11-14", "en-US"],
+    ["2026/11/14", "ja-JP"],
+    ["2026.11.14", "ko-KR"],
+    ["14/11/2026", "en-GB"],
+    ["11/14/2026", "en-US"],
+  ]) {
+    const date = parseDateEntry(input, locale);
+    assert.ok(date instanceof Date, input + " / " + locale);
+    assert.equal(date.getFullYear(), 2026);
+    assert.equal(date.getMonth(), 10);
+    assert.equal(date.getDate(), 14);
+  }
+  assert.equal(parseDateEntry("14/11/2026", "ja-JP"), null);
+  assert.equal(parseDateEntry("2026/13/14", "ja-JP"), null);
+  assert.equal(parseDateEntry("2026/02/29", "ja-JP"), null);
+  assert.equal(parseDateEntry("2024/02/29", "ja-JP").getDate(), 29);
+  assert.equal(parseDateEntry("2026/11-14", "ja-JP"), null);
+});
+
+test("date-only values round-trip through the model as calendar dates", async () => {
+  const { parseDateEntry, calendarDateString, calendarDateFromValue } =
+    await import("../keyboardEntry.js");
+  const { valueOf } = await import("../model.js");
+  const { compileGridColumns, buildGridRows } = await import("../gridRows.js");
+  const date = parseDateEntry("2026-11-14", "en-GB");
+  assert.equal(calendarDateString(date), "2026-11-14");
+  assert.equal(valueOf({ type: "date" }, { date }), "2026-11-14");
+  assert.equal(valueOf({ type: "date" }, { date: new Date(NaN) }), null);
+  assert.equal(calendarDateFromValue("2026-11-14").getDate(), 14);
+  const columns = [{ columnId: "day", title: "Date", type: "date" }];
+  const rendered = buildGridRows({
+    columns, descriptors: compileGridColumns(columns, columns, "en-GB"),
+    allColumns: columns, data: [["2026-11-14"]], rowIds: ["r1"],
+    readOnly: false, locked: new Set(), showGhost: false,
+  });
+  assert.equal(rendered.rows[1].cells[0].date.getDate(), 14);
+  assert.equal(valueOf(columns[0], rendered.rows[1].cells[0]), "2026-11-14");
+});

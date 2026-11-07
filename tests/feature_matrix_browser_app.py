@@ -7,6 +7,7 @@ import os
 
 from dash import Dash, Input, Output, html
 from dash_reactgrid import DashReactGrid
+from dash_reactgrid.stateless_virtual import window_response
 
 PORT = int(os.environ.get("GRID_MATRIX_BROWSER_PORT", "8065"))
 
@@ -47,6 +48,18 @@ TARGET_DATA = [
     ["Target 2", 2],
 ]
 PAGE_DATA = [[f"Page row {i}", i] for i in range(11)]
+
+VIRTUAL_REVIEW_COLUMNS = [
+    {"columnId": "label", "title": "Label", "type": "text", "width": 160},
+    {"columnId": "day", "title": "Date", "type": "date", "width": 140},
+    {"columnId": "clock", "title": "Time", "type": "time", "width": 140},
+]
+VIRTUAL_REVIEW_DATA = [
+    ["Existing", "2026-11-01", "2026-11-01T12:00:00Z"],
+    ["Second", "2026-11-02", "2026-11-02T14:30:00Z"],
+]
+VIRTUAL_REVIEW_DATASET = "review-virtual-types-v1"
+
 
 app = Dash(__name__)
 
@@ -94,6 +107,17 @@ def layout():
             persisted_props=[],
         ),
         html.Pre(id="readonly-state"),
+        html.H3("Review virtual cell types"),
+        DashReactGrid(
+            id="review-virtual", columns=VIRTUAL_REVIEW_COLUMNS,
+            data=[], rowIds=[],
+            virtualRowCount=len(VIRTUAL_REVIEW_DATA),
+            virtualDatasetId=VIRTUAL_REVIEW_DATASET,
+            virtualWindowSize=20, virtualViewportHeight=200,
+            transmitSparseEdits=True, editDatasetId=VIRTUAL_REVIEW_DATASET,
+            persisted_props=[],
+        ),
+        html.Pre(id="review-virtual-edits"),
     ], style={"fontFamily": "Arial", "padding": "12px"})
 
 
@@ -113,6 +137,33 @@ def attach_state(grid_id, status_id):
             "edits": edits, "selectedRowIds": selected,
             "selectedCell": focused,
         }, ensure_ascii=False)
+
+
+@app.callback(
+    Output("review-virtual", "virtualData"),
+    Input("review-virtual", "virtualRequest"),
+    prevent_initial_call=True,
+)
+def review_virtual_window(request):
+    def read(start, end):
+        return {
+            "rowIds": [f"vr-{i}" for i in range(start, end)],
+            "data": VIRTUAL_REVIEW_DATA[start:end],
+        }
+
+    return window_response(
+        request, dataset_id=VIRTUAL_REVIEW_DATASET,
+        row_count=len(VIRTUAL_REVIEW_DATA),
+        columns=VIRTUAL_REVIEW_COLUMNS, fetch_rows=read,
+    )
+
+
+@app.callback(
+    Output("review-virtual-edits", "children"),
+    Input("review-virtual", "edits"),
+)
+def review_virtual_edits(batch):
+    return json.dumps(batch, ensure_ascii=False)
 
 
 attach_state("matrix", "matrix-state")

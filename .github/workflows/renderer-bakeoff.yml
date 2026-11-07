@@ -9,7 +9,7 @@ on:
 
 jobs:
   renderer-bakeoff:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     defaults:
       run:
@@ -22,6 +22,7 @@ jobs:
       - name: Install isolated renderer dependencies
         run: npm install --no-audit --no-fund
       - name: Install Chrome for Playwright
+        id: chrome
         run: npx playwright install --with-deps chromium
       - name: Fixture unit tests
         run: npm run test:unit
@@ -30,7 +31,7 @@ jobs:
       - name: Chrome renderer and keyboard probes
         run: npm run test:browser
       - name: Chrome performance and memory probes
-        if: always()
+        if: ${{ !cancelled() && steps.chrome.outcome == 'success' }}
         run: npm run benchmark
       - name: Attach screenshots and machine-readable measurements
         if: always()

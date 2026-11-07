@@ -30,7 +30,11 @@ jobs:
       - name: Validate Dash/Python compatibility
         run: python3 -m unittest tests.test_component_contract tests.test_numpy_data -v
       - name: Verify Glide direct typing before full browser matrix
-        run: python3 -m unittest tests.test_glide_dash_browser.GlideDashBrowserTests.test_03_type_directly_into_focused_text_cell -v
+        run: python3 -m unittest \
+          tests.test_glide_dash_browser.GlideDashBrowserTests.test_03_type_directly_into_focused_text_cell \
+          tests.test_glide_dash_browser.GlideDashBrowserTests.test_10_time_typed_HH_MM \
+          tests.test_glide_dash_browser.GlideDashBrowserTests.test_12_undo_redo \
+          tests.test_glide_dash_browser.GlideDashBrowserTests.test_17_numpy_data_edit_uses_Dash_callback -v
       - name: Run original complete Chrome feature matrix against ReactGrid
         run: python3 tests/test_feature_matrix_browser.py
       - name: Run canvas-compatible Chrome feature matrix against Glide

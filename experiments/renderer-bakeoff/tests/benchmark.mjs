@@ -33,7 +33,7 @@ try {
   const results = [];
   for (const renderer of ["reactgrid", "glide", "revogrid"]) {
     for (const mode of ["numeric","mixed"]) {
-      const page = await browser.newPage({viewport:{width:1450,height:940}});
+      const page = await browser.newPage({viewport:{width:1450,height:940},locale:"en-US"});
       const errors = [];
       page.on("pageerror", err => errors.push(err.message));
       const rows = mode === "mixed" ? 50_000 : 100_000;

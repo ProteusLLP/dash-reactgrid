@@ -8,6 +8,7 @@ import urllib.request
 from pathlib import Path
 
 from selenium import webdriver
+from selenium.common.exceptions import StaleElementReferenceException
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -46,7 +47,10 @@ def run_test():
 
             def cell(label):
                 for el in driver.find_elements(By.CSS_SELECTOR,"#grid .rg-text-cell"):
-                    if el.text.strip()==label:return el
+                    try:
+                        if el.text.strip()==label:return el
+                    except StaleElementReferenceException:
+                        return None  # the async viewport was replaced mid-query
                 return None
 
             def has(label):

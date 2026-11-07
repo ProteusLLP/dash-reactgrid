@@ -167,7 +167,8 @@ def test():
                         error:document.querySelector('#grid .drg-virtual-error')?.textContent,
                         toolbar:document.querySelector('#grid .drg-virtual-toolbar')?.textContent,
                         commit:document.querySelector('#commit-status')?.textContent,
-                        viewport:document.querySelector('#viewport-status')?.textContent};
+                        viewport:document.querySelector('#viewport-status')?.textContent,
+                        range:document.querySelector('#range-status')?.textContent};
                     """)
                     print("Browser diagnostic:",info)
                 except Exception:pass

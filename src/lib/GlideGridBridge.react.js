@@ -133,6 +133,13 @@ export const GlideGridBridge = ({
     const location=publicLocation(rows,columns,nextCol,nextRow);
     if(location) onFocusLocationChanged?.(location);
     gridRef.current?.scrollTo?.(nextCol,nextRow);
+    // Glide updates the selected cell but can leave DOM focus on BODY after
+    // removing our editor. Restore it before the next Ctrl+Z or arrow key.
+    requestAnimationFrame(()=>{
+      hostRef.current?.querySelector(
+        '[data-testid="glide-cell-'+nextCol+'-'+(nextRow+1)+'"]'
+      )?.focus?.({preventScroll:true});
+    });
   },[rows,columns,onFocusLocationChanged]);
 
   const commitAt=useCallback((col,row,text)=>{

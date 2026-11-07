@@ -18,7 +18,7 @@ enableRowSelection=NULL, hiddenColumns=NULL,
 highlights=NULL, isExtendable=NULL, lockedCells=NULL,
 newRow=NULL, persisted_props=NULL, persistence=NULL,
 persistence_type=NULL, readOnly=NULL, rowIds=NULL,
-selectedCell=NULL, selectedRange=NULL, selectedRowIds=NULL,
+rowPageSize=NULL, selectedCell=NULL, selectedRange=NULL, selectedRowIds=NULL,
 stickyBottomRows=NULL, stickyLeftColumns=NULL,
 stickyRightColumns=NULL, stickyTopRows=NULL, style=NULL,
 styleHeader=NULL)
@@ -81,6 +81,8 @@ an object by column id. Blank if omitted.}
 \item{persistence_type}{A value equal to: 'local', 'session', 'memory'. }
 
 \item{readOnly}{Logical. Whether every cell is locked, no row can be added and none deleted.}
+
+\item{rowPageSize}{Numeric. Maximum data rows displayed per page for very large tables. Selections and clipboard operations are page-local.}
 
 \item{rowIds}{Unnamed list. An id per row of `data`. Given, edits name rows by these ids, rows the
 user adds get ids starting `new-`, and rows can be deleted from the

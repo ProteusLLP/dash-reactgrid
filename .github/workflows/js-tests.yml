@@ -1,4 +1,4 @@
-name: JavaScript unit tests
+name: JavaScript tests and build
 
 on:
   pull_request:
@@ -6,6 +6,7 @@ on:
     branches:
       - main
       - 'fix/**'
+      - 'perf/**'
 
 jobs:
   test:
@@ -17,3 +18,7 @@ jobs:
           node-version: '22'
       - name: Run JavaScript unit tests
         run: npm run test:js
+      - name: Install build dependencies
+        run: npm ci
+      - name: Compile component
+        run: npm run build:js

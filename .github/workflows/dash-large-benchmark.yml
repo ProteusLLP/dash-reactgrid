@@ -27,7 +27,7 @@ jobs:
         run: python3 -m pip install "dash>=3,<5" "numpy>=1.23,<3" "selenium>=4,<5"
       - name: Measure full-data, paged and stateless virtual scenarios
         continue-on-error: true
-        run: python3 tests/benchmark_dash_large_browser.py | tee dash-large-run.log
+        run: python3 tests/benchmark_dash_large_browser.py paged-reactgrid-full paged-glide-full paged-reactgrid-sparse paged-glide-sparse virtual-reactgrid-sparse virtual-glide-sparse | tee dash-large-run.log
       - name: Upload raw measurements
         if: always()
         uses: actions/upload-artifact@v4

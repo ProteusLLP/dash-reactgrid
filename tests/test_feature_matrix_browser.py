@@ -12,6 +12,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import time
 import unittest
 import urllib.request
@@ -31,11 +32,15 @@ URL = f"http://127.0.0.1:{PORT}"
 class FeatureMatrixChromeTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        # The Dash fixture can emit more request logs than a PIPE buffer can
+        # hold during a long browser suite. A blocked logging write would
+        # deadlock the Dash server and make Selenium calls appear to hang.
+        cls.server_log = tempfile.TemporaryFile(mode="w+b")
         cls.server = subprocess.Popen(
             [sys.executable, "-m", "tests.feature_matrix_browser_app"],
             cwd=ROOT,
             env={**os.environ, "GRID_MATRIX_BROWSER_PORT": str(PORT)},
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+            stdout=cls.server_log, stderr=subprocess.STDOUT,
         )
         cls.driver = None
         try:
@@ -73,12 +78,18 @@ class FeatureMatrixChromeTests(unittest.TestCase):
         if getattr(cls, "server", None):
             cls.server.terminate()
             try:
-                output = cls.server.communicate(timeout=5)[0]
+                cls.server.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 cls.server.kill()
-                output = cls.server.communicate()[0]
-            if output:
-                print("Feature matrix Dash output:", output[-4000:])
+                cls.server.wait()
+            if getattr(cls, "server_log", None):
+                cls.server_log.seek(0, os.SEEK_END)
+                size = cls.server_log.tell()
+                cls.server_log.seek(max(0, size - 4000))
+                output = cls.server_log.read().decode("utf-8", errors="replace")
+                cls.server_log.close()
+                if output:
+                    print("Feature matrix Dash output:", output)
 
     def setUp(self):
         self.driver.get(URL)

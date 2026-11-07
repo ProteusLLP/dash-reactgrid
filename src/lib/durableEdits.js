@@ -39,6 +39,8 @@ const validate = (value, datasetId) => {
   }
   if (last !== value.nextSeq - 1)
     throw new Error("Saved edit outbox sequence is inconsistent");
+  if (new Set(value.queue.map((batch) => batch.seq)).size !== value.queue.length)
+    throw new Error("Saved edit outbox contains duplicate sequence numbers");
   return value;
 };
 
@@ -110,7 +112,7 @@ export const replayPendingEdits = (table, queue, columns, newRow) => {
   const columnIndex = new Map(columns.map((col, i) => [col.columnId, i]));
   let data = table.data;
   let rowIds = table.rowIds;
-  let index = rowIndexesOf(rowIds);
+  let index = new Map(rowIndexesOf(rowIds));
   const ensureMutable = () => {
     if (data === table.data) data = data.slice();
     if (rowIds === table.rowIds) rowIds = rowIds.slice();

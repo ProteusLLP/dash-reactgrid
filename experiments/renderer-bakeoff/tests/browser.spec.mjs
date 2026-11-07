@@ -18,7 +18,7 @@ for (const renderer of ["reactgrid", "glide", "revogrid"]) {
     await page.evaluate(() => window.__bakeoff.jump(50_000));
     if (renderer === "reactgrid") {
       const range = await page.locator(".reactgrid-window").textContent();
-      const match = /Rows (\\d+) to (\\d+)/.exec(range);
+      const match = /Rows (\d+) to (\d+)/.exec(range);
       expect(match).not.toBeNull();
       expect(Number(match[1])).toBeLessThanOrEqual(50_000);
       expect(Number(match[2])).toBeGreaterThanOrEqual(50_000);

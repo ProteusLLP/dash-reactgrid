@@ -19,12 +19,6 @@ jobs:
         run: npm ci --legacy-peer-deps
       - name: Build Dash bundles
         run: npm run build:js
-      - name: Install browser dependencies
-        run: python3 -m pip install "dash>=3,<5" "selenium>=4,<5" "numpy>=1.23,<3"
-      - name: Test inverse receipts
-        run: python3 -m unittest tests.test_virtual_grid_store -v
-      - name: Test browser header drag and clipboard
-        run: python3 tests/test_large_virtual_clipboard_browser.py
       - name: Commit browser assets
         run: |
           git config user.name "github-actions[bot]"

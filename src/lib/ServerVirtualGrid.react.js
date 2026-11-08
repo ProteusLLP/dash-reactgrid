@@ -726,6 +726,10 @@ export const ServerVirtualGrid = (props) => {
       const place=selectionAt(location.rowId,location.columnId);
       if (!place) return;
       if (shiftPointer.current && anchor.current) {
+        // Shift-click establishes the same anchor for subsequent Shift+Arrow
+        // extensions. The focused cell is the moving end of the selection.
+        keyboardAnchor.current=anchor.current;
+        keyboardCursor.current=place;
         selectGlobal(extendSelection(
           anchor.current,place.row,place.col,
           virtualRowCount,columns.length,

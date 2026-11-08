@@ -215,6 +215,30 @@ class FeatureMatrixChromeTests(unittest.TestCase):
                 action.key_up(modifier)
         action.perform()
 
+    def test_grouped_header_bands_preserve_leaf_editing_and_merged_widths(self):
+        headers = self.waiter.until(lambda d: d.find_elements(
+            By.CSS_SELECTOR, "#grouped .rg-cell.rg-group-header"
+        ) if len(d.find_elements(
+            By.CSS_SELECTOR, "#grouped .rg-cell.rg-group-header"
+        )) >= 4 else None)
+        self.assertTrue(any("Rates" in item.text for item in headers))
+        self.assertTrue(any("UK" in item.text for item in headers))
+        self.assertTrue(any("US" in item.text for item in headers))
+        rate = next(item for item in headers if "Rates" in item.text)
+        self.assertGreater(rate.rect["width"],
+                           self.cell("grouped", "uk1", 0).rect["width"])
+
+        self.cell("grouped", "uk1", 0).click()
+        self.type_in_focused("7.25")
+        ActionChains(self.driver).send_keys(Keys.ARROW_RIGHT).perform()
+        self.waiter.until(lambda _: self.state("grouped")["data"][0][0] == 7.25)
+        self.expect_focus("grouped", "g0", "uk5")
+
+        self.type_in_focused("8.5")
+        ActionChains(self.driver).send_keys(Keys.ARROW_DOWN).perform()
+        self.waiter.until(lambda _: self.state("grouped")["data"][0][1] == 8.5)
+        self.expect_focus("grouped", "g1", "uk5")
+
     def test_ctrl_arrows_select_and_fill_down_with_undo(self):
         self.cell("target", "label", 0).click()
         self.chord(Keys.CONTROL, Keys.ARROW_DOWN)

@@ -1,4 +1,5 @@
 """Chrome Ctrl+A Ctrl+C test for 25k rows, most never loaded into the DOM."""
+import json
 import os
 import subprocess
 import sys
@@ -105,13 +106,16 @@ def run():
             editor.send_keys(Keys.ARROW_RIGHT)
             wait.until(lambda _:"PENDING" in driver.find_element(
                 By.ID,"pending-edit").text)
+            edited_value=json.loads(driver.find_element(
+                By.ID,"pending-edit").text)["edits"][0]["value"]
+            assert edited_value != "Row 1"
             wait.until(lambda _:"unacknowledged edit batch" in
                 driver.find_element(By.ID,"grid").text)
             driver.find_elements(
                 By.CSS_SELECTOR,"#grid .rg-cell.rg-col-label")[1].click()
             ActionChains(driver).key_down(Keys.CONTROL).send_keys(
                 "c").key_up(Keys.CONTROL).perform()
-            wait.until(lambda _:clipboard()=="PENDING")
+            wait.until(lambda _:clipboard()==edited_value)
             assert "unacknowledged edit batch" in driver.find_element(
                 By.ID,"grid").text
 

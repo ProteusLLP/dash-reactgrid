@@ -111,8 +111,17 @@ def run():
             assert edited_value != "Row 1"
             wait.until(lambda _:"unacknowledged edit batch" in
                 driver.find_element(By.ID,"grid").text)
+            # Click a different cell first: re-clicking an already focused
+            # cell can reopen ReactGrid's editor on a double-click sequence,
+            # which tests input clipboard behaviour rather than grid copying.
+            driver.find_elements(
+                By.CSS_SELECTOR,"#grid .rg-cell.rg-col-amount")[1].click()
             driver.find_elements(
                 By.CSS_SELECTOR,"#grid .rg-cell.rg-col-label")[1].click()
+            wait.until(lambda _:driver.execute_script("""
+                return document.activeElement?.classList?.contains(
+                  'rg-hidden-element');
+            """))
             ActionChains(driver).key_down(Keys.CONTROL).send_keys(
                 "c").key_up(Keys.CONTROL).perform()
             try:

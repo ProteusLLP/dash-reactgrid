@@ -185,7 +185,7 @@ def from_dataframe(cls, dataframe, *, include_index=False,
                     "A scalar-preserving row iterator (itertuples or iter_rows) "
                     "is required when integer columns are promoted to floats"
                 )
-            iterator = candidate.tolist()
+            iterator = candidate
         else:
             raise TypeError("Expected a DataFrame-like object with iterable rows")
         data = []

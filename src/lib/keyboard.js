@@ -77,8 +77,8 @@ export const selectionText = (rows, ranges, textOf) => {
 };
 
 /** The header is not an editable data row. */
-export const pasteStartRow = (selection) =>
-  Math.max(0, selection.first.row.idx - 1);
+export const pasteStartRow = (selection, headerCount = 1) =>
+  Math.max(0, selection.first.row.idx - headerCount);
 
 /**
  * Turn Delete/Backspace on a grid selection into changes for editable data cells.
@@ -90,11 +90,11 @@ export const clearSelectedCells = (rows, columns, ranges) => {
   (ranges || []).forEach((selected) => {
     for (let ri = selected.first.row.idx; ri <= selected.last.row.idx; ri++) {
       const row = rows[ri];
-      if (!row || row.rowId === "header" || row.rowId === "__ghost__") continue;
+      if (!row || row.rowId === "__ghost__") continue;
       for (let ci = selected.first.column.idx; ci <= selected.last.column.idx; ci++) {
         const column = columns[ci];
         const cell = row.cells[ci];
-        if (!column || !cell || cell.nonEditable) continue;
+        if (!column || !cell || cell.type === "header" || cell.nonEditable) continue;
         const key = ri + ":" + ci;
         if (seen.has(key)) continue;
         seen.add(key);

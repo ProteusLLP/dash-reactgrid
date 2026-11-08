@@ -239,6 +239,43 @@ class FeatureMatrixChromeTests(unittest.TestCase):
         self.waiter.until(lambda _: self.state("grouped")["data"][0][1] == 8.5)
         self.expect_focus("grouped", "g1", "uk5")
 
+    def test_grouped_headers_preserve_paste_multi_edit_and_selected_rows(self):
+        self.cell("grouped", "uk1", 0).click()
+        self.paste("grouped", "9.75", column="uk1")
+        self.waiter.until(lambda _: self.state("grouped")["data"][0][0] == 9.75)
+        self.assertEqual(self.state("grouped")["data"][1][0], 4.5)
+
+        self.cell("grouped", "memo", 0).click()
+        self.chord(Keys.CONTROL, Keys.SHIFT, Keys.ARROW_DOWN)
+        self.type_in_focused("Repeated")
+        self.chord(Keys.SHIFT, Keys.ENTER)
+        self.waiter.until(lambda _: [
+            row[3] for row in self.state("grouped")["data"]
+        ] == ["Repeated", "Repeated"])
+
+        self.press("a", "grouped", "uk1")
+        self.waiter.until(lambda _: self.state("grouped")["selectedRowIds"] ==
+                          ["g0", "g1"])
+
+    def test_grouped_paged_headers_preserve_absolute_paste_and_fill_down(self):
+        next_button = next(button for button in self.driver.find_elements(
+            By.CSS_SELECTOR, "#grouped-paged .drg-pager button"
+        ) if button.text == "Next")
+        next_button.click()
+        self.waiter.until(lambda _: "Rows 3-4 of 4" in self.driver.find_element(
+            By.CSS_SELECTOR, "#grouped-paged .drg-pager").text)
+
+        self.cell("grouped-paged", "uk1", 0).click()
+        self.paste("grouped-paged", "77.5", column="uk1")
+        self.waiter.until(lambda _: self.state("grouped-paged")["data"][2][0] == 77.5)
+        self.assertEqual(self.state("grouped-paged")["data"][0][0], 1)
+
+        self.cell("grouped-paged", "uk1", 0).click()
+        self.chord(Keys.CONTROL, Keys.SHIFT, Keys.ARROW_DOWN)
+        self.chord(Keys.CONTROL, "d")
+        self.waiter.until(lambda _: self.state("grouped-paged")["data"][3][0] == 77.5)
+        self.assertEqual(self.state("grouped-paged")["data"][1][0], 4)
+
     def test_ctrl_arrows_select_and_fill_down_with_undo(self):
         self.cell("target", "label", 0).click()
         self.chord(Keys.CONTROL, Keys.ARROW_DOWN)

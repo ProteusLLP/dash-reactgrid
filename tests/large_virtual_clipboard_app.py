@@ -31,6 +31,8 @@ app.layout=html.Div([
                   persisted_props=[]),
     html.Div(id="window-status"),
     html.Pre(id="pending-edit"),
+    html.Button("Toggle streaming",id="stream-toggle"),
+    html.Div(id="stream-state"),
 ])
 
 @app.callback(Output("grid","virtualData"),Output("window-status","children"),
@@ -45,6 +47,14 @@ def capture_pending_edit(batch):
     # Deliberately do not acknowledge the edit. The browser must retain and
     # copy its optimistic value instead of reading stale provider data.
     return json.dumps(batch)
+
+@app.callback(Output("grid","virtualClipboardUrl"),
+              Output("stream-state","children"),
+              Input("stream-toggle","n_clicks"),prevent_initial_call=True)
+def toggle_stream(n_clicks):
+    if n_clicks % 2:
+        return None,"Streaming disabled"
+    return "/clipboard.tsv","Streaming enabled"
 
 @app.server.route("/clipboard.tsv")
 def clipboard_export():

@@ -6,7 +6,7 @@
  * height while ReactGrid builds cells only for the current row interval.
  */
 import { blankRow } from "./model.js";
-import { buildGridRows } from "./gridRows.js";
+import { buildGridRows, headerDepth } from "./gridRows.js";
 
 export const VIRTUAL_SPACER_TOP = "__drg_virtual_spacer_top__";
 export const VIRTUAL_SPACER_BOTTOM = "__drg_virtual_spacer_bottom__";
@@ -103,10 +103,11 @@ export const buildVirtualRows = ({
   const topHeight = maxStart
     ? Math.min(spacerHeight, Math.max(0, range.start / maxStart * spacerHeight))
     : 0;
-  const rows = [built.rows[0]];
+  const headerCount = headerDepth(columns);
+  const rows = built.rows.slice(0, headerCount);
   if (topHeight > 0) rows.push(spacer(VIRTUAL_SPACER_TOP, topHeight));
   for (let i=0;i<rangeSize;i++) {
-    const rendered = built.rows[i+1];
+    const rendered = built.rows[i+headerCount];
     rows.push({
       ...rendered, height: rowHeight,
       cells: loaded ? rendered.cells.map((cell,j) => {

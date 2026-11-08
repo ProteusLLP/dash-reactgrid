@@ -277,6 +277,26 @@ class FeatureMatrixChromeTests(unittest.TestCase):
             By.CSS_SELECTOR, "#review-virtual .rg-virtual-selected"
         )) >= 2)
 
+    def test_server_virtual_shift_arrow_after_click_keeps_full_selection(self):
+        # ReactGrid generates the native range after our keydown handler.
+        # A finished pointer click must no longer collapse that selection.
+        self.cell("review-virtual", "label", 0).click()
+        self.chord(Keys.SHIFT, Keys.ARROW_DOWN)
+        self.chord(Keys.CONTROL, "d")
+
+        def emitted():
+            try:
+                batch=json.loads(self.driver.find_element(
+                    By.ID, "review-virtual-edits").text)
+                return batch.get("edits")==[{
+                    "kind":"fillDown","sourceRow":0,"start":1,"end":2,
+                    "columnIds":["label"],
+                }]
+            except (ValueError,AttributeError):
+                return False
+
+        self.waiter.until(lambda _:emitted())
+
     def test_server_virtual_fill_down_uses_sparse_range_command(self):
         self.cell("review-virtual", "label", 0).click()
         self.chord(Keys.CONTROL, Keys.SHIFT, Keys.ARROW_DOWN)

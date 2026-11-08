@@ -68,6 +68,31 @@ def run():
             assert "Row 12499\t12499" in copied
             assert "Copying selected range" not in driver.find_element(By.ID,"grid").text
 
+            def selection_matches(row_start,row_end,column_start,column_end):
+                try:
+                    value=json.loads(driver.find_element(
+                        By.ID,"selection-state").text)
+                    return value=={
+                        "start":row_start,"end":row_end,
+                        "columnStart":column_start,
+                        "columnEnd":column_end,
+                    }
+                except (ValueError,TypeError):
+                    return False
+
+            # Shift-click rows 0 through 9, then extend by Shift+Down.
+            # The range must stay anchored at row 0, ending after row 10.
+            driver.find_elements(
+                By.CSS_SELECTOR,"#grid .rg-cell.rg-col-label")[0].click()
+            target=driver.find_elements(
+                By.CSS_SELECTOR,"#grid .rg-cell.rg-col-label")[9]
+            ActionChains(driver).key_down(Keys.SHIFT).click(
+                target).key_up(Keys.SHIFT).perform()
+            wait.until(lambda _:selection_matches(0,10,0,1))
+            ActionChains(driver).key_down(Keys.SHIFT).send_keys(
+                Keys.ARROW_DOWN).key_up(Keys.SHIFT).perform()
+            wait.until(lambda _:selection_matches(0,11,0,1))
+
             # Drag across two column headers. Every intermediate range
             # update must retain all logical rows, not just the viewport.
             def header(text):
@@ -78,13 +103,7 @@ def run():
             wait.until(lambda _:header("Amount"))
             label_header.click()
             def selection_is(start,end):
-                try:
-                    value=json.loads(driver.find_element(
-                        By.ID,"selection-state").text)
-                    return value["start"]==0 and value["end"]==25_050 and (
-                        value["columnStart"],value["columnEnd"])==(start,end)
-                except (ValueError,KeyError,TypeError):
-                    return False
+                return selection_matches(0,25_050,start,end)
             wait.until(lambda _:selection_is(0,1))
             # Moving by coordinates keeps the drag stable if a header
             # selection causes ReactGrid to recreate its cell elements.

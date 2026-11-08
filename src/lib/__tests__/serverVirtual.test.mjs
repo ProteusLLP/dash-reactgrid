@@ -156,7 +156,8 @@ test("virtualized header retains tooltip metadata", () => {
   });
   assert.equal(rows[0].cells[0].tooltip, "Full name");
   assert.equal(rows[0].cells[1].tooltip, undefined);
-});\ntest("grouped virtual headers stay above spacers without altering row offsets", () => {
+});
+test("grouped virtual headers stay above spacers without altering row offsets", () => {
   const grouped = cols.map((column,index)=>({
     ...column,headerPath:index<2 ? ["Input","Details"] : ["Output","Flags"],
   }));
@@ -173,4 +174,4 @@ test("virtualized header retains tooltip metadata", () => {
   assert.ok(firstData);
   assert.equal(firstData.cells.length,grouped.length);
   assert.equal(rows.length,range.end-range.start+5);
-});\n
+});

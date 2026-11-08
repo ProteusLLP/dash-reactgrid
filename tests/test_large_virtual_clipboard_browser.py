@@ -85,9 +85,9 @@ def run():
                 None))
             copy_button.click()
             restored=wait.until(lambda _:(value if (value:=clipboard()).endswith(
-                "Row 25049\\t25049") else False))
+                "Row 25049\t25049") else False))
             assert len(restored.splitlines())==25_050
-            assert restored.startswith("Row 0\\t0")
+            assert restored.startswith("Row 0\t0")
 
             print("Chrome virtual clipboard passed: full Ctrl+A Ctrl+C, native cell copy and toolbar copy preserve distinct selections")
         finally:

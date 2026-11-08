@@ -107,6 +107,76 @@ class DataFrameTests(unittest.TestCase):
         ).to_plotly_json()["props"]
         self.assertEqual(payload["data"], [[5, 1.25], [6, 2.5]])
 
+    def test_numpy_datetime64_and_missing_temporal_scalars(self):
+        try:
+            import numpy as np
+        except ImportError:
+            self.skipTest("NumPy is optional")
+
+        class TemporalFrame:
+            columns = ["when", "elapsed"]
+            dtypes = ["datetime64[ns]", "object"]
+
+            def itertuples(self, index=False, name=None):
+                yield (np.datetime64("2026-11-08T13:45:00", "ns"),
+                       np.timedelta64("NaT", "ns"))
+                yield (np.datetime64("NaT", "ns"),
+                       np.timedelta64(4, "D"))
+
+        result = DashReactGrid.from_dataframe(
+            TemporalFrame()
+        ).to_plotly_json()["props"]
+        self.assertEqual(result["columns"][0]["type"], "date")
+        self.assertTrue(result["data"][0][0].startswith("2026-11-08T13:45:00"))
+        self.assertIsNone(result["data"][0][1])
+        self.assertIsNone(result["data"][1][0])
+        self.assertEqual(result["data"][1][1], "4 days")
+        json.dumps(result)
+
+    def test_index_name_colliding_with_existing_column(self):
+        try:
+            import pandas as pd
+        except ImportError:
+            self.skipTest("pandas is optional")
+        frame = pd.DataFrame({
+            "key": [10, 20], "value": [1.25, 2.5],
+        }).set_index("key", drop=False)
+        result = DashReactGrid.from_dataframe(
+            frame, include_index=True
+        ).to_plotly_json()["props"]
+        self.assertEqual([c["title"] for c in result["columns"]],
+                         ["key", "key", "value"])
+        self.assertEqual([c["columnId"] for c in result["columns"]],
+                         ["key", "key__2", "value"])
+        self.assertEqual(result["data"], [[10, 10, 1.25], [20, 20, 2.5]])
+        json.dumps(result)
+
+        class ResetIndexWithoutKeyword(TinyFrame):
+            def reset_index(self):
+                return self
+
+        fallback = DashReactGrid.from_dataframe(
+            ResetIndexWithoutKeyword(), include_index=True
+        ).to_plotly_json()["props"]
+        self.assertEqual(fallback["data"][0][0], "A")
+
+    def test_numpy_only_frame_rejects_lossy_promoted_integers(self):
+        try:
+            import numpy as np
+        except ImportError:
+            self.skipTest("NumPy is optional")
+
+        class OnlyNumpyFrame:
+            columns = ["integer", "fraction"]
+            dtypes = ["Int64", "Float64"]
+
+            def to_numpy(self, **kwargs):
+                return np.array([[9007199254740992.0, 0.5]],
+                                dtype=np.float64)
+
+        with self.assertRaisesRegex(ValueError, "scalar-preserving"):
+            DashReactGrid.from_dataframe(OnlyNumpyFrame())
+
     def test_rejects_invalid_inputs_and_duplicate_data_arguments(self):
         with self.assertRaisesRegex(TypeError, "columns"):
             DashReactGrid.from_dataframe(object())

@@ -80,7 +80,16 @@ def run():
                 return e?.tagName==='INPUT' && !e.classList.contains('rg-hidden-element');
             """))
             chord(Keys.SHIFT,Keys.ENTER)
-            wait.until(lambda _:state().get("last",[])[0]=="X")
+            try:
+                WebDriverWait(driver,45).until(
+                    lambda _:state().get("last",[])[0]=="X")
+            except Exception:
+                print("Large Shift+Enter failed, summary:",state())
+                print("Grid alerts:",[x.text for x in driver.find_elements(
+                    By.CSS_SELECTOR,"#large-grid [role=alert]")])
+                print("Focused element:",driver.execute_script(
+                    "return [document.activeElement?.tagName,document.activeElement?.className]"))
+                raise
             assert state()["middle"][0]=="X"
             chord(Keys.CONTROL,"z")
             wait.until(lambda _:state().get("last",[])[0]=="Row 22049")

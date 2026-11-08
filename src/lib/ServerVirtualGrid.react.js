@@ -428,8 +428,9 @@ export const ServerVirtualGrid = (props) => {
     }
   }, [virtualRangeData]);
 
-  const streamSelectionToClipboard = () => {
-    const selected=globalRef.current || globalSelection;
+  // Toolbar actions use the selection displayed in the toolbar. Keyboard
+  // copy uses the native/focused range, which may differ after a cell click.
+  const streamSelectionToClipboard = (selected) => {
     if (!selected) return;
     if (reliable.pending > 0) {
       setCopyError("Save pending edits before copying a server range");
@@ -461,7 +462,7 @@ export const ServerVirtualGrid = (props) => {
 
   const copySelection = () => {
     if (props.virtualClipboardUrl) {
-      streamSelectionToClipboard();
+      streamSelectionToClipboard(globalSelection);
       return;
     }
     if (globalSelection &&
@@ -520,10 +521,8 @@ export const ServerVirtualGrid = (props) => {
   const submitRepeated = (sel, values, start = sel.start, end = sel.end) => {
     if (end <= start) return;
     const target=columns.slice(sel.columnStart,sel.columnEnd);
-    if (target.some((col)=>col.nonEditable)) {
-      setCommandError("Cannot change a selection containing non-editable columns");
-      return;
-    }
+    // The backend skips protected destinations per cell; another selected
+    // column must remain editable even if its neighbour is protected.
     if (values.length !== target.length) return;
     submitOperation([{kind:"fillRange",start,end,
       columnIds:target.map(c=>c.columnId),values}]);
@@ -537,10 +536,7 @@ export const ServerVirtualGrid = (props) => {
     const sourceRow=multiple ? sel.start : sel.start-1;
     if (sourceRow<0) return;
     const target=columns.slice(sel.columnStart,sel.columnEnd);
-    if (target.some((col)=>col.nonEditable)) {
-      setCommandError("Cannot change a selection containing non-editable columns");
-      return;
-    }
+    // The backend resolves and checks each destination independently.
     const start=multiple ? sel.start+1 : sel.start;
     if (start>=sel.end) return;
     // Resolve the source on the server, even if it is outside the viewport.
@@ -708,7 +704,7 @@ export const ServerVirtualGrid = (props) => {
     if (props.virtualClipboardUrl && (globalRef.current || globalSelection)) {
       e.preventDefault();
       e.stopPropagation();
-      streamSelectionToClipboard();
+      streamSelectionToClipboard(globalRef.current || globalSelection);
       return;
     }
     // Native single-cell selection is copyable without any Dash request.
@@ -795,7 +791,7 @@ export const ServerVirtualGrid = (props) => {
         props.virtualClipboardUrl) {
       if (globalRef.current || globalSelection) {
         e.preventDefault(); e.stopPropagation();
-        streamSelectionToClipboard();
+        streamSelectionToClipboard(globalRef.current || globalSelection);
       }
       return;
     }

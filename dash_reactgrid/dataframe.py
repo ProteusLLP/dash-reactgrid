@@ -30,9 +30,16 @@ def _cell_type(dtype):
 def _normalise(value):
     if value is None or type(value).__name__ in {"NAType", "NaTType"}:
         return None
-    # Convert NumPy scalar values before testing primitive Python types.
+    # np.datetime64[ns].item() can produce an integer of nanoseconds, not a
+    # datetime. Keep its canonical ISO representation before scalar unboxing.
+    if (type(value).__module__.startswith("numpy") and
+            type(value).__name__ in {"datetime64", "timedelta64"}):
+        text = str(value)
+        return None if text == "NaT" else text
     if hasattr(value, "item") and type(value).__module__.startswith("numpy"):
         value = value.item()
+        if value is None:
+            return None
     if isinstance(value, (datetime, date, time)):
         return value.isoformat()
     if isinstance(value, float) and not isfinite(value):
@@ -92,7 +99,15 @@ def from_dataframe(cls, dataframe, *, include_index=False,
     if include_index:
         if not callable(getattr(dataframe, "reset_index", None)):
             raise TypeError("include_index requires a DataFrame with reset_index()")
-        dataframe = dataframe.reset_index()
+        reset_index = dataframe.reset_index
+        try:
+            # Pandas supports this option and generates duplicate labels
+            # when the index name already exists in the data columns. Our
+            # column-ID logic below makes these duplicates edit-safe.
+            dataframe = reset_index(allow_duplicates=True)
+        except TypeError:
+            # Other DataFrame-like implementations may not accept the option.
+            dataframe = reset_index()
 
     try:
         labels = list(dataframe.columns)
@@ -158,7 +173,19 @@ def from_dataframe(cls, dataframe, *, include_index=False,
         elif callable(getattr(dataframe, "iter_rows", None)):
             iterator = dataframe.iter_rows()
         elif callable(getattr(dataframe, "to_numpy", None)):
-            iterator = dataframe.to_numpy().tolist()
+            try:
+                candidate = dataframe.to_numpy()
+            except ImportError as exc:
+                raise TypeError(
+                    "A row iterator is required when NumPy is unavailable"
+                ) from exc
+            if (_has_integer_source(dtypes) and
+                    getattr(getattr(candidate, "dtype", None), "kind", None) == "f"):
+                raise ValueError(
+                    "A scalar-preserving row iterator (itertuples or iter_rows) "
+                    "is required when integer columns are promoted to floats"
+                )
+            iterator = candidate.tolist()
         else:
             raise TypeError("Expected a DataFrame-like object with iterable rows")
         data = []

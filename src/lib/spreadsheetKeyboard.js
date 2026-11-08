@@ -33,7 +33,8 @@ export const keyboardArea = (selection) =>
     (selection.columnEnd-selection.columnStart) : 0;
 
 /** Convert ReactGrid's header-inclusive, page-local selection to data indices. */
-export const nativeRectangle = (ranges, pageStart, rowCount, columnCount, fallback = null) => {
+export const nativeRectangle = (ranges, pageStart, rowCount, columnCount,
+  fallback = null, headerCount = 1) => {
   const selected=ranges?.[0];
   if (!selected?.first || !selected?.last) {
     if (!fallback) return null;
@@ -43,8 +44,8 @@ export const nativeRectangle = (ranges, pageStart, rowCount, columnCount, fallba
   const lastRow=Math.max(selected.first.row.idx,selected.last.row.idx);
   const c0=Math.min(selected.first.column.idx,selected.last.column.idx);
   const c1=Math.max(selected.first.column.idx,selected.last.column.idx);
-  const start=Math.max(0,pageStart+firstRow-1);
-  const end=Math.min(rowCount,pageStart+lastRow);
+  const start=Math.max(pageStart,pageStart+firstRow-headerCount);
+  const end=Math.min(rowCount,pageStart+lastRow-headerCount+1);
   if (end <= start || c0 < 0 || c1 >= columnCount) return null;
   return {start,end,columnStart:c0,columnEnd:c1+1};
 };
@@ -52,15 +53,16 @@ export const nativeRectangle = (ranges, pageStart, rowCount, columnCount, fallba
 /** Compact public range descriptor compatible with first/last Range consumers.
  * Avoid enumerating every row when a keyboard selection spans 100k rows.
  */
-export const publicKeyboardRange = (rect, rowIds, columns) => {
-  const first={row:{idx:rect.start+1,rowId:rowIds[rect.start]},
+export const publicKeyboardRange = (rect, rowIds, columns,
+  headerCount = 1, pageStart = 0) => {
+  const first={row:{idx:rect.start-pageStart+headerCount,rowId:rowIds[rect.start]},
     column:{idx:rect.columnStart,columnId:columns[rect.columnStart].columnId}};
-  const last={row:{idx:rect.end,rowId:rowIds[rect.end-1]},
+  const last={row:{idx:rect.end-1-pageStart+headerCount,rowId:rowIds[rect.end-1]},
     column:{idx:rect.columnEnd-1,columnId:columns[rect.columnEnd-1].columnId}};
   const n=rect.end-rect.start;
   return {first,last,
     rows:n<=1000 ? Array.from({length:n},(_,i)=>({
-      idx:rect.start+1+i,rowId:rowIds[rect.start+i],
+      idx:rect.start-pageStart+headerCount+i,rowId:rowIds[rect.start+i],
     })) : [],
     columns:columns.slice(rect.columnStart,rect.columnEnd).map((column,i)=>({
       idx:rect.columnStart+i,columnId:column.columnId,

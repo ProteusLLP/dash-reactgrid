@@ -184,3 +184,18 @@ test("plain columns keep one header row and grouped peers require same ancestry"
   assert.equal(grouped[1].cells[0].colspan,undefined);
   assert.equal(grouped[1].cells[1].text,"Same");
 });
+
+
+test("generated group IDs cannot collide with loaded backend row IDs",()=>{
+  const grouped = [
+    {columnId:"a",title:"A",type:"text",headerPath:["Group"]},
+  ];
+  const result=buildGridRows({
+    columns:grouped,descriptors:compileGridColumns(grouped,grouped,"en-GB"),
+    allColumns:grouped,data:[["value"]],rowIds:["header-group-0"],
+    readOnly:false,locked:new Set(),showGhost:false,
+  });
+  assert.notEqual(result.rows[0].rowId,"header-group-0");
+  assert.equal(result.rows[2].rowId,"header-group-0");
+  assert.equal(new Set(result.rows.map(row=>row.rowId)).size,result.rows.length);
+});

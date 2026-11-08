@@ -267,12 +267,14 @@ export const removeRows = (table, removing) => {
 };
 
 /** The distinct row ids a set of selected ranges covers, ghost row aside. */
-export const rowsInRanges = (ranges) => {
+export const rowsInRanges = (ranges, validRowIds = null) => {
   const ids = [];
   const seen = new Set();
   (ranges || []).forEach((range) =>
     (range.rows || []).forEach((row) => {
-      if (row.rowId !== "header" && row.rowId !== GHOST_ROW_ID && !seen.has(row.rowId)) {
+      if ((validRowIds ? validRowIds.has(row.rowId) :
+        row.rowId !== "header" && row.rowId !== GHOST_ROW_ID) &&
+        !seen.has(row.rowId)) {
         seen.add(row.rowId);
         ids.push(row.rowId);
       }

@@ -18,7 +18,7 @@ enableRowSelection=NULL, hiddenColumns=NULL,
 highlights=NULL, isExtendable=NULL, lockedCells=NULL,
 newRow=NULL, persisted_props=NULL, persistence=NULL,
 persistence_type=NULL, readOnly=NULL, rowIds=NULL,
-rowPageSize=NULL, virtualRowCount=NULL, virtualDatasetId=NULL, virtualRowHeight=NULL, virtualWindowSize=NULL, virtualViewportHeight=NULL, virtualRequest=NULL, virtualData=NULL, virtualRangeRequest=NULL, virtualRangeData=NULL, virtualSelection=NULL, virtualExportUrl=NULL, selectedCell=NULL, transmitSparseEdits=NULL, selectedRange=NULL, selectedRowIds=NULL,
+rowPageSize=NULL, virtualRowCount=NULL, virtualDatasetId=NULL, virtualRowHeight=NULL, virtualWindowSize=NULL, virtualViewportHeight=NULL, virtualRequest=NULL, virtualData=NULL, virtualRangeRequest=NULL, virtualRangeData=NULL, virtualSelection=NULL, virtualExportUrl=NULL, virtualClipboardUrl=NULL, selectedCell=NULL, transmitSparseEdits=NULL, selectedRange=NULL, selectedRowIds=NULL,
 stickyBottomRows=NULL, stickyLeftColumns=NULL,
 stickyRightColumns=NULL, stickyTopRows=NULL, style=NULL,
 styleHeader=NULL)
@@ -107,6 +107,8 @@ an object by column id. Blank if omitted.}
 \item{virtualSelection}{Compact absolute selection with half-open row/column indices, including unloaded rows.}
 
 \item{virtualExportUrl}{Optional app-provided authenticated URL for streaming selected rows as CSV.}
+
+\item{virtualClipboardUrl}{Authenticated same-origin endpoint for streaming selected rows as TSV directly to the system clipboard.}
 
 \item{virtualData}{Server response {datasetId, requestId, start, rowIds, data} containing exactly the requested rows, or a matching {error}.}
 

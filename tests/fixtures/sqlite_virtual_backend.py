@@ -188,6 +188,78 @@ class VirtualGridStore(SparseGridStore):
         db.executemany("UPDATE grid_rows SET values_json=? WHERE dataset_id=? AND row_id=?",updates)
         return {"kind":"setRows","rowIds":ids,"columnIds":cols,"rows":before}
 
+
+    def _fill_bulk(self, db, op, internal=False):
+        """Apply a compact, absolute-index fill in one transaction.
+
+        Target rows are processed in bounded windows, and the inverse is
+        recorded by stable row ID so undo remains valid after row insertion.
+        A protected destination is skipped without affecting other rows.
+        """
+        kind=op["kind"]
+        start,end=op.get("start"),op.get("end")
+        cols=op.get("columnIds")
+        if (not all(isinstance(n,int) and not isinstance(n,bool) for n in (start,end))
+                or not 0<=start<end<=self._count(db)):
+            raise ValueError("Invalid fill interval")
+        if (not isinstance(cols,list) or not cols or len(cols)!=len(set(cols))
+                or any(c not in self.columns for c in cols)):
+            raise ValueError("Invalid fill columns")
+        if not internal and self.read_only:
+            raise ValueError("The dataset is read-only")
+        if not internal and any(self.column_definitions.get(c,{}).get("nonEditable") for c in cols):
+            raise ValueError("Cannot fill a non-editable column")
+        indexes=[self.columns.index(c) for c in cols]
+        if kind=="fillRange":
+            values=op.get("values")
+            if not isinstance(values,list) or len(values)!=len(cols):
+                raise ValueError("Invalid fill values")
+        else:
+            source=op.get("sourceRow")
+            if not isinstance(source,int) or isinstance(source,bool) or not 0<=source<start:
+                raise ValueError("Invalid fill source row")
+            source_entries=self._ordered(db,source,source+1)
+            if len(source_entries)!=1:
+                raise ValueError("Fill source row is missing")
+            row=json.loads(source_entries[0][2])
+            values=[row[i] for i in indexes]
+
+        inverses=[]
+        for offset in range(start,end,250):
+            stop=min(offset+250,end)
+            entries=self._ordered(db,offset,stop)
+            if len(entries)!=stop-offset:
+                raise ValueError("Fill extends beyond the current dataset")
+            previous=[]
+            row_ids=[]
+            updates=[]
+            for rid,_,raw in entries:
+                data=json.loads(raw)
+                if not internal:
+                    try:
+                        self._assert_can_edit(json.loads(rid),cols,data)
+                    except ValueError as error:
+                        if (str(error).startswith("A selected cell is locked")
+                                or str(error).startswith("Cell edit rules reject")):
+                            continue
+                        raise
+                before=[data[i] for i in indexes]
+                if before==values:
+                    continue
+                row_ids.append(json.loads(rid))
+                previous.append(before)
+                for i,value in zip(indexes,values):
+                    data[i]=value
+                updates.append((canonical(data),self.dataset_id,rid))
+            if updates:
+                db.executemany(
+                    "UPDATE grid_rows SET values_json=? WHERE dataset_id=? AND row_id=?",
+                    updates,
+                )
+                inverses.insert(0,{"kind":"setRows","rowIds":row_ids,
+                                   "columnIds":cols,"rows":previous})
+        return {"kind":"sequence","edits":inverses}
+
     def _operation(self, db, op, stream, current_seq, internal=False):
         if not isinstance(op,dict):raise ValueError("Edit must be an object")
         kind=op.get("kind")
@@ -204,6 +276,8 @@ class VirtualGridStore(SparseGridStore):
             entries=self._ordered(db,start,end)
             if len(entries)!=end-start:raise ValueError("Deletion is outside the dataset")
             return self._remove(db,[json.loads(row[0]) for row in entries])
+        if kind in ("fillRange","fillDown"):
+            return self._fill_bulk(db,op,internal=internal)
         if kind=="paste":
             return self._paste(db,op,internal=internal)
         if kind=="setRows":
@@ -233,7 +307,7 @@ class VirtualGridStore(SparseGridStore):
         if kind=="sequence":
             actions=[]
             for child in op["edits"]:
-                actions.insert(0,self._operation(db,child,stream,current_seq))
+                actions.insert(0,self._operation(db,child,stream,current_seq,internal=internal))
             return {"kind":"sequence","edits":actions}
         raise ValueError("Unsupported edit kind: "+str(kind))
 

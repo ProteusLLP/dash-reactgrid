@@ -74,6 +74,24 @@ export const makeRangePaste = (text, selection, columns, totalRows, convert) => 
     rows:parsed.map(row=>row.map((value,i)=>convert(target[i],value)))};
 };
 
+/** Keep non-editable columns out of virtual fill commands. Values remain
+ * aligned with the selected column IDs, even when a middle column is skipped.
+ * Per-row locked and conditional cells are checked by the authoritative host.
+ */
+export const editableFillColumns = (selectedColumns, values = null) => {
+  if (values !== null && (!Array.isArray(values) ||
+      values.length !== selectedColumns.length))
+    throw new RangeError("Fill values must match selected columns");
+  const columnIds=[];
+  const filtered=[];
+  selectedColumns.forEach((column,index) => {
+    if (column.nonEditable) return;
+    columnIds.push(column.columnId);
+    if (values !== null) filtered.push(values[index]);
+  });
+  return values === null ? {columnIds} : {columnIds, values:filtered};
+};
+
 export const selectedColumnIds = (selection, visibleColumns) =>
   visibleColumns.slice(selection.columnStart, selection.columnEnd)
     .map((column) => column.columnId);

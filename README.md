@@ -1,5 +1,65 @@
 # Dash ReactGrid
 
+## Multi-level column headers
+
+Add `header_path` to a Python `Column` (or `headerPath` to a plain
+column dictionary) to render parent groups above the ordinary leaf header.
+Parent labels run from outermost to innermost; arbitrary nesting is supported.
+Only adjacent columns with an identical ancestor path are visually merged.
+Hidden columns are excluded from the visible spans. Data positions, IDs, edits
+and clipboard values still refer only to leaf columns.
+
+```python
+from dash_reactgrid import Column, DashReactGrid
+
+columns = [
+    Column("gbp_1y", "1y", type="number", header_path=["Rates", "GBP"]),
+    Column("gbp_5y", "5y", type="number", header_path=["Rates", "GBP"]),
+    Column("usd_1y", "1y", type="number", header_path=["Rates", "USD"]),
+]
+grid = DashReactGrid(columns=columns, data=[[0.04, 0.045, 0.039]],
+                     stickyTopRows=1)
+```
+
+The grouped header rows also work in the server-backed virtual grid. When
+`stickyTopRows` includes the leaf header, its parent bands are kept sticky
+as well. ReactGrid's cell spanning is a visual facility with known limitations
+around mouse selection and focus on merged cells; use the leaf header or data
+cells for normal spreadsheet interactions.
+
+## Create a grid from a DataFrame
+
+`DashReactGrid.from_dataframe` accepts pandas DataFrames, Polars DataFrames,
+and simple DataFrame-like objects providing `columns`, `dtypes` and a row
+iterator (`itertuples` or `iter_rows`). Neither pandas nor Polars is a
+required library dependency. Cell types are inferred (number, checkbox, date,
+or text), null values are converted to blanks, and duplicate column labels
+receive unique internal IDs. A pandas MultiIndex automatically creates grouped
+headers. Numeric homogeneous frames use the existing compact NumPy transport.
+
+```python
+import pandas as pd
+from dash_reactgrid import DashReactGrid
+
+df = pd.DataFrame({
+    ("UK", "1y"): [0.04, 0.041],
+    ("UK", "5y"): [0.045, 0.046],
+    ("US", "1y"): [0.039, 0.04],
+})
+grid = DashReactGrid.from_dataframe(
+    df, id="rates", rowPageSize=250, stickyTopRows=1,
+    column_types={("UK", "1y"): "percent"},
+    column_options={("UK", "1y"): {"width": 130, "tooltip": "UK 1 year"}},
+)
+```
+
+Pass `include_index=True` to expose a pandas index as one or more columns.
+`column_types` and `column_options` may be indexed by original labels
+(including tuples) or zero-based column positions. All other keyword arguments
+pass through to `DashReactGrid`. The constructor materialises mixed-type
+frames; for very large datasets use the stateless virtual-grid API instead
+of sending a full DataFrame to Dash.
+
 ## Python column definitions and header tooltips
 
 Use `Column` to create JSON-compatible column definitions with Python-style

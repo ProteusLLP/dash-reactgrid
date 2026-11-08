@@ -132,21 +132,71 @@ export const buildGridRows = ({
     cache.set(rowId, { row, values, dropdownColumn });
     return row;
   };
-  const header = {
+  const rows = [...buildHeaderRows(columns, styleHeader),
+    ...data.map((values, index) => createRow(rowIds[index], values))];
+  if (showGhost) {
+    rows.push(createRow(GHOST_ROW_ID, blankRow(allColumns, null), blankRow(allColumns, newRow)));
+  }
+  return { rows, cache };
+};
+
+
+/**
+ * Parent labels precede the leaf title in column.headerPath. Group rows are
+ * visual headers only: ordinary cells keep their IDs, indices and edit model.
+ * A run is merged only when the *entire* prefix matches, not just the label.
+ */
+export const headerDepth = (columns) => Math.max(1, ...columns.map((column) =>
+  Array.isArray(column.headerPath) ? column.headerPath.length + 1 : 1));
+
+export const buildHeaderRows = (columns, styleHeader) => {
+  const depth = headerDepth(columns);
+  const path = (column) => Array.isArray(column.headerPath) ? column.headerPath : [];
+  const styleOf = (column) =>
+    ({ ...styleHeader, ...column.headerStyle, ...alignStyle(column.align) });
+  const headers = [];
+  for (let level = 0; level < depth - 1; level++) {
+    const cells = [];
+    for (let i = 0; i < columns.length;) {
+      const parent = path(columns[i]);
+      const hasLabel = level < parent.length;
+      const prefix = hasLabel ? JSON.stringify(parent.slice(0, level + 1)) : null;
+      let span = 1;
+      if (hasLabel) {
+        while (i + span < columns.length &&
+          path(columns[i + span]).length > level &&
+          JSON.stringify(path(columns[i + span]).slice(0, level + 1)) === prefix) {
+          span++;
+        }
+      }
+      cells.push({
+        type: "header", text: hasLabel ? String(parent[level]) : "",
+        ...(span > 1 ? { colspan: span } : {}),
+        style: styleOf(columns[i]),
+        className: "rg-group-header",
+      });
+      for (let j = 1; j < span; j++) {
+        cells.push({
+          type: "header", text: "", style: styleOf(columns[i + j]),
+          className: "rg-group-header-covered",
+        });
+      }
+      i += span;
+    }
+    headers.push({ rowId: `header-group-${level}`, cells,
+      height: styleHeader?.height });
+  }
+  headers.push({
     rowId: "header",
     cells: columns.map((column) => ({
       type: "header",
       text: column.title,
       ...(typeof column.tooltip === "string" && column.tooltip ? { tooltip: column.tooltip } : {}),
-      style: { ...styleHeader, ...column.headerStyle, ...alignStyle(column.align) },
+      style: styleOf(column),
     })),
     height: styleHeader?.height,
-  };
-  const rows = [header, ...data.map((values, index) => createRow(rowIds[index], values))];
-  if (showGhost) {
-    rows.push(createRow(GHOST_ROW_ID, blankRow(allColumns, null), blankRow(allColumns, newRow)));
-  }
-  return { rows, cache };
+  });
+  return headers;
 };
 
 /** Page boundaries, independent of the size of the source data. */

@@ -666,17 +666,20 @@ export const ServerVirtualGrid = (props) => {
       // entirely in refs; use toolbar/Shift-click for global range state.
       const ids=rowsInRanges(ranges).filter(isDataId);
       setProps({selectedRange:ranges,selectedRowIds:ids});
-      if (columnHeaderPointer.current && ranges.length && virtualRowCount) {
-        columnHeaderPointer.current=false;
-        const selected=ranges[0];
-        const first=Math.min(selected.first.column.idx,selected.last.column.idx);
-        const last=Math.max(selected.first.column.idx,selected.last.column.idx)+1;
-        const whole=boundedSelection(0,virtualRowCount,first,last,
-          virtualRowCount,columns.length);
-        if (whole) selectGlobal(whole);
+      if (columnHeaderPointer.current) {
+        // Header drags emit multiple selectionChanged events, including
+        // another after pointer release. Keep interpreting them as whole
+        // logical-column selections until the next user interaction.
+        if (ranges.length && virtualRowCount) {
+          const selected=ranges[0];
+          const first=Math.min(selected.first.column.idx,selected.last.column.idx);
+          const last=Math.max(selected.first.column.idx,selected.last.column.idx)+1;
+          const whole=boundedSelection(0,virtualRowCount,first,last,
+            virtualRowCount,columns.length);
+          if (whole) selectGlobal(whole);
+        }
         return;
       }
-      columnHeaderPointer.current=false;
       // After a plain click ReactGrid may retain a multi-column native
       // selection from an earlier keyboard range. Use the focused cell for
       // click-only gestures, but preserve native selections for real drags.
@@ -716,7 +719,9 @@ export const ServerVirtualGrid = (props) => {
       }],
     focusChanged: (location) => {
       focused.current=location;
-      if (!isDataId(location.rowId)) return;
+      // A header drag is a column selection even if ReactGrid briefly
+      // reports focus on a loaded data cell during the gesture.
+      if (columnHeaderPointer.current || !isDataId(location.rowId)) return;
       setProps({selectedCell:location});
       const place=selectionAt(location.rowId,location.columnId);
       if (!place) return;
@@ -852,6 +857,8 @@ export const ServerVirtualGrid = (props) => {
     // otherwise Shift+Arrow can be mistaken for the earlier single click.
     if (pointerGesture.current && !pointerGesture.current.pressed)
       pointerGesture.current=null;
+    // A new keyboard interaction ends the previous header-drag gesture.
+    columnHeaderPointer.current=false;
     if (isCellEditorTarget(e.target)) {
       if (e.key==="Enter" && e.shiftKey && !e.ctrlKey && !e.metaKey &&
           !e.altKey) multiCommit.current=true;

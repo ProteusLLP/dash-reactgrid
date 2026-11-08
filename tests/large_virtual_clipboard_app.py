@@ -27,8 +27,10 @@ app.layout=html.Div([
                   virtualDatasetId=DATASET,virtualWindowSize=100,
                   virtualViewportHeight=420,
                   virtualClipboardUrl="/clipboard.tsv",
+                  transmitSparseEdits=True, editDatasetId=DATASET,
                   persisted_props=[]),
     html.Div(id="window-status"),
+    html.Pre(id="pending-edit"),
 ])
 
 @app.callback(Output("grid","virtualData"),Output("window-status","children"),
@@ -36,6 +38,13 @@ app.layout=html.Div([
 def fetch_window(req):
     return window_response(req,dataset_id=DATASET,row_count=COUNT,
                            columns=COLUMNS,fetch_rows=read_rows), "Window loaded"
+
+@app.callback(Output("pending-edit", "children"),
+              Input("grid", "edits"), prevent_initial_call=True)
+def capture_pending_edit(batch):
+    # Deliberately do not acknowledge the edit. The browser must retain and
+    # copy its optimistic value instead of reading stale provider data.
+    return json.dumps(batch)
 
 @app.server.route("/clipboard.tsv")
 def clipboard_export():

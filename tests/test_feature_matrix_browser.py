@@ -287,16 +287,15 @@ class FeatureMatrixChromeTests(unittest.TestCase):
                 batch = json.loads(self.driver.find_element(
                     By.ID, "review-virtual-edits").text)
                 return batch.get("edits") == [{
-                    "kind": "paste", "start": 1,
+                    "kind": "fillDown", "sourceRow": 0, "start": 1, "end": 2,
                     "columnIds": ["label"],
-                    "rows": [["Existing"]],
                 }]
             except (ValueError, AttributeError):
                 return False
 
         self.waiter.until(lambda _: emitted())
 
-    def test_server_virtual_shift_enter_submits_multi_cell_paste(self):
+    def test_server_virtual_shift_enter_submits_multi_cell_fill(self):
         self.cell("review-virtual", "label", 0).click()
         self.chord(Keys.CONTROL, Keys.SHIFT, Keys.ARROW_DOWN)
         self.type_in_focused("Shared")
@@ -307,9 +306,8 @@ class FeatureMatrixChromeTests(unittest.TestCase):
                 batch = json.loads(self.driver.find_element(
                     By.ID, "review-virtual-edits").text)
                 return batch.get("edits") == [{
-                    "kind": "paste", "start": 0,
-                    "columnIds": ["label"],
-                    "rows": [["Shared"], ["Shared"]],
+                    "kind": "fillRange", "start": 0, "end": 2,
+                    "columnIds": ["label"], "values": ["Shared"],
                 }]
             except (ValueError, AttributeError):
                 return False

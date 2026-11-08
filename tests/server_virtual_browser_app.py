@@ -35,10 +35,7 @@ def fetch_window(request):
     def rows_for(start, end):
         # Pure, stateless example provider: the index is authoritative.
         # This generates only the requested bounded window.
-        return {
-            "rowIds": [f"r{i}" for i in range(start, end)],
-            "data": [[f"Row {i}", float(i)] for i in range(start, end)],
-        }
+        return {"data": [[f"Row {i}", float(i)] for i in range(start, end)]}
 
     response = window_response(
         request, dataset_id="synthetic-100k-v1",

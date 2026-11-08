@@ -83,6 +83,24 @@ test("server row response is accepted only when it exactly matches the request",
   assert.equal(validViewportResponse({...response,rowIds:[{},null]},request,cols),false);
 });
 
+test("server windows without rowIds derive only bounded absolute numeric IDs",()=>{
+  const request={datasetId:"dataset",requestId:14,start:50000,end:50002};
+  const data=[["valid",1,true],["valid",2,false]];
+  const response={...request,data};
+  assert.equal(validViewportResponse(response,request,cols),true);
+  const key=viewportKey("dataset",50000,50002);
+  const cache=addViewportCache(new Map(),key,response);
+  assert.deepEqual(cache.get(key).rowIds,[50000,50001]);
+  const built=buildVirtualRows({
+    columns:cols,descriptors,allColumns:cols,rowCount:100000,
+    range:{start:50000,end:50002},page:cache.get(key),rowHeight:25,
+    readOnly:false,locked:new Set(),
+  });
+  assert.equal(built.find(row=>row.rowId===50000).cells[0].text,"valid");
+  assert.equal(validViewportResponse({...response,rowIds:null},request,cols),false);
+  assert.equal(validViewportResponse({...response,rowIds:[0]},request,cols),false);
+});
+
 test("numeric row IDs must be JavaScript-safe integers",()=>{
   const request={datasetId:"dataset",requestId:4,start:0,end:2};
   const data=[["valid",1,true],["valid",2,false]];

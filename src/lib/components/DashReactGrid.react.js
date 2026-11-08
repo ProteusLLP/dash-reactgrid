@@ -71,7 +71,9 @@ const ReactGridDataHandler = (props) => {
   })
   const { table, tableRef } = sync
   const editingBlocked = readOnly || Boolean(sync.error)
-  const extendable = isExtendable && !editingBlocked
+  // Durable replay of structural changes needs stable row IDs. In ordinary
+  // in-memory mode, positional IDs still support extendable sheets.
+  const extendable = isExtendable && !editingBlocked && (!transmitSparseEdits || tracked)
   const columnIds = columns.map((column) => column.columnId)
   const displayedColumnIndex = useMemo(
     () => new Map(columnIds.map((id, idx) => [id, idx])), [columns],

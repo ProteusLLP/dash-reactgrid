@@ -53,12 +53,14 @@ export const validViewportResponse = (response, request, columns) => {
       response.datasetId !== request.datasetId ||
       response.requestId !== request.requestId ||
       response.start !== request.start ||
-      !Array.isArray(response.data) || !Array.isArray(response.rowIds) ||
+      !Array.isArray(response.data) ||
       response.data.length !== request.end - request.start ||
-      response.rowIds.length !== response.data.length ||
-      response.rowIds.some((id) => typeof id !== "string" &&
-        !(typeof id === "number" && Number.isSafeInteger(id))) ||
-      new Set(response.rowIds).size !== response.rowIds.length ||
+      (response.rowIds !== undefined && (
+        !Array.isArray(response.rowIds) ||
+        response.rowIds.length !== response.data.length ||
+        response.rowIds.some((id) => typeof id !== "string" &&
+          !(typeof id === "number" && Number.isSafeInteger(id))) ||
+        new Set(response.rowIds).size !== response.rowIds.length)) ||
       response.data.some((row) => !Array.isArray(row) || row.length !== columns.length))
     return false;
   return true;
@@ -67,7 +69,12 @@ export const validViewportResponse = (response, request, columns) => {
 export const addViewportCache = (cache, key, response, limit = 4) => {
   const next = new Map(cache);
   next.delete(key);
-  next.set(key, { data: response.data, rowIds: response.rowIds, start: response.start });
+  // Materialize positional IDs for this bounded viewport only, never for
+  // all virtualRowCount rows or in the server-to-browser response.
+  const ids = response.rowIds === undefined
+    ? Array.from({length: response.data.length}, (_, i) => response.start + i)
+    : response.rowIds;
+  next.set(key, { data: response.data, rowIds: ids, start: response.start });
   while (next.size > limit) next.delete(next.keys().next().value);
   return next;
 };

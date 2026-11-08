@@ -59,6 +59,58 @@ class Operations(unittest.TestCase):
         self.assertEqual(self.store.read_range(5,9)["data"],
                          [["edited4",44],["edited5",55],["edited6",66],["edited7",77]])
 
+    def test_whole_column_fill_and_offscreen_copy_down_can_be_undone(self):
+        # Larger than the old 1,000-row/20,000-cell expanded paste limit.
+        path=Path(self.tmp.name)/"large-fill.sqlite3"
+        store=VirtualGridStore(path,"large",["name","value"])
+        store.seed_once([[f"Row {i}",i] for i in range(1500)],
+                        [f"r{i}" for i in range(1500)])
+        def apply(seq,operation):
+            return store.apply({"datasetId":"large","streamId":"session",
+                                "seq":seq,"edits":[operation]})
+        filled={"kind":"fillRange","start":0,"end":1500,
+                "columnIds":["value"],"values":[4.5]}
+        self.assertEqual(apply(1,filled)["status"],"ok")
+        self.assertEqual(store.read_range(1499,1500)["data"],[["Row 1499",4.5]])
+        self.assertEqual(store.read_range(0,1)["data"],[["Row 0",4.5]])
+        self.assertEqual(apply(2,{"kind":"undo","targetSeq":1})["status"],"ok")
+        self.assertEqual(store.read_range(1499,1500)["data"],[["Row 1499",1499]])
+        self.assertEqual(apply(3,{"kind":"undo","targetSeq":2})["status"],"ok")
+        self.assertEqual(store.read_range(1000,1001)["data"],[["Row 1000",4.5]])
+
+        # Source row 0 is not present in a viewport showing rows 500+.
+        self.assertEqual(apply(4,{"kind":"fillDown","sourceRow":0,"start":1,
+                                  "end":1500,"columnIds":["name"]})["status"],"ok")
+        self.assertEqual(store.read_range(1499,1500)["data"],[["Row 0",4.5]])
+        self.assertEqual(apply(5,{"kind":"undo","targetSeq":4})["status"],"ok")
+        self.assertEqual(store.read_range(1499,1500)["data"],[["Row 1499",4.5]])
+
+    def test_bulk_fill_skips_locked_and_conditional_cells(self):
+        path=Path(self.tmp.name)/"protected-fill.sqlite3"
+        columns=[{"columnId":"type"},
+                 {"columnId":"value","editableWhen":[{"columnId":"type",
+                                                        "in":["open"]}]},
+                 {"columnId":"constant","nonEditable":True}]
+        store=VirtualGridStore(path,"protected-fill",columns,
+                               locked_cells=[["b","value"]])
+        store.seed_once([["open",1,"a"],["open",2,"b"],["closed",3,"c"]],
+                        ["a","b","c"])
+        base={"datasetId":"protected-fill","streamId":"session"}
+        changed=store.apply({**base,"seq":1,"edits":[
+            {"kind":"fillRange","start":0,"end":3,
+             "columnIds":["value"],"values":[99]}]})
+        self.assertEqual(changed["status"],"ok")
+        self.assertEqual(store.read()["data"],
+                         [["open",99,"a"],["open",2,"b"],["closed",3,"c"]])
+        rejected=store.apply({**base,"seq":2,"edits":[
+            {"kind":"fillRange","start":0,"end":3,
+             "columnIds":["constant"],"values":["bad"]}]})
+        self.assertEqual(rejected["status"],"conflict")
+        self.assertEqual(store.apply({**base,"seq":2,"edits":[
+            {"kind":"undo","targetSeq":1}]} )["status"],"ok")
+        self.assertEqual(store.read()["data"],
+                         [["open",1,"a"],["open",2,"b"],["closed",3,"c"]])
+
     def test_duplicate_lost_acks_dont_apply_structural_operation_twice(self):
         event=self.event(1,{"kind":"insert","rowId":"new","position":2,"values":["N",7]})
         first=self.store.apply(event)

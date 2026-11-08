@@ -143,6 +143,36 @@ def run():
             assert "unacknowledged edit batch" in driver.find_element(
                 By.ID,"grid").text
 
+            # Switching off the streaming URL while a large selection is
+            # active must report an actionable limit instead of claiming
+            # a clipboard request is being prepared forever.
+            select_all=next(button for button in driver.find_elements(
+                By.CSS_SELECTOR,"#grid .drg-virtual-toolbar button")
+                if button.text.strip()=="Select all")
+            select_all.click()
+            wait.until(lambda _:"25,050 rows selected" in driver.find_element(
+                By.CSS_SELECTOR,"#grid .drg-selection-count").text)
+            driver.find_element(By.ID,"stream-toggle").click()
+            wait.until(lambda _:driver.find_element(
+                By.ID,"stream-state").text=="Streaming disabled")
+            prevented=driver.execute_script("""
+                const viewport=document.querySelector(
+                  '#grid .drg-virtual-viewport');
+                const transfer=new DataTransfer();
+                const e=new ClipboardEvent('copy',{
+                  bubbles:true,cancelable:true,clipboardData:transfer});
+                viewport.dispatchEvent(e);
+                return e.defaultPrevented;
+            """)
+            assert prevented, "Oversized no-stream copy must be intercepted"
+            wait.until(lambda _:"Select at most 1,000 rows to copy" in
+                driver.find_element(By.CSS_SELECTOR,
+                    "#grid .drg-virtual-error").text)
+            assert "configure virtualClipboardUrl" in driver.find_element(
+                By.CSS_SELECTOR,"#grid .drg-virtual-error").text
+            assert "Preparing selection for clipboard" not in driver.find_element(
+                By.CSS_SELECTOR,"#grid .drg-virtual-error").text
+
             print("Chrome virtual clipboard passed: full selection, toolbar focus and pending single-cell copy")
         finally:
             if driver:driver.quit()

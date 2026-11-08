@@ -546,6 +546,33 @@ export const ServerVirtualGrid = (props) => {
     submitOperation([{kind:"fillDown",sourceRow,start,end:sel.end,...target}]);
   };
 
+  // Use absolute cell coordinates for Shift+Arrow rather than ReactGrid's
+  // native selected rows, which can expand into unrelated columns after
+  // a mouse click. No virtual row needs to be loaded to extend the range.
+  const extendByArrow = (key) => {
+    if (!virtualRowCount || !columns.length) return;
+    const focusedPlace=focused.current
+      ? selectionAt(focused.current.rowId,focused.current.columnId) : null;
+    const current=keyboardCursor.current || focusedPlace ||
+      (globalRef.current
+        ? {row:globalRef.current.start,col:globalRef.current.columnStart} : null);
+    if (!current) return;
+    const next={...current};
+    if (key==="ArrowDown") next.row=Math.min(next.row+1,virtualRowCount-1);
+    else if (key==="ArrowUp") next.row=Math.max(0,next.row-1);
+    else if (key==="ArrowRight") next.col=Math.min(next.col+1,columns.length-1);
+    else if (key==="ArrowLeft") next.col=Math.max(0,next.col-1);
+    const anchor=keyboardAnchor.current || focusedPlace || current;
+    keyboardAnchor.current=anchor;
+    keyboardCursor.current=next;
+    suppressNativeSelection.current=true;
+    const selected=keyboardRectangle(anchor,next);
+    selectGlobal(boundedSelection(selected.start,selected.end,
+      selected.columnStart,selected.columnEnd,
+      virtualRowCount,columns.length));
+    setCommandError(null);
+  };
+
   const navigateToEdge = (key,shift) => {
     pointerGesture.current=null;
     if (!virtualRowCount) return;
@@ -859,6 +886,12 @@ export const ServerVirtualGrid = (props) => {
       keyboardCursor.current=null;
       suppressNativeSelection.current=false;
       setKeyboardFocus(null);
+    }
+    if (e.shiftKey && !modified &&
+        ["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.key)) {
+      e.preventDefault();e.stopPropagation();
+      extendByArrow(e.key);
+      return;
     }
     if (modified && ["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.key)) {
       e.preventDefault(); e.stopPropagation();

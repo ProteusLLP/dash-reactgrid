@@ -19,7 +19,7 @@ import {
 } from "./keyboard";
 import {
   boundedSelection, extendSelection, copyRequestFor, matchesCopyResponse,
-  selectedColumnIds, editableFillColumns,
+  selectedColumnIds, editableFillColumns, escapeTsvCell,
   makeRangePaste, historyStorageKey, initialHistory, loadHistory,
   saveHistory, nextHistory, MAX_RANGE_ROWS,
 } from "./virtualOperations";
@@ -714,12 +714,32 @@ export const ServerVirtualGrid = (props) => {
   const onColumnResized = useCallback((...args) => latest.current.resizeColumn(...args),[]);
   const onContextMenu = useCallback((...args) => latest.current.contextMenu(...args),[]);
 
+  // Copy a loaded single cell from the locally overlaid viewport, including
+  // unacknowledged sparse edits. A server fetch could return stale content.
+  const loadedSingleCellText = (candidate) => {
+    if (!candidate || candidate.end-candidate.start!==1 ||
+        candidate.columnEnd-candidate.columnStart!==1 || !page ||
+        candidate.start<range.start ||
+        candidate.start>=range.start+page.rowIds.length) return null;
+    const rowId=page.rowIds[candidate.start-range.start];
+    const row=rows.find(item=>item.rowId===rowId);
+    const cell=row?.cells?.[candidate.columnStart];
+    return cell ? escapeTsvCell(textOf(cell)) : null;
+  };
+
   const handleCopy = (e) => {
     if (isCellEditorTarget(e.target)) return;
-    if (props.virtualClipboardUrl && (globalRef.current || globalSelection)) {
+    const selected=globalRef.current || globalSelection;
+    const immediate=loadedSingleCellText(selected);
+    if (immediate !== null) {
+      e.preventDefault();e.stopPropagation();
+      e.clipboardData.setData("text/plain",immediate);
+      return;
+    }
+    if (props.virtualClipboardUrl && selected) {
       e.preventDefault();
       e.stopPropagation();
-      streamSelectionToClipboard(globalRef.current || globalSelection);
+      streamSelectionToClipboard(selected);
       return;
     }
     // Native single-cell selection is copyable without any Dash request.
@@ -804,9 +824,13 @@ export const ServerVirtualGrid = (props) => {
     const modified=(e.ctrlKey || e.metaKey) && !e.altKey;
     if (modified && !e.shiftKey && e.key.toLowerCase()==="c" &&
         props.virtualClipboardUrl) {
-      if (globalRef.current || globalSelection) {
+      const selected=globalRef.current || globalSelection;
+      // Let the native copy event synchronously set clipboardData for a
+      // loaded cell, regardless of pending acknowledgements.
+      if (loadedSingleCellText(selected)!==null) return;
+      if (selected) {
         e.preventDefault(); e.stopPropagation();
-        streamSelectionToClipboard(globalRef.current || globalSelection);
+        streamSelectionToClipboard(selected);
       }
       return;
     }

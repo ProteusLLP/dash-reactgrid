@@ -170,7 +170,30 @@ def test():
             driver.refresh()
             wait.until(lambda _: "998 rows" in driver.find_element(By.CSS_SELECTOR,
                 "#grid .drg-selection-count").text)
-            print("Extended virtual browser test passed: offscreen copy/paste, undo/redo, insertion, deletion, CSV export and reload")
+
+            # Selecting the header must select every logical row, including
+            # rows not loaded into ReactGrid's current viewport.
+            previous_name=store.read_range(900,901)["data"][0][0]
+            header=wait.until(lambda _: driver.find_elements(
+                By.CSS_SELECTOR,"#grid .rg-header-cell"))[0]
+            header.click()
+            wait.until(lambda _: "998 rows selected" in driver.find_element(
+                By.CSS_SELECTOR,"#grid .drg-selection-count").text)
+            handled=driver.execute_script("""
+              const viewport=document.querySelector('#grid .drg-virtual-viewport');
+              const event=new KeyboardEvent('keydown',{
+                key:'d',code:'KeyD',ctrlKey:true,bubbles:true,cancelable:true});
+              viewport.dispatchEvent(event);
+              return event.defaultPrevented;
+            """)
+            assert handled, "Ctrl+D must be intercepted for virtual whole-column fill"
+            wait.until(lambda _: store.read_range(900,901)["data"][0][0]=="Row 0")
+            wait.until(lambda _: synced())
+            click("Undo")
+            wait.until(lambda _: store.read_range(900,901)["data"][0][0]==previous_name)
+            wait.until(lambda _: synced())
+
+            print("Extended virtual browser test passed: offscreen range operations, whole-column fill and undo/redo")
         except Exception:
             if driver:
                 try:

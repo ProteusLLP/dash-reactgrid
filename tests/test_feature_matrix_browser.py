@@ -272,8 +272,12 @@ class FeatureMatrixChromeTests(unittest.TestCase):
 
         self.cell("grouped-paged", "uk1", 0).click()
         self.chord(Keys.CONTROL, Keys.SHIFT, Keys.ARROW_DOWN)
-        self.waiter.until(lambda _: self.state("grouped-paged").get(
-            "selectedRowIds") == ["pg2", "pg3"])
+        try:
+            self.waiter.until(lambda _: self.state("grouped-paged").get(
+                "selectedRowIds") == ["pg2", "pg3"])
+        except Exception:
+            self.fail("Grouped paged keyboard selection did not span both rows. "
+                      + repr(self.state("grouped-paged")))
         self.chord(Keys.CONTROL, "d")
         self.waiter.until(lambda _: self.state("grouped-paged")["data"][3][0] == 77.5)
         self.assertEqual(self.state("grouped-paged")["data"][1][0], 4)

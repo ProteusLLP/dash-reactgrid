@@ -1,0 +1,36 @@
+name: Build and test whole-column review changes
+on:
+  push:
+    branches:
+      - feat/virtual-whole-column-fill
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install JavaScript dependencies
+        run: npm ci --legacy-peer-deps
+      - name: Build Dash bundles
+        run: npm run build:js
+      - name: Install browser dependencies
+        run: python3 -m pip install "dash>=3,<5" "selenium>=4,<5" "numpy>=1.23,<3"
+      - name: Test inverse receipts
+        run: python3 -m unittest tests.test_virtual_grid_store -v
+      - name: Test browser header drag and clipboard
+        run: python3 tests/test_large_virtual_clipboard_browser.py
+      - name: Commit browser assets
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add dash_reactgrid/dash_reactgrid.min.js dash_reactgrid/dash_reactgrid.min.js.map
+          if ! git diff --cached --quiet; then
+            git commit -m "Rebuild browser assets for header drag review fix"
+            git push origin HEAD:feat/virtual-whole-column-fill
+          fi

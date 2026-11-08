@@ -319,6 +319,8 @@ export const ServerVirtualGrid = (props) => {
 
   const selectGlobal = (candidate) => {
     if (!candidate) return;
+    // A toolbar or keyboard range selection supersedes any older click.
+    pointerGesture.current=null;
     globalRef.current = candidate;
     setGlobalSelection(candidate);
     setFromInput(String(candidate.start + 1));

@@ -76,6 +76,7 @@ export const ServerVirtualGrid = (props) => {
   const anchor = useRef(null);
   const shiftPointer = useRef(false);
   const columnHeaderPointer = useRef(false);
+  const pointerGesture = useRef(null);
   const [fromInput, setFromInput] = useState("1");
   const [toInput, setToInput] = useState("1");
   const [commandError, setCommandError] = useState(null);
@@ -544,6 +545,7 @@ export const ServerVirtualGrid = (props) => {
   };
 
   const navigateToEdge = (key,shift) => {
+    pointerGesture.current=null;
     if (!virtualRowCount) return;
     const focusedPlace=focused.current
       ? selectionAt(focused.current.rowId,focused.current.columnId) : null;
@@ -646,6 +648,18 @@ export const ServerVirtualGrid = (props) => {
         return;
       }
       columnHeaderPointer.current=false;
+      // After a plain click ReactGrid may retain a multi-column native
+      // selection from an earlier keyboard range. Use the focused cell for
+      // click-only gestures, but preserve native selections for real drags.
+      const click=pointerGesture.current;
+      if (click && !click.moved && focused.current) {
+        const place=selectionAt(focused.current.rowId,focused.current.columnId);
+        if (place) {
+          globalRef.current=boundedSelection(place.row,place.row+1,
+            place.col,place.col+1,virtualRowCount,columns.length);
+          return;
+        }
+      }
       if (page && ranges.length && !shiftPointer.current) {
         const chosen=ranges[0];
         const indices=(chosen.rows || []).map((row) =>
@@ -825,6 +839,7 @@ export const ServerVirtualGrid = (props) => {
           }
           return;
         case "a":
+          pointerGesture.current=null;
           e.preventDefault();
           e.stopPropagation();
           if (virtualRowCount) {
@@ -941,13 +956,25 @@ export const ServerVirtualGrid = (props) => {
       onPointerDownCapture={(e) => {
         columnHeaderPointer.current=Boolean(props.enableColumnSelection &&
           e.target.closest?.(".rg-header-cell"));
+        pointerGesture.current=(!e.shiftKey && !columnHeaderPointer.current &&
+          e.target.closest?.(".rg-cell"))
+          ? {x:e.clientX,y:e.clientY,moved:false,pressed:true} : null;
         shiftPointer.current=e.shiftKey;
         keyboardAnchor.current=null;
         keyboardCursor.current=null;
         suppressNativeSelection.current=false;
         setKeyboardFocus(null);
       }}
-      onPointerUpCapture={() => {shiftPointer.current=false;}}
+      onPointerMoveCapture={(e) => {
+        const gesture=pointerGesture.current;
+        if (gesture?.pressed &&
+            Math.abs(e.clientX-gesture.x)+Math.abs(e.clientY-gesture.y)>5)
+          gesture.moved=true;
+      }}
+      onPointerUpCapture={() => {
+        shiftPointer.current=false;
+        if (pointerGesture.current) pointerGesture.current.pressed=false;
+      }}
       style={{height:virtualViewportHeight,overflowY:"auto",overflowX:"auto"}}>
       {grid}
     </div>

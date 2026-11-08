@@ -1,8 +1,6 @@
 name: Grouped paged regression
 on:
-  push:
-    branches:
-      - feat/multilevel-headers-dataframe
+  pull_request:
 jobs:
   grouped:
     runs-on: ubuntu-latest

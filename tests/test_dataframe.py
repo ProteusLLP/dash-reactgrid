@@ -42,13 +42,70 @@ class DataFrameTests(unittest.TestCase):
         grid = DashReactGrid.from_dataframe(
             PolarsStyleFrame(),
             column_types={"amount": "percent"},
-            column_options={1: {"width": 140, "tooltip": "Percentage"}},
+            column_options_by_position={1: {"width": 140, "tooltip": "Percentage"}},
         )
         props = grid.to_plotly_json()["props"]
         self.assertEqual(props["columns"][1]["type"], "percent")
         self.assertEqual(props["columns"][1]["tooltip"], "Percentage")
         self.assertEqual(props["columns"][1]["width"], 140)
         self.assertEqual(props["data"], [["A", 1], ["B", 2]])
+
+    def test_numeric_column_labels_do_not_collide_with_positions(self):
+        try:
+            import pandas as pd
+        except ImportError:
+            self.skipTest("pandas is optional")
+        frame = pd.DataFrame([[10, 20]], columns=[1, 0])
+        by_label = DashReactGrid.from_dataframe(
+            frame, column_types={0: "percent"},
+            column_options={0: {"tooltip": "Label zero"}},
+        ).to_plotly_json()["props"]["columns"]
+        self.assertEqual([col["type"] for col in by_label],
+                         ["number", "percent"])
+        self.assertNotIn("tooltip", by_label[0])
+        self.assertEqual(by_label[1]["tooltip"], "Label zero")
+
+        by_position = DashReactGrid.from_dataframe(
+            frame, column_types_by_position={0: "percent"},
+            column_options_by_position={0: {"width": 120}},
+        ).to_plotly_json()["props"]["columns"]
+        self.assertEqual([col["type"] for col in by_position],
+                         ["percent", "number"])
+        self.assertEqual(by_position[0]["width"], 120)
+        self.assertNotIn("width", by_position[1])
+
+    def test_mixed_numeric_dtype_never_silently_rounds_large_integers(self):
+        try:
+            import pandas as pd
+        except ImportError:
+            self.skipTest("pandas is optional")
+        unsafe = 9007199254740993
+        frame = pd.DataFrame({"large": [unsafe], "rate": [0.5]})
+        self.assertEqual(frame.to_numpy().dtype.kind, "f")
+        with self.assertRaisesRegex(ValueError, "JavaScript"):
+            DashReactGrid.from_dataframe(frame)
+        safe = 9007199254740991
+        frame = pd.DataFrame({"large": [safe], "rate": [0.5]})
+        payload = DashReactGrid.from_dataframe(frame).to_plotly_json()["props"]
+        self.assertEqual(payload["data"], [[safe, 0.5]])
+        json.dumps(payload)
+
+    def test_optional_numpy_import_failure_falls_back_to_polars_rows(self):
+        class NoNumpyPolarsFrame:
+            columns = ["amount", "factor"]
+            dtypes = ["Int64", "Float64"]
+
+            def to_numpy(self, **kwargs):
+                raise ImportError("NumPy is optional and not installed")
+
+            def iter_rows(self):
+                yield (5, 1.25)
+                yield (6, 2.5)
+
+        payload = DashReactGrid.from_dataframe(
+            NoNumpyPolarsFrame()
+        ).to_plotly_json()["props"]
+        self.assertEqual(payload["data"], [[5, 1.25], [6, 2.5]])
 
     def test_rejects_invalid_inputs_and_duplicate_data_arguments(self):
         with self.assertRaisesRegex(TypeError, "columns"):
@@ -71,7 +128,7 @@ class DataFrameTests(unittest.TestCase):
         ])
         frame = pd.DataFrame([[0.01, None, 0.04, 0.12],
                               [0.02, 0.03, 0.05, 0.1]], columns=index)
-        grid = DashReactGrid.from_dataframe(frame, column_types={0: "percent"})
+        grid = DashReactGrid.from_dataframe(frame, column_types_by_position={0: "percent"})
         props = grid.to_plotly_json()["props"]
         self.assertEqual(props["columns"][0]["type"], "percent")
         self.assertEqual(props["columns"][0]["title"], "1y")

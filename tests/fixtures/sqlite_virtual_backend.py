@@ -50,11 +50,16 @@ class VirtualGridStore(SparseGridStore):
         schema cannot silently turn a multi-column fill into a partial edit.
         """
         meta=self.column_definitions.get(column_id, {})
-        if meta.get("nonEditable") or (row_key(row_id),column_id) in self.locked_cells:
-            return "A selected cell is locked: " + str(column_id)
-        for rule in meta.get("editableWhen", []):
+        rules=meta.get("editableWhen", [])
+        # Validate the entire rule schema before evaluating permissions.
+        # Otherwise an early failed predicate could conceal a later invalid
+        # reference and allow a partially successful transaction.
+        for rule in rules:
             if rule.get("columnId") not in self.columns:
                 raise ValueError("Invalid editableWhen column")
+        if meta.get("nonEditable") or (row_key(row_id),column_id) in self.locked_cells:
+            return "A selected cell is locked: " + str(column_id)
+        for rule in rules:
             value=current_values[self.columns.index(rule["columnId"])]
             if "in" in rule and value not in rule["in"]:
                 return "Cell edit rules reject the selected row"

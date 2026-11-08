@@ -412,11 +412,26 @@ Other properties:
 - To enter one value into several selected cells, select the cells, type in the
   active cell and press Shift+Enter. Target columns use their own value types;
   a single-cell Shift+Enter retains ordinary upward navigation.
-- Keyboard fill and multi-cell edits are limited to 20,000 cells per operation;
-  server-virtualized operations also have a 1,000-row limit. When the source
-  row of an offscreen server-virtualized fill is not loaded, prepare the
-  selection for copying before using Ctrl+D. Host applications must enforce
-  row-level edit permissions when accepting sparse commands.
+- Ordinary in-memory grid keyboard fill and multi-cell edits are limited to
+  20,000 cells per operation. In server-virtualized mode, Ctrl+D and Shift+Enter
+  use compact, unbounded row-range commands, so an entire selected column can
+  be filled without fetching offscreen rows or sending the values to Dash.
+  Select a column header or use Ctrl+Space from a focused cell to select the
+  full logical column, including unloaded rows. Other clipboard/edit limits
+  still apply.
+- Virtual Shift+Enter submits `{"kind":"fillRange","start":0,"end":100000,
+  "columnIds":["rate"],"values":[0.045]}`. Virtual Ctrl+D submits
+  `{"kind":"fillDown","sourceRow":0,"start":1,"end":100000,
+  "columnIds":["rate"]}`, with the source row resolved by the server.
+  These commands use absolute zero-based row boundaries, with an exclusive
+  `end`. They are delivered through the existing durable `edits`/`editAck`
+  protocol and can be undone as one logical operation.
+- The Dash application must implement these range commands on its underlying
+  dataset, validate dataset identity and edit permissions per destination,
+  handle the operation atomically, and return an ACK only after persistence.
+  Locked and conditionally non-editable destinations should be preserved.
+  The optional SQLite test fixture implements this contract; the grid does
+  not require SQLite or any server-side database.
 - Ctrl+Z and Ctrl+Y undo and redo cell edits.
 
 The data model (`src/lib/model.js`) has no React in it; test it with

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { ReactGrid } from "@silevis/reactgrid";
 import { useReliableGrid } from "./useReliableGrid";
 import { overlayVirtualEdits } from "./virtualOverlay";
+import { clipboardStreamUrl, writeStreamedClipboard } from "./virtualClipboard";
 import { compileGridColumns, visibleGridColumns, resizeGridColumns } from "./gridRows";
 import { decodeGridData, isPackedNumericData } from "./numericData";
 import {
@@ -81,6 +82,7 @@ export const ServerVirtualGrid = (props) => {
   const [historyError, setHistoryError] = useState(null);
   const [copyText, setCopyText] = useState(null);
   const [copyError, setCopyError] = useState(null);
+  const [streamingCopy, setStreamingCopy] = useState(false);
   const copyCounter = useRef(0);
   const copyPending = useRef(null);
   const lastAcknowledgedRevision = useRef(-1);
@@ -398,7 +400,7 @@ export const ServerVirtualGrid = (props) => {
     setCopyText(null);
     setCopyError(null);
     copyPending.current=null;
-    if (!globalSelection) return;
+    if (!globalSelection || props.virtualClipboardUrl) return;
     // A click focusing a single cell is NOT a request to fetch its content.
     // In particular, don't trigger a Dash response during double-click edit.
     if ((globalSelection.end - globalSelection.start) *
@@ -426,7 +428,42 @@ export const ServerVirtualGrid = (props) => {
     }
   }, [virtualRangeData]);
 
+  const streamSelectionToClipboard = () => {
+    const selected=globalRef.current || globalSelection;
+    if (!selected) return;
+    if (reliable.pending > 0) {
+      setCopyError("Save pending edits before copying a server range");
+      return;
+    }
+    try {
+      const url=clipboardStreamUrl(
+        props.virtualClipboardUrl,virtualDatasetId,selected,columns);
+      // ClipboardItem accepts a Promise<Blob>. Start the write during the
+      // user gesture, before awaiting the potentially large HTTP response.
+      const writing=writeStreamedClipboard({
+        url,clipboard:window.navigator.clipboard,
+        ClipboardItemCtor:window.ClipboardItem,fetcher:window.fetch.bind(window),
+      });
+      setCopyError(null);
+      setStreamingCopy(true);
+      writing.then(() => {
+        setStreamingCopy(false);
+        setCopyError(null);
+      }).catch(error => {
+        setStreamingCopy(false);
+        setCopyError(error.message || "Could not copy the selected range");
+      });
+    } catch(error) {
+      setStreamingCopy(false);
+      setCopyError(error.message || "Clipboard streaming unavailable");
+    }
+  };
+
   const copySelection = () => {
+    if (props.virtualClipboardUrl) {
+      streamSelectionToClipboard();
+      return;
+    }
     if (globalSelection &&
         globalSelection.end-globalSelection.start > MAX_RANGE_ROWS) {
       setCopyError("Use Download CSV for selections exceeding 1,000 rows");
@@ -668,6 +705,12 @@ export const ServerVirtualGrid = (props) => {
 
   const handleCopy = (e) => {
     if (isCellEditorTarget(e.target)) return;
+    if (props.virtualClipboardUrl && (globalRef.current || globalSelection)) {
+      e.preventDefault();
+      e.stopPropagation();
+      streamSelectionToClipboard();
+      return;
+    }
     // Native single-cell selection is copyable without any Dash request.
     // This also avoids stale, asynchronously prepared range clipboard data.
     const normal = selection.current;
@@ -748,6 +791,14 @@ export const ServerVirtualGrid = (props) => {
       return;
     }
     const modified=(e.ctrlKey || e.metaKey) && !e.altKey;
+    if (modified && !e.shiftKey && e.key.toLowerCase()==="c" &&
+        props.virtualClipboardUrl) {
+      if (globalRef.current || globalSelection) {
+        e.preventDefault(); e.stopPropagation();
+        streamSelectionToClipboard();
+      }
+      return;
+    }
     if (modified && !e.shiftKey && (e.code==="Space" || e.key===" ")) {
       const cell=focused.current;
       const col=columns.findIndex(c=>c.columnId===cell?.columnId);
@@ -861,10 +912,13 @@ export const ServerVirtualGrid = (props) => {
         {globalSelection ? selectedCount.toLocaleString() + " rows selected" :
           virtualRowCount.toLocaleString() + " rows"}
       </span>
-      <button type="button" disabled={!globalSelection ||
-        selectedCount > MAX_RANGE_ROWS || reliable.pending > 0}
+      <button type="button" disabled={!globalSelection || streamingCopy ||
+        (!props.virtualClipboardUrl && selectedCount > MAX_RANGE_ROWS) ||
+        reliable.pending > 0}
         onClick={copySelection}>
-        {typeof copyText === "string" ? "Copy selection" : "Prepare copy"}</button>
+        {props.virtualClipboardUrl ? "Copy selection" :
+          typeof copyText === "string" ? "Copy selection" : "Prepare copy"}</button>
+      {streamingCopy && <span role="status">Copying selected range to clipboard</span>}
       {exportUrl && <a href={exportUrl} download>Download selected CSV</a>}
       {!readOnly && props.transmitSparseEdits && <>
         <button type="button" disabled={editingBlocked}

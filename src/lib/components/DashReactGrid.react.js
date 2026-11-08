@@ -61,6 +61,7 @@ const ReactGridDataHandler = (props) => {
   const columns = useMemo(() =>
     visibleGridColumns(allColumns, hiddenColumns), [allColumns, hiddenColumns])
   const allColumnIds = allColumns.map((column) => column.columnId)
+  const headerCount = headerDepth(columns)
 
   const tracked = Array.isArray(rowIds)
   const transmitSparseEdits = Boolean(props.transmitSparseEdits)
@@ -229,7 +230,7 @@ const ReactGridDataHandler = (props) => {
       const rect = shortcutRange.current ||
         lastMultiSelection.current ||
         nativeRectangle(selection.current, pageStart, table.data.length,
-          columns.length)
+          columns.length, null, headerCount)
       if (source && rect && sourceRow >= rect.start && sourceRow < rect.end &&
           keyboardArea(rect) > 1) {
         try {
@@ -302,7 +303,7 @@ const ReactGridDataHandler = (props) => {
     const changes = []
     clipboardCells(e.clipboardData).forEach((cells, ri) => {
       const position = (keyRange ? keyRange.start :
-        pageStart + pasteStartRow(ranges[0])) + ri // the header is not a data row
+        pageStart + pasteStartRow(ranges[0], headerCount)) + ri // headers are not data rows
       // Do not silently modify data on a page the user cannot see.
       if (!canPasteOnPage(position, bounds, pageSize)) return
       let rowId
@@ -348,9 +349,12 @@ const ReactGridDataHandler = (props) => {
     selection.current = ranges
     shortcutRange.current = null
     setShortcutHighlight(null)
-    const rect = nativeRectangle(ranges,pageStart,table.data.length,columns.length)
+    const rect = nativeRectangle(ranges,pageStart,table.data.length,
+      columns.length,null,headerCount)
     lastMultiSelection.current = keyboardArea(rect)>1 ? rect : null
-    setProps({ selectedRange: ranges, selectedRowIds: tracked ? rowsInRanges(ranges) : [] })
+    const visibleIds = new Set(table.rowIds.slice(pageStart,pageEnd))
+    setProps({ selectedRange: ranges,
+      selectedRowIds: tracked ? rowsInRanges(ranges,visibleIds) : [] })
   }
 
   const focusedPosition = () => {
@@ -375,7 +379,8 @@ const ReactGridDataHandler = (props) => {
       setShortcutHighlight(rect)
       suppressNativeSelection.current = true
       setProps({
-        selectedRange:[publicKeyboardRange(rect,table.rowIds,columns)],
+        selectedRange:[publicKeyboardRange(rect,table.rowIds,columns,
+          headerCount,pageStart)],
         selectedRowIds:tracked && rect.end-rect.start<=1000
           ? table.rowIds.slice(rect.start,rect.end) : [],
       })
@@ -404,7 +409,7 @@ const ReactGridDataHandler = (props) => {
 
   const activeRectangle = () =>
     shortcutRange.current || nativeRectangle(selection.current,pageStart,
-      table.data.length,columns.length,focusedPosition())
+      table.data.length,columns.length,focusedPosition(),headerCount)
 
   const fillDown = () => {
     if (editingBlocked) return
@@ -421,8 +426,9 @@ const ReactGridDataHandler = (props) => {
   const handleContextMenu = (selectedRowIds, selectedColIds, selectionMode, menuOptions, selectedRanges) => {
     if (!tracked || editingBlocked) return menuOptions
     const removing = []
-    selectedRanges.forEach((range) => range.forEach(({ rowId }) => {
-      if (rowId !== "header" && rowId !== GHOST_ROW_ID && !removing.includes(rowId)) removing.push(rowId)
+    const visibleIds = new Set(table.rowIds.slice(pageStart,pageEnd))
+    ;(selectedRanges || []).forEach((range) => range.forEach(({ rowId }) => {
+      if (visibleIds.has(rowId) && !removing.includes(rowId)) removing.push(rowId)
     }))
     if (!removing.length) return menuOptions
     return [

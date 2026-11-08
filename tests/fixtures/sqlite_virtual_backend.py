@@ -43,21 +43,32 @@ class VirtualGridStore(SparseGridStore):
                 "SELECT revision FROM datasets WHERE dataset_id=?", (self.dataset_id,)
             ).fetchone()[0]
 
+    def _cell_edit_rejection(self, row_id, column_id, current_values):
+        """Return a protection reason, or None for an editable destination.
+
+        Invalid rule definitions still raise so an incorrect application
+        schema cannot silently turn a multi-column fill into a partial edit.
+        """
+        meta=self.column_definitions.get(column_id, {})
+        if meta.get("nonEditable") or (row_key(row_id),column_id) in self.locked_cells:
+            return "A selected cell is locked: " + str(column_id)
+        for rule in meta.get("editableWhen", []):
+            if rule.get("columnId") not in self.columns:
+                raise ValueError("Invalid editableWhen column")
+            value=current_values[self.columns.index(rule["columnId"])]
+            if "in" in rule and value not in rule["in"]:
+                return "Cell edit rules reject the selected row"
+            if "truthy" in rule and bool(value)!=rule["truthy"]:
+                return "Cell edit rules reject the selected row"
+        return None
+
     def _assert_can_edit(self, row_id, columns, current_values):
         if self.read_only:
             raise ValueError("The dataset is read-only")
         for column_id in columns:
-            meta=self.column_definitions.get(column_id, {})
-            if meta.get("nonEditable") or (row_key(row_id),column_id) in self.locked_cells:
-                raise ValueError("A selected cell is locked: " + str(column_id))
-            for rule in meta.get("editableWhen", []):
-                if rule.get("columnId") not in self.columns:
-                    raise ValueError("Invalid editableWhen column")
-                value=current_values[self.columns.index(rule["columnId"])]
-                if "in" in rule and value not in rule["in"]:
-                    raise ValueError("Cell edit rules reject the selected row")
-                if "truthy" in rule and bool(value)!=rule["truthy"]:
-                    raise ValueError("Cell edit rules reject the selected row")
+            rejection=self._cell_edit_rejection(row_id,column_id,current_values)
+            if rejection is not None:
+                raise ValueError(rejection)
 
     def _count(self, db):
         return db.execute("SELECT COUNT(*) FROM grid_rows WHERE dataset_id=?",
@@ -207,8 +218,6 @@ class VirtualGridStore(SparseGridStore):
             raise ValueError("Invalid fill columns")
         if not internal and self.read_only:
             raise ValueError("The dataset is read-only")
-        if not internal and any(self.column_definitions.get(c,{}).get("nonEditable") for c in cols):
-            raise ValueError("Cannot fill a non-editable column")
         indexes=[self.columns.index(c) for c in cols]
         if kind=="fillRange":
             values=op.get("values")
@@ -230,34 +239,38 @@ class VirtualGridStore(SparseGridStore):
             entries=self._ordered(db,offset,stop)
             if len(entries)!=stop-offset:
                 raise ValueError("Fill extends beyond the current dataset")
-            previous=[]
-            row_ids=[]
+            # Save only the cells actually changed, grouped by column, so
+            # locked and conditionally protected destinations remain untouched
+            # and undo never overwrites their later independent updates.
+            previous={c:[] for c in cols}
+            row_ids={c:[] for c in cols}
             updates=[]
             for rid,_,raw in entries:
-                data=json.loads(raw)
-                if not internal:
-                    try:
-                        self._assert_can_edit(json.loads(rid),cols,data)
-                    except ValueError as error:
-                        if (str(error).startswith("A selected cell is locked")
-                                or str(error).startswith("Cell edit rules reject")):
-                            continue
-                        raise
-                before=[data[i] for i in indexes]
-                if before==values:
-                    continue
-                row_ids.append(json.loads(rid))
-                previous.append(before)
-                for i,value in zip(indexes,values):
-                    data[i]=value
-                updates.append((canonical(data),self.dataset_id,rid))
+                original=json.loads(raw)
+                data=list(original)
+                decoded_id=json.loads(rid)
+                changed=False
+                for col,index,value in zip(cols,indexes,values):
+                    if not internal and self._cell_edit_rejection(
+                            decoded_id,col,original) is not None:
+                        continue
+                    if data[index]==value:
+                        continue
+                    row_ids[col].append(decoded_id)
+                    previous[col].append([data[index]])
+                    data[index]=value
+                    changed=True
+                if changed:
+                    updates.append((canonical(data),self.dataset_id,rid))
             if updates:
                 db.executemany(
                     "UPDATE grid_rows SET values_json=? WHERE dataset_id=? AND row_id=?",
                     updates,
                 )
-                inverses.insert(0,{"kind":"setRows","rowIds":row_ids,
-                                   "columnIds":cols,"rows":previous})
+                for col in cols:
+                    if row_ids[col]:
+                        inverses.insert(0,{"kind":"setRows","rowIds":row_ids[col],
+                                           "columnIds":[col],"rows":previous[col]})
         return {"kind":"sequence","edits":inverses}
 
     def _operation(self, db, op, stream, current_seq, internal=False):

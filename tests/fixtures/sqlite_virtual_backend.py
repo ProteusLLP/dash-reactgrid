@@ -274,8 +274,11 @@ class VirtualGridStore(SparseGridStore):
                 )
                 for col in cols:
                     if row_ids[col]:
-                        inverses.insert(0,{"kind":"setRows","rowIds":row_ids[col],
-                                           "columnIds":[col],"rows":previous[col]})
+                        inverses.append({"kind":"setRows","rowIds":row_ids[col],
+                                         "columnIds":[col],"rows":previous[col]})
+        # Reverse once to undo in reverse write order. Repeated insert(0)
+        # would shift an ever-growing journal during a large fill transaction.
+        inverses.reverse()
         return {"kind":"sequence","edits":inverses}
 
     def _operation(self, db, op, stream, current_seq, internal=False):

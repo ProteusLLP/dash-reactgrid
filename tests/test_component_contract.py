@@ -88,6 +88,7 @@ class ComponentPublicAPI(unittest.TestCase):
              "rowIds": ["r0"]},
             {"virtualRowCount": 100_000, "virtualDatasetId": DATASET,
              "virtualWindowSize": 120, "virtualViewportHeight": 420,
+             "virtualClipboardUrl": "/clipboard.tsv",
              "transmitSparseEdits": True, "editDatasetId": DATASET},
         ]:
             with self.subTest(config=config):

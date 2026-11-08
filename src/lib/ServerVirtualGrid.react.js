@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { ReactGrid } from "@silevis/reactgrid";
 import { useReliableGrid } from "./useReliableGrid";
 import { overlayVirtualEdits } from "./virtualOverlay";
-import { compileGridColumns, visibleGridColumns, resizeGridColumns } from "./gridRows";
+import { compileGridColumns, visibleGridColumns, resizeGridColumns, headerDepth } from "./gridRows";
 import { decodeGridData, isPackedNumericData } from "./numericData";
 import {
   addViewportCache, buildVirtualRows, loadedRow, validViewportResponse,
@@ -31,6 +31,7 @@ const parsers = { number: numberParser, percent: percentParser };
 const EMPTY_DATA = [];
 const EMPTY_IDS = [];
 const isDataId = (id) => id !== "header" &&
+  !String(id).startsWith("header-group-") &&
   id !== VIRTUAL_SPACER_TOP && id !== VIRTUAL_SPACER_BOTTOM &&
   !String(id).startsWith(VIRTUAL_LOADING_PREFIX);
 
@@ -819,7 +820,7 @@ export const ServerVirtualGrid = (props) => {
       onColumnResized={onColumnResized}
       onContextMenu={onContextMenu}
       highlights={visibleHighlights}
-      stickyTopRows={1}
+      stickyTopRows={headerDepth(columns)}
       stickyLeftColumns={props.stickyLeftColumns || 0}
       stickyRightColumns={props.stickyRightColumns || 0}
       enableRangeSelection={props.enableRangeSelection !== false}

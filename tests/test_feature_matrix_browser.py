@@ -272,7 +272,7 @@ class FeatureMatrixChromeTests(unittest.TestCase):
 
         # Leave the active paste target before creating a keyboard range.
         self.driver.find_element(By.TAG_NAME, "h3").click()
-        self.cell("grouped-paged", "uk1", 0).click()
+        self.cell("grouped-paged", "memo", 0).click()
         self.chord(Keys.CONTROL, Keys.SHIFT, Keys.ARROW_DOWN)
         try:
             self.waiter.until(lambda _: self.state("grouped-paged").get(
@@ -281,7 +281,8 @@ class FeatureMatrixChromeTests(unittest.TestCase):
             self.fail("Grouped paged keyboard selection did not span both rows. "
                       + repr(self.state("grouped-paged")))
         self.chord(Keys.CONTROL, "d")
-        self.waiter.until(lambda _: self.state("grouped-paged")["data"][3][0] == 77.5)
+        self.waiter.until(lambda _: self.state("grouped-paged")["data"][3][3] == "C")
+        self.assertEqual(self.state("grouped-paged")["data"][3][0], 10)
         self.assertEqual(self.state("grouped-paged")["data"][1][0], 4)
 
     def test_ctrl_arrows_select_and_fill_down_with_undo(self):

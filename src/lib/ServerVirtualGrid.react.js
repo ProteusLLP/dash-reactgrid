@@ -861,8 +861,10 @@ export const ServerVirtualGrid = (props) => {
     // otherwise Shift+Arrow can be mistaken for the earlier single click.
     if (pointerGesture.current && !pointerGesture.current.pressed)
       pointerGesture.current=null;
-    // A new keyboard interaction ends the previous header-drag gesture.
+    // Keyboard input finishes any prior pointer gesture. The Shift-click
+    // focus callback may arrive after pointerup, so it cannot be reset there.
     columnHeaderPointer.current=false;
+    shiftPointer.current=false;
     if (isCellEditorTarget(e.target)) {
       if (e.key==="Enter" && e.shiftKey && !e.ctrlKey && !e.metaKey &&
           !e.altKey) multiCommit.current=true;
@@ -1051,7 +1053,9 @@ export const ServerVirtualGrid = (props) => {
           gesture.moved=true;
       }}
       onPointerUpCapture={() => {
-        shiftPointer.current=false;
+        // ReactGrid may invoke focusChanged after pointerup capture; retain
+        // shiftPointer until the next pointerdown/keydown to preserve the
+        // anchor for the completed Shift-click selection.
         if (pointerGesture.current) pointerGesture.current.pressed=false;
       }}
       style={{height:virtualViewportHeight,overflowY:"auto",overflowX:"auto"}}>

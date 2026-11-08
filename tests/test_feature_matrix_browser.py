@@ -295,6 +295,47 @@ class FeatureMatrixChromeTests(unittest.TestCase):
 
         self.waiter.until(lambda _: emitted())
 
+    def test_server_virtual_fill_down_uses_current_cell_after_range_selection(self):
+        self.cell("review-virtual", "label", 0).click()
+        self.chord(Keys.CONTROL, Keys.SHIFT, Keys.ARROW_DOWN)
+        # A subsequent ordinary click must take precedence over the old
+        # two-row label selection when Ctrl+D is pressed.
+        self.cell("review-virtual", "day", 1).click()
+        self.chord(Keys.CONTROL, "d")
+
+        def emitted():
+            try:
+                batch=json.loads(self.driver.find_element(
+                    By.ID, "review-virtual-edits").text)
+                return batch.get("edits")==[{
+                    "kind":"fillDown","sourceRow":0,"start":1,"end":2,
+                    "columnIds":["day"],
+                }]
+            except (ValueError,AttributeError):
+                return False
+
+        self.waiter.until(lambda _:emitted())
+
+    def test_server_virtual_shift_enter_uses_focused_cell_after_range_selection(self):
+        self.cell("review-virtual", "label", 0).click()
+        self.chord(Keys.CONTROL, Keys.SHIFT, Keys.ARROW_DOWN)
+        self.cell("review-virtual", "label", 1).click()
+        self.type_in_focused("Only")
+        self.chord(Keys.SHIFT, Keys.ENTER)
+
+        def emitted():
+            try:
+                batch=json.loads(self.driver.find_element(
+                    By.ID, "review-virtual-edits").text)
+                return batch.get("edits")==[{
+                    "kind":"cell","rowId":"vr-1",
+                    "columnId":"label","value":"Only",
+                }]
+            except (ValueError,AttributeError):
+                return False
+
+        self.waiter.until(lambda _:emitted())
+
     def test_server_virtual_shift_enter_submits_multi_cell_fill(self):
         self.cell("review-virtual", "label", 0).click()
         self.chord(Keys.CONTROL, Keys.SHIFT, Keys.ARROW_DOWN)

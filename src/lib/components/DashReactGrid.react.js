@@ -30,7 +30,7 @@ import { parseClipboardTsv } from '../virtualOperations';
 import {
   sheetEdge, keyboardRectangle, keyboardArea, nativeRectangle,
   publicKeyboardRange, keyboardHighlights, fillDownChanges,
-  multiEditChanges, keyboardClipboardText, MAX_KEYBOARD_EDIT_CELLS,
+  multiEditChanges, keyboardClipboardText,
 } from '../spreadsheetKeyboard';
 
 const locale = window.navigator.language
@@ -459,10 +459,6 @@ const ReactGridDataHandler = (props) => {
         e.stopPropagation()
         const rect=shortcutRange.current
         if (editingBlocked) return
-        if (keyboardArea(rect)>MAX_KEYBOARD_EDIT_CELLS) {
-          setKeyboardError("Clear is limited to 20,000 cells per operation")
-          return
-        }
         const changes=[]
         for (let ri=rect.start;ri<rect.end;ri++) {
           const rowId=table.rowIds[ri]

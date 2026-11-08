@@ -54,8 +54,11 @@ grid = DashReactGrid.from_dataframe(
 ```
 
 Pass `include_index=True` to expose a pandas index as one or more columns.
-`column_types` and `column_options` may be indexed by original labels
-(including tuples) or zero-based column positions. All other keyword arguments
+`column_types` and `column_options` use original column labels,
+including tuples and integer-valued labels. To refer to zero-based column
+positions, use `column_types_by_position` and
+`column_options_by_position`. Positional overrides take precedence when both
+mappings specify a column. All other keyword arguments
 pass through to `DashReactGrid`. The constructor materialises mixed-type
 frames; for very large datasets use the stateless virtual-grid API instead
 of sending a full DataFrame to Dash.

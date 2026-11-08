@@ -54,3 +54,5 @@ jobs:
         run: python3 tests/test_virtual_operations_browser.py
       - name: Test server virtualization with durable sparse edits
         run: python3 tests/test_virtual_reliable_browser.py
+      - name: Test in-memory operations across more than 20,000 cells
+        run: python3 tests/test_large_in_memory_browser.py

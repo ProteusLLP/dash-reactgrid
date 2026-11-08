@@ -42,6 +42,17 @@ TWO_COLUMNS = [
     {"columnId": "label", "title": "Label", "type": "text", "width": 180},
     {"columnId": "value", "title": "Value", "type": "number", "width": 110},
 ]
+GROUPED_COLUMNS = [
+    {"columnId": "uk1", "title": "1y", "type": "number",
+     "headerPath": ["Rates", "UK"], "width": 100},
+    {"columnId": "uk5", "title": "5y", "type": "number",
+     "headerPath": ["Rates", "UK"], "width": 100},
+    {"columnId": "us1", "title": "1y", "type": "number",
+     "headerPath": ["Rates", "US"], "width": 100},
+    {"columnId": "memo", "title": "Memo", "type": "text",
+     "headerPath": ["Notes"], "width": 130},
+]
+
 SOURCE_DATA = [
     ['A "quoted"', 12.5],
     ["Tab\tand\nnewline", 25],
@@ -90,6 +101,13 @@ def layout():
             persisted_props=[],
         ),
         html.Pre(id="matrix-state"),
+        html.H3("Grouped headers"),
+        DashReactGrid(
+            id="grouped", columns=GROUPED_COLUMNS,
+            data=[[1.5, 2.5, 3.5, "First"], [4.5, 5.5, 6.5, "Second"]],
+            rowIds=["g0", "g1"], stickyTopRows=1, persisted_props=[],
+        ),
+        html.Pre(id="grouped-state"),
         html.H3("Clipboard source"),
         DashReactGrid(
             id="source", columns=TWO_COLUMNS, data=SOURCE_DATA,
@@ -208,6 +226,7 @@ def numeric_virtual_window(request):
     )
 
 
+attach_state("grouped", "grouped-state")
 attach_state("numeric", "numeric-state")
 attach_state("matrix", "matrix-state")
 attach_state("target", "target-state")

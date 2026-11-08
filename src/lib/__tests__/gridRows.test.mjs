@@ -127,4 +127,59 @@ test("column header tooltip is opt-in and unchanged when columns are hidden", ()
   assert.equal(rows[0].cells[0].style.height, 30);
   assert.equal(Object.hasOwn(rows[0].cells[1], "tooltip"), false);
   assert.equal(Object.hasOwn(rows[0].cells[2], "tooltip"), false);
+});\ntest("multi-level grouped headers span only matching adjacent parent paths", () => {
+  const grouped = [
+    {columnId:"gbp1",title:"1y",type:"number",headerPath:["Rates","GBP"],tooltip:"GBP 1 year"},
+    {columnId:"gbp5",title:"5y",type:"number",headerPath:["Rates","GBP"]},
+    {columnId:"usd1",title:"1y",type:"number",headerPath:["Rates","USD"]},
+    {columnId:"stock",title:"Equity",type:"text",headerPath:["Returns"]},
+  ];
+  const descriptors = compileGridColumns(grouped, grouped, "en-GB");
+  const built = buildGridRows({
+    columns:grouped, descriptors, allColumns:grouped,
+    data:[[0.01,0.02,0.03,"S&P"]], rowIds:["r0"],
+    readOnly:false, locked:new Set(), showGhost:false,
+  });
+  const rows = built.rows;
+  assert.deepEqual(rows.map(row => row.rowId),
+    ["header-group-0","header-group-1","header","r0"]);
+  assert.deepEqual(rows.map(row => row.cells.length), [4,4,4,4]);
+  assert.equal(rows[0].cells[0].text,"Rates");
+  assert.equal(rows[0].cells[0].colspan,3);
+  assert.equal(rows[0].cells[1].text,"");
+  assert.equal(rows[0].cells[3].text,"Returns");
+  assert.equal(rows[1].cells[0].text,"GBP");
+  assert.equal(rows[1].cells[0].colspan,2);
+  assert.equal(rows[1].cells[2].text,"USD");
+  assert.equal(rows[1].cells[3].text,"");
+  assert.equal(rows[2].cells[0].text,"1y");
+  assert.equal(rows[2].cells[0].tooltip,"GBP 1 year");
+  assert.equal(rows[3].cells[0].value,0.01);
+
+  // When a column is hidden the remaining siblings have a new span.
+  const visible = [grouped[0],grouped[2],grouped[3]];
+  const hidden = buildGridRows({
+    columns:visible, descriptors:compileGridColumns(visible,grouped,"en-GB"),
+    allColumns:grouped, data:[[0.01,0.02,0.03,"S&P"]], rowIds:["r0"],
+    readOnly:false, locked:new Set(), showGhost:false,
+  }).rows;
+  assert.equal(hidden[0].cells[0].colspan,2);
+  assert.equal(hidden[1].cells[0].colspan,undefined);
+  assert.equal(hidden[3].cells[1].value,0.03);
 });
+
+test("plain columns keep one header row and grouped peers require same ancestry", () => {
+  const ungrouped = render().rows;
+  assert.equal(ungrouped[0].rowId, "header");
+  const overlap = [
+    {columnId:"a",title:"X",headerPath:["A","Same"],type:"text"},
+    {columnId:"b",title:"Y",headerPath:["B","Same"],type:"text"},
+  ];
+  const grouped = buildGridRows({
+    columns:overlap,descriptors:compileGridColumns(overlap,overlap,"en-GB"),
+    allColumns:overlap,data:[["x","y"]],rowIds:["r"],
+    readOnly:false,locked:new Set(),showGhost:false,
+  }).rows;
+  assert.equal(grouped[1].cells[0].colspan,undefined);
+  assert.equal(grouped[1].cells[1].text,"Same");
+});\n

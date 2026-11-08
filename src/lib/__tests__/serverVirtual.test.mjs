@@ -175,3 +175,17 @@ test("grouped virtual headers stay above spacers without altering row offsets", 
   assert.equal(firstData.cells.length,grouped.length);
   assert.equal(rows.length,range.end-range.start+5);
 });
+
+
+test("virtual group headers avoid real row ID collisions",()=>{
+  const grouped=cols.map((column)=>({...column,headerPath:["Rates"]}));
+  const range=virtualRowWindow(0,1,25,20,200);
+  const rows=buildVirtualRows({
+    columns:grouped,descriptors:compileGridColumns(grouped,grouped,"en-GB"),
+    allColumns:grouped,rowCount:1,range,
+    page:{rowIds:["header-group-0"],data:[["valid",3,true]]},
+    rowHeight:25,readOnly:false,locked:new Set(),
+  });
+  assert.equal(rows.at(-1).rowId,"header-group-0");
+  assert.notEqual(rows[0].rowId,"header-group-0");
+});

@@ -177,6 +177,27 @@ class DataFrameTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "scalar-preserving"):
             DashReactGrid.from_dataframe(OnlyNumpyFrame())
 
+    def test_numpy_only_frame_preserves_datetime_scalars(self):
+        try:
+            import numpy as np
+        except ImportError:
+            self.skipTest("NumPy is optional")
+
+        class OnlyNumpyTemporalFrame:
+            columns = ["when"]
+            dtypes = ["datetime64[ns]"]
+
+            def to_numpy(self):
+                return np.array(
+                    ["2026-11-08T13:45:00", "NaT"], dtype="datetime64[ns]"
+                ).reshape(-1, 1)
+
+        result = DashReactGrid.from_dataframe(
+            OnlyNumpyTemporalFrame()
+        ).to_plotly_json()["props"]
+        self.assertTrue(result["data"][0][0].startswith("2026-11-08T13:45:00"))
+        self.assertIsNone(result["data"][1][0])
+
     def test_rejects_invalid_inputs_and_duplicate_data_arguments(self):
         with self.assertRaisesRegex(TypeError, "columns"):
             DashReactGrid.from_dataframe(object())

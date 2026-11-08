@@ -46,6 +46,24 @@ class StatelessVirtualCallbacksTests(unittest.TestCase):
         self.assertEqual(window_response(req,dataset_id="sample",row_count=self.count,
                                         columns=self.columns,fetch_rows=fetch),reply)
 
+    def test_data_only_provider_does_not_transmit_implicit_row_ids(self):
+        request={"datasetId":"sample","requestId":2,
+                 "start":99900,"end":99902}
+        answer=window_response(request,dataset_id="sample",row_count=self.count,
+            columns=self.columns,fetch_rows=lambda a,b:
+            {"data":[[f"Row {i}",i] for i in range(a,b)]})
+        self.assertNotIn("rowIds",answer)
+        self.assertEqual(answer["data"],[["Row 99900",99900],
+                                         ["Row 99901",99901]])
+        bare=window_response(request,dataset_id="sample",row_count=self.count,
+            columns=self.columns,fetch_rows=lambda a,b:
+            [[f"Row {i}",i] for i in range(a,b)])
+        self.assertEqual(bare,answer)
+        clipboard=clipboard_response({**request,"columnStart":0,"columnEnd":2},
+            dataset_id="sample",row_count=self.count,columns=self.columns,
+            fetch_rows=lambda a,b:{"data":[[f"Row {i}",i] for i in range(a,b)]})
+        self.assertEqual(clipboard["text"],"Row 99900\t99900\nRow 99901\t99901")
+
     def test_rejects_invalid_windows_before_calling_the_provider(self):
         requested=[]
         def fetch(a,b):
@@ -71,6 +89,7 @@ class StatelessVirtualCallbacksTests(unittest.TestCase):
             {"data":[["x",1],["y",2]],"rowIds":["same","same"]},
             {"data":[["x"],["y",2]],"rowIds":["r1","r2"]},
             {"data":[["x",1],["y",2]],"rowIds":[None,"r2"]},
+            {"data":[["x",1],["y",2]],"rowIds":None},
         ]
         for result in invalid:
             with self.subTest(result=result),self.assertRaises(ValueError):

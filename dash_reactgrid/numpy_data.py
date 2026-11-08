@@ -85,6 +85,29 @@ def encode_numpy_data(data):
     }
 
 
+def encode_numpy_row_ids(row_ids):
+    """Convert a one-dimensional integer ndarray to exact, JSON-safe IDs.
+
+    Values outside JavaScript's safe integer range are decimal strings;
+    otherwise they remain integer IDs. Non-NumPy lists are unchanged.
+    """
+    if not is_numpy_array(row_ids):
+        return row_ids
+    np = _numpy()
+    if np.ma.isMaskedArray(row_ids):
+        raise ValueError("Masked NumPy rowIds are not supported")
+    if row_ids.ndim != 1:
+        raise ValueError("NumPy rowIds must be a one-dimensional integer array")
+    if row_ids.dtype.kind not in "iu" or row_ids.dtype.itemsize > 8:
+        raise TypeError("NumPy rowIds must contain integers (not bools or floats)")
+    # Encode each identifier independently: the same safe ID must retain
+    # its number type across overlapping virtual windows, even if a different
+    # window also contains an out-of-range 64-bit integer.
+    ids = row_ids.tolist()
+    return [str(value) if not -MAX_SAFE_INTEGER <= value <= MAX_SAFE_INTEGER
+            else value for value in ids]
+
+
 def decode_numpy_data(data):
     """Return an ndarray from the binary wire format, or leave data unchanged."""
     if not isinstance(data, dict) or data.get(MARKER) != 1:
@@ -122,6 +145,12 @@ def install_numpy_support(component):
         elif len(args) >= 3:
             args = list(args)
             args[2] = encode_numpy_data(args[2])
+        if "rowIds" in kwargs:
+            kwargs["rowIds"] = encode_numpy_row_ids(kwargs["rowIds"])
+        elif len(args) >= 4:
+            if not isinstance(args, list):
+                args = list(args)
+            args[3] = encode_numpy_row_ids(args[3])
         original(self, *args, **kwargs)
 
     component.__init__ = numpy_init

@@ -66,7 +66,30 @@ def run():
             assert len(copied.splitlines())==25_050
             assert "Row 12499\t12499" in copied
             assert "Copying selected range" not in driver.find_element(By.ID,"grid").text
-            print("Chrome virtual clipboard passed: Ctrl+A Ctrl+C copies 25,050 rows and excludes hidden columns")
+
+            # A normal focused cell may differ from the previously displayed
+            # global selection. Ctrl+C must use native focus, while the
+            # toolbar's Copy selection must use the displayed full range.
+            amount=driver.find_elements(
+                By.CSS_SELECTOR,"#grid .rg-cell.rg-col-amount")[1]
+            amount.click()
+            assert "25,050 rows selected" in driver.find_element(
+                By.CSS_SELECTOR,"#grid .drg-selection-count").text
+            ActionChains(driver).key_down(Keys.CONTROL).send_keys(
+                "c").key_up(Keys.CONTROL).perform()
+            wait.until(lambda _:clipboard()=="1")
+            copy_button=wait.until(lambda _:next(
+                (button for button in driver.find_elements(
+                    By.CSS_SELECTOR,"#grid .drg-virtual-toolbar button")
+                 if button.text.strip()=="Copy selection" and button.is_enabled()),
+                None))
+            copy_button.click()
+            restored=wait.until(lambda _:(value if (value:=clipboard()).endswith(
+                "Row 25049\\t25049") else False))
+            assert len(restored.splitlines())==25_050
+            assert restored.startswith("Row 0\\t0")
+
+            print("Chrome virtual clipboard passed: full Ctrl+A Ctrl+C, native cell copy and toolbar copy preserve distinct selections")
         finally:
             if driver:driver.quit()
             proc.terminate()

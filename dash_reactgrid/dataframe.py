@@ -46,19 +46,33 @@ def _normalise(value):
     return str(value)
 
 
-def _option(mapping, position, label):
+def _label_option(mapping, label):
+    """Label overrides never also act as integer positional overrides."""
     if mapping is None:
         return None
-    if position in mapping:
-        return mapping[position]
     try:
         return mapping.get(label)
     except TypeError:
+        # Some DataFrame column labels may be unhashable.
         return None
 
 
+def _position_option(mapping, position):
+    return None if mapping is None else mapping.get(position)
+
+
+def _has_integer_source(dtypes):
+    return any(
+        getattr(dtype, "kind", None) in {"i", "u"} or
+        str(dtype).lower().startswith(("int", "uint"))
+        for dtype in dtypes
+    )
+
+
 def from_dataframe(cls, dataframe, *, include_index=False,
-                   column_types=None, column_options=None, **kwargs):
+                   column_types=None, column_options=None,
+                   column_types_by_position=None,
+                   column_options_by_position=None, **kwargs):
     """Construct a grid from a DataFrame-like object.
 
     Supports pandas and Polars, as well as objects exposing ``columns`` and
@@ -66,8 +80,10 @@ def from_dataframe(cls, dataframe, *, include_index=False,
     A pandas MultiIndex column creates grouped header bands automatically.
     Numeric homogeneous frames retain NumPy's compact binary transport.
 
-    ``column_types`` and ``column_options`` are mappings indexed by the
-    original column label (including MultiIndex tuples) or integer position.
+    ``column_types`` and ``column_options`` are keyed by original
+    column labels (including tuples and integer labels). Use
+    ``column_types_by_position`` and ``column_options_by_position`` for
+    zero-based column positions. Position overrides take precedence.
     ``include_index=True`` uses pandas' reset_index to display index values.
     Other keyword arguments are forwarded to the DashReactGrid constructor.
     """
@@ -100,8 +116,11 @@ def from_dataframe(cls, dataframe, *, include_index=False,
             column_id = f"{base}__{suffix}"
             suffix += 1
         inferred = _cell_type(dtypes[i])
-        options = dict(_option(column_options, i, label) or {})
-        override = _option(column_types, i, label)
+        options = dict(_label_option(column_options, label) or {})
+        options.update(_position_option(column_options_by_position, i) or {})
+        override = _position_option(column_types_by_position, i)
+        if override is None:
+            override = _label_option(column_types, label)
         cell_type = options.pop("type", override or inferred)
         title = options.pop("title", parts[-1] if parts else column_id)
         options.setdefault("header_path", parts[:-1])
@@ -111,19 +130,26 @@ def from_dataframe(cls, dataframe, *, include_index=False,
         seen.add(column_id)
         columns.append(Column(column_id, title, type=cell_type, **options))
 
-    # Avoid constructing Python cell objects for large homogeneous numeric
-    # DataFrames; DashReactGrid's NumPy adapter packs the matrix directly.
+    # Preserve integer precision. Mixed integer/float columns may be silently
+    # promoted to float64 by DataFrame.to_numpy() before the NumPy adapter can
+    # check the original integer range. Iterate the original scalar values.
     data = None
     if all(col["type"] in {"number", "percent", "checkbox"} for col in columns):
         to_numpy = getattr(dataframe, "to_numpy", None)
         if callable(to_numpy):
             try:
-                candidate = to_numpy(copy=False)
-            except TypeError:
-                candidate = to_numpy()
+                try:
+                    candidate = to_numpy(copy=False)
+                except TypeError:
+                    candidate = to_numpy()
+            except ImportError:
+                # Polars can work without NumPy, even though it exposes this
+                # method. Its iter_rows() path does not require NumPy.
+                candidate = None
+            kind = getattr(getattr(candidate, "dtype", None), "kind", None)
             if (getattr(candidate, "ndim", None) == 2 and
-                    getattr(getattr(candidate, "dtype", None), "kind", None)
-                    in {"b", "i", "u", "f"}):
+                    kind in {"b", "i", "u", "f"} and
+                    not (kind == "f" and _has_integer_source(dtypes))):
                 data = candidate
 
     if data is None:

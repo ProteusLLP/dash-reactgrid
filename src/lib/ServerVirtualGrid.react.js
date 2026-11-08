@@ -19,7 +19,7 @@ import {
 } from "./keyboard";
 import {
   boundedSelection, extendSelection, copyRequestFor, matchesCopyResponse,
-  selectedColumnIds,
+  selectedColumnIds, editableFillColumns,
   makeRangePaste, historyStorageKey, initialHistory, loadHistory,
   saveHistory, nextHistory, MAX_RANGE_ROWS,
 } from "./virtualOperations";
@@ -415,7 +415,8 @@ export const ServerVirtualGrid = (props) => {
       setPropsRef.current({virtualRangeRequest:request});
     }, 150);
     return () => window.clearTimeout(timer);
-  }, [globalSelection, virtualDatasetId, props.editAck?.revision]);
+  }, [globalSelection, virtualDatasetId, props.virtualClipboardUrl,
+    props.editAck?.revision]);
 
   useEffect(() => {
     if (!matchesCopyResponse(virtualRangeData, copyPending.current)) return;
@@ -521,27 +522,25 @@ export const ServerVirtualGrid = (props) => {
   const submitRepeated = (sel, values, start = sel.start, end = sel.end) => {
     if (end <= start) return;
     const target=columns.slice(sel.columnStart,sel.columnEnd);
-    // The backend skips protected destinations per cell; another selected
-    // column must remain editable even if its neighbour is protected.
     if (values.length !== target.length) return;
-    submitOperation([{kind:"fillRange",start,end,
-      columnIds:target.map(c=>c.columnId),values}]);
+    const eligible=editableFillColumns(target,values);
+    if (!eligible.columnIds.length) return;
+    submitOperation([{kind:"fillRange",start,end,...eligible}]);
   };
 
   const fillDown = () => {
     if (editingBlocked) return;
-    const sel=globalSelection || globalRef.current;
+    const sel=globalRef.current || globalSelection;
     if (!sel) return;
     const multiple=sel.end-sel.start>1;
     const sourceRow=multiple ? sel.start : sel.start-1;
     if (sourceRow<0) return;
-    const target=columns.slice(sel.columnStart,sel.columnEnd);
-    // The backend resolves and checks each destination independently.
+    const target=editableFillColumns(
+      columns.slice(sel.columnStart,sel.columnEnd));
     const start=multiple ? sel.start+1 : sel.start;
-    if (start>=sel.end) return;
+    if (start>=sel.end || !target.columnIds.length) return;
     // Resolve the source on the server, even if it is outside the viewport.
-    submitOperation([{kind:"fillDown",sourceRow,start,end:sel.end,
-      columnIds:target.map(c=>c.columnId)}]);
+    submitOperation([{kind:"fillDown",sourceRow,start,end:sel.end,...target}]);
   };
 
   const navigateToEdge = (key,shift) => {
@@ -597,7 +596,7 @@ export const ServerVirtualGrid = (props) => {
     handleChanges: (changes) => {
       if (multiCommit.current && changes.length===1) {
         multiCommit.current=false;
-        const sel=globalSelection || globalRef.current;
+        const sel=globalRef.current || globalSelection;
         const change=changes[0];
         const source=columnById.get(change.columnId);
         if (sel && source && keyboardArea(sel)>1) {

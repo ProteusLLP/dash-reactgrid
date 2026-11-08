@@ -99,6 +99,7 @@ const ReactGridDataHandler = (props) => {
   const selection = useRef(null)
   const focused = useRef(null)
   const shortcutRange = useRef(null)
+  const retainedKeyboardRange = useRef(null)
   const shortcutAnchor = useRef(null)
   const shortcutCursor = useRef(null)
   const suppressNativeSelection = useRef(false)
@@ -224,8 +225,9 @@ const ReactGridDataHandler = (props) => {
       const changed = cellChanges[0]
       const source = columns[displayedColumnIndex.get(changed.columnId)]
       const sourceRow = rowIndexesOf(table.rowIds).get(changed.rowId)
-      const rect = pendingMultiSelection.current ||
-        shortcutRange.current || lastMultiSelection.current ||
+      const rect = retainedKeyboardRange.current ||
+        pendingMultiSelection.current || shortcutRange.current ||
+        lastMultiSelection.current ||
         nativeRectangle(selection.current, pageStart, table.data.length,
           columns.length)
       pendingMultiSelection.current = null
@@ -344,7 +346,7 @@ const ReactGridDataHandler = (props) => {
   }
 
   const handleSelectionChanged = (ranges) => {
-    if (suppressNativeSelection.current) return
+    if (suppressNativeSelection.current || retainedKeyboardRange.current) return
     selection.current = ranges
     shortcutRange.current = null
     setShortcutHighlight(null)
@@ -372,6 +374,7 @@ const ReactGridDataHandler = (props) => {
       shortcutAnchor.current = anchor
       shortcutCursor.current = target
       shortcutRange.current = rect
+      retainedKeyboardRange.current = rect
       lastMultiSelection.current = rect
       setShortcutHighlight(rect)
       suppressNativeSelection.current = true
@@ -384,6 +387,7 @@ const ReactGridDataHandler = (props) => {
       shortcutAnchor.current = target
       shortcutCursor.current = target
       shortcutRange.current = null
+      retainedKeyboardRange.current = null
       lastMultiSelection.current = null
       setShortcutHighlight(null)
       suppressNativeSelection.current = true
@@ -404,7 +408,7 @@ const ReactGridDataHandler = (props) => {
   }
 
   const activeRectangle = () =>
-    shortcutRange.current || nativeRectangle(selection.current,pageStart,
+    retainedKeyboardRange.current || shortcutRange.current || nativeRectangle(selection.current,pageStart,
       table.data.length,columns.length,focusedPosition())
 
   const fillDown = () => {
@@ -447,8 +451,8 @@ const ReactGridDataHandler = (props) => {
         multiCommit.current = true
         // ReactGrid may change its selection while closing an active editor.
         // Snapshot the large absolute range before it can be collapsed.
-        pendingMultiSelection.current = shortcutRange.current ||
-          lastMultiSelection.current ||
+        pendingMultiSelection.current = retainedKeyboardRange.current ||
+          shortcutRange.current || lastMultiSelection.current ||
           nativeRectangle(selection.current,pageStart,
             table.data.length,columns.length)
       }
@@ -460,6 +464,7 @@ const ReactGridDataHandler = (props) => {
       shortcutAnchor.current = null
       shortcutCursor.current = null
       shortcutRange.current = null
+      retainedKeyboardRange.current = null
       setShortcutHighlight(null)
       setJumpLocation(null)
     }
@@ -515,6 +520,7 @@ const ReactGridDataHandler = (props) => {
           if (!e.shiftKey && !e.altKey) {
             // ReactGrid selects the entire matrix without notifying onSelectionChanged.
             // Keep our clipboard selection and Dash's selectedRange in sync.
+            retainedKeyboardRange.current = null
             const ranges = selectAllRanges(selection.current, rows, columns, focused.current)
             if (ranges) handleSelectionChanged(ranges)
           }
@@ -599,6 +605,7 @@ const ReactGridDataHandler = (props) => {
     selection.current = null
     focused.current = null
     shortcutRange.current = null
+    retainedKeyboardRange.current = null
     shortcutAnchor.current = null
     shortcutCursor.current = null
     suppressNativeSelection.current = false
@@ -612,6 +619,8 @@ const ReactGridDataHandler = (props) => {
       onPointerDownCapture={() => {
         suppressNativeSelection.current=false
         shortcutRange.current=null
+        retainedKeyboardRange.current=null
+        lastMultiSelection.current=null
         shortcutAnchor.current=null
         shortcutCursor.current=null
         setShortcutHighlight(null)

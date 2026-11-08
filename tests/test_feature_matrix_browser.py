@@ -295,7 +295,27 @@ class FeatureMatrixChromeTests(unittest.TestCase):
             except (ValueError,AttributeError):
                 return False
 
-        self.waiter.until(lambda _:emitted())
+        try:
+            self.waiter.until(lambda _:emitted())
+        except Exception:
+            print("Shift+Arrow Ctrl+D emitted:",
+                  self.driver.find_element(By.ID,"review-virtual-edits").text)
+            print("Native selected:",
+                  len(self.driver.find_elements(
+                    By.CSS_SELECTOR,"#review-virtual .rg-selected")))
+            print("Virtual highlighted:",
+                  len(self.driver.find_elements(
+                    By.CSS_SELECTOR,"#review-virtual .rg-virtual-selected")))
+            print("Focused:",
+                  self.driver.execute_script("""
+                    const e=document.activeElement;
+                    return [e?.tagName,e?.className,e?.value];
+                  """))
+            print("Toolbar:",self.driver.find_element(
+                By.CSS_SELECTOR,"#review-virtual .drg-virtual-toolbar").text)
+            print("Grid alerts:",[e.text for e in self.driver.find_elements(
+                By.CSS_SELECTOR,"#review-virtual [role=alert]")])
+            raise
 
     def test_server_virtual_fill_down_uses_sparse_range_command(self):
         self.cell("review-virtual", "label", 0).click()

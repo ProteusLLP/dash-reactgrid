@@ -156,4 +156,21 @@ test("virtualized header retains tooltip metadata", () => {
   });
   assert.equal(rows[0].cells[0].tooltip, "Full name");
   assert.equal(rows[0].cells[1].tooltip, undefined);
-});
+});\ntest("grouped virtual headers stay above spacers without altering row offsets", () => {
+  const grouped = cols.map((column,index)=>({
+    ...column,headerPath:index<2 ? ["Input","Details"] : ["Output","Flags"],
+  }));
+  const range=virtualRowWindow(1000,1000,25,60,400);
+  const descriptors=compileGridColumns(grouped,grouped,"en-GB");
+  const rows=buildVirtualRows({
+    columns:grouped,descriptors,allColumns:grouped,rowCount:1000,
+    range,page:null,rowHeight:25,readOnly:false,locked:new Set(),
+  });
+  assert.deepEqual(rows.slice(0,3).map(row=>row.rowId),
+    ["header-group-0","header-group-1","header"]);
+  assert.equal(rows[0].cells[0].colspan,2);
+  const firstData=rows.find(row=>row.rowId.startsWith(VIRTUAL_LOADING_PREFIX));
+  assert.ok(firstData);
+  assert.equal(firstData.cells.length,grouped.length);
+  assert.equal(rows.length,range.end-range.start+5);
+});\n

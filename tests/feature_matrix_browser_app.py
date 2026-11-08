@@ -108,6 +108,16 @@ def layout():
             rowIds=["g0", "g1"], stickyTopRows=1, persisted_props=[],
         ),
         html.Pre(id="grouped-state"),
+        html.H3("Grouped paged"),
+        DashReactGrid(
+            id="grouped-paged", columns=GROUPED_COLUMNS,
+            data=[[1, 2, 3, "A"], [4, 5, 6, "B"],
+                  [7, 8, 9, "C"], [10, 11, 12, "D"]],
+            rowIds=["pg0", "pg1", "pg2", "pg3"],
+            rowPageSize=2, stickyTopRows=1, persisted_props=[],
+        ),
+        html.Pre(id="grouped-paged-state"),
+
         html.H3("Clipboard source"),
         DashReactGrid(
             id="source", columns=TWO_COLUMNS, data=SOURCE_DATA,
@@ -227,6 +237,7 @@ def numeric_virtual_window(request):
 
 
 attach_state("grouped", "grouped-state")
+attach_state("grouped-paged", "grouped-paged-state")
 attach_state("numeric", "numeric-state")
 attach_state("matrix", "matrix-state")
 attach_state("target", "target-state")

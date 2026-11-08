@@ -101,3 +101,29 @@ test("clipboard of Ctrl+Shift range uses original data and Excel TSV",()=>{
     {0:"a",49999:"last"},cols);
   assert.equal(huge.rows.length,0);
 });
+
+
+test("three grouped header rows preserve native and paged data indices",()=>{
+  const native={first:{row:{idx:3},column:{idx:0}},
+    last:{row:{idx:5},column:{idx:1}}};
+  assert.deepEqual(nativeRectangle([native],0,4,3,null,3),
+    {start:0,end:3,columnStart:0,columnEnd:2});
+  assert.deepEqual(nativeRectangle([native],30,200,3,null,3),
+    {start:30,end:33,columnStart:0,columnEnd:2});
+  const full={first:{row:{idx:0},column:{idx:0}},
+    last:{row:{idx:5},column:{idx:1}}};
+  assert.deepEqual(nativeRectangle([full],30,200,3,null,3),
+    {start:30,end:33,columnStart:0,columnEnd:2},
+    "select all on a later page cannot include rows from the previous page");
+  assert.equal(nativeRectangle([{
+    first:{row:{idx:0},column:{idx:0}},
+    last:{row:{idx:2},column:{idx:1}},
+  }],30,200,3,null,3),null);
+  const p=publicKeyboardRange({
+    start:30,end:33,columnStart:0,columnEnd:2,
+  },{30:"r30",31:"r31",32:"r32"},cols,3,30);
+  assert.equal(p.first.row.idx,3);
+  assert.equal(p.last.row.idx,5);
+  assert.deepEqual(p.rows.map(x=>x.idx),[3,4,5]);
+  assert.deepEqual(p.rows.map(x=>x.rowId),["r30","r31","r32"]);
+});

@@ -30,10 +30,6 @@ import { sheetEdge, keyboardRectangle, keyboardArea, MAX_KEYBOARD_EDIT_CELLS } f
 const parsers = { number: numberParser, percent: percentParser };
 const EMPTY_DATA = [];
 const EMPTY_IDS = [];
-const isDataId = (id) => id !== "header" &&
-  !String(id).startsWith("header-group-") &&
-  id !== VIRTUAL_SPACER_TOP && id !== VIRTUAL_SPACER_BOTTOM &&
-  !String(id).startsWith(VIRTUAL_LOADING_PREFIX);
 
 /**
  * Continuous, server-backed scrolling for large tables.
@@ -142,6 +138,10 @@ export const ServerVirtualGrid = (props) => {
     () => overlayVirtualEdits(cachedPage, reliable.outbox?.queue, allColumns),
     [cachedPage, reliable.outbox, allColumns],
   );
+  // Synthetic header IDs, spacer IDs and real backend IDs may share a prefix.
+  // Only the actual loaded data rows may receive focus, edits or selection.
+  const visibleDataIds = useMemo(() => new Set(page?.rowIds || []), [page]);
+  const isDataId = (id) => visibleDataIds.has(id);
   const loading = valid && virtualRowCount > 0 && !cachedPage;
 
   useEffect(() => {

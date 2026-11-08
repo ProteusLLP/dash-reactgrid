@@ -127,7 +127,8 @@ test("column header tooltip is opt-in and unchanged when columns are hidden", ()
   assert.equal(rows[0].cells[0].style.height, 30);
   assert.equal(Object.hasOwn(rows[0].cells[1], "tooltip"), false);
   assert.equal(Object.hasOwn(rows[0].cells[2], "tooltip"), false);
-});\ntest("multi-level grouped headers span only matching adjacent parent paths", () => {
+});
+test("multi-level grouped headers span only matching adjacent parent paths", () => {
   const grouped = [
     {columnId:"gbp1",title:"1y",type:"number",headerPath:["Rates","GBP"],tooltip:"GBP 1 year"},
     {columnId:"gbp5",title:"5y",type:"number",headerPath:["Rates","GBP"]},
@@ -182,4 +183,4 @@ test("plain columns keep one header row and grouped peers require same ancestry"
   }).rows;
   assert.equal(grouped[1].cells[0].colspan,undefined);
   assert.equal(grouped[1].cells[1].text,"Same");
-});\n
+});

@@ -667,6 +667,7 @@ DashReactGrid.defaultProps = {
   virtualRangeData: null,
   virtualSelection: null,
   virtualExportUrl: null,
+  virtualClipboardUrl: null,
   transmitSparseEdits: false,
   editDatasetId: null,
   editAck: null,
@@ -815,6 +816,8 @@ DashReactGrid.propTypes = {
   virtualSelection: PropTypes.object,
   /** Application-provided URL for authenticated streamed CSV exports. */
   virtualExportUrl: PropTypes.string,
+  /** Authenticated same-origin endpoint streaming selected rows as TSV without a header. */
+  virtualClipboardUrl: PropTypes.string,
   /**
    * When true, publish only {edits: {seq, edits}} through setProps.
    * The changed table is retained locally in the browser, including new

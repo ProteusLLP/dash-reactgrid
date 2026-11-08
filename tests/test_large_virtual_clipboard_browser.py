@@ -68,6 +68,37 @@ def run():
             assert "Row 12499\t12499" in copied
             assert "Copying selected range" not in driver.find_element(By.ID,"grid").text
 
+            # Drag across two column headers. Every intermediate range
+            # update must retain all logical rows, not just the viewport.
+            label_header=wait.until(lambda _:driver.find_element(
+                By.CSS_SELECTOR,"#grid .rg-header-cell.rg-col-label"))
+            amount_header=driver.find_element(
+                By.CSS_SELECTOR,"#grid .rg-header-cell.rg-col-amount")
+            label_header.click()
+            def selection_is(start,end):
+                try:
+                    value=json.loads(driver.find_element(
+                        By.ID,"selection-state").text)
+                    return value["start"]==0 and value["end"]==25_050 and (
+                        value["columnStart"],value["columnEnd"])==(start,end)
+                except (ValueError,KeyError,TypeError):
+                    return False
+            wait.until(lambda _:selection_is(0,1))
+            ActionChains(driver).click_and_hold(label_header).move_to_element(
+                amount_header).release().perform()
+            wait.until(lambda _:selection_is(0,2))
+            driver.execute_async_script("""
+                const done=arguments[arguments.length-1];
+                navigator.clipboard.writeText('before-header-drag').then(
+                  ()=>done(true),err=>done(err.message));
+            """)
+            ActionChains(driver).key_down(Keys.CONTROL).send_keys(
+                "c").key_up(Keys.CONTROL).perform()
+            copied_drag=wait.until(lambda _:(value if (value:=clipboard()).endswith(
+                "Row 25049\t25049") else False))
+            assert len(copied_drag.splitlines())==25_050
+            assert copied_drag.startswith("Row 0\t0")
+
             # A normal focused cell may differ from the previously displayed
             # global selection. Ctrl+C must use native focus, while the
             # toolbar's Copy selection must use the displayed full range.

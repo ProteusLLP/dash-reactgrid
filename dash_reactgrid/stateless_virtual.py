@@ -179,12 +179,12 @@ def tsv_chunks(*, start, end, column_start, column_end, row_count, columns,
         stop = min(position + chunk_size, end)
         result = _valid_rows(fetch_rows(position, stop), stop - position, len(columns))
         buffer = io.StringIO()
-        writer = csv.writer(buffer, delimiter="\\t", lineterminator="\\r\\n")
+        writer = csv.writer(buffer, delimiter="\t", lineterminator="\r\n")
         for row in result["data"]:
             writer.writerow(["" if row[i] is None else str(row[i]) for i in indices])
         text = buffer.getvalue()
         # A trailing row separator would add an empty row in some paste targets.
-        yield text[:-2] if stop == end and text.endswith("\\r\\n") else text
+        yield text[:-2] if stop == end and text.endswith("\r\n") else text
 
 
 def edit_ack(batch, *, dataset_id, apply_batch):

@@ -25,7 +25,7 @@ import {
 import { numberParser } from "./CustomNumberCell";
 import { percentParser } from "./PercentCell";
 import { createCellTemplates } from "./cellTemplates";
-import { sheetEdge, keyboardRectangle, keyboardArea, MAX_KEYBOARD_EDIT_CELLS } from "./spreadsheetKeyboard";
+import { sheetEdge, keyboardRectangle, keyboardArea } from "./spreadsheetKeyboard";
 
 const parsers = { number: numberParser, percent: percentParser };
 const EMPTY_DATA = [];

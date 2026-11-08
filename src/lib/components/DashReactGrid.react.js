@@ -107,6 +107,7 @@ const ReactGridDataHandler = (props) => {
   const keyboardHost = useRef(null)
   const [keyboardError, setKeyboardError] = useState(null)
   const multiCommit = useRef(false)
+  const pendingMultiSelection = useRef(null)
   const lastMultiSelection = useRef(null)
 
   // The server sends new columns only when it remounts the table, which
@@ -223,10 +224,11 @@ const ReactGridDataHandler = (props) => {
       const changed = cellChanges[0]
       const source = columns[displayedColumnIndex.get(changed.columnId)]
       const sourceRow = rowIndexesOf(table.rowIds).get(changed.rowId)
-      const rect = shortcutRange.current ||
-        lastMultiSelection.current ||
+      const rect = pendingMultiSelection.current ||
+        shortcutRange.current || lastMultiSelection.current ||
         nativeRectangle(selection.current, pageStart, table.data.length,
           columns.length)
+      pendingMultiSelection.current = null
       if (source && rect && sourceRow >= rect.start && sourceRow < rect.end &&
           keyboardArea(rect) > 1) {
         try {
@@ -244,6 +246,7 @@ const ReactGridDataHandler = (props) => {
       }
     }
     multiCommit.current = false
+    pendingMultiSelection.current = null
     const changes = []
     cellChanges.forEach((cellChange) => {
       const column = columns[displayedColumnIndex.get(cellChange.columnId)]
@@ -369,6 +372,7 @@ const ReactGridDataHandler = (props) => {
       shortcutAnchor.current = anchor
       shortcutCursor.current = target
       shortcutRange.current = rect
+      lastMultiSelection.current = rect
       setShortcutHighlight(rect)
       suppressNativeSelection.current = true
       setProps({
@@ -439,7 +443,15 @@ const ReactGridDataHandler = (props) => {
   const handleKeyDown = (e) => {
     if (isCellEditorTarget(e.target)) {
       if (e.key === "Enter" && e.shiftKey && !e.ctrlKey && !e.metaKey &&
-          !e.altKey) multiCommit.current = true
+          !e.altKey) {
+        multiCommit.current = true
+        // ReactGrid may change its selection while closing an active editor.
+        // Snapshot the large absolute range before it can be collapsed.
+        pendingMultiSelection.current = shortcutRange.current ||
+          lastMultiSelection.current ||
+          nativeRectangle(selection.current,pageStart,
+            table.data.length,columns.length)
+      }
       return
     }
     if (!e.ctrlKey && !e.metaKey && !e.altKey &&

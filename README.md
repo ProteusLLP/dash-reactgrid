@@ -174,12 +174,26 @@ reliable sparse transmission is enabled.
 
 **Global selection:** Use Shift-click while scrolling to extend a selection
 or the From row / To row inputs to select a range by absolute row index.
-Ctrl+A selects all rows. The browser holds only the four boundary indices,
-never an array of every selected row. `virtualSelection` publishes these
-indices to Dash. Small ranges are prepared with `virtualRangeRequest`
-and `virtualRangeData` and can be copied in TSV form. For selections
-larger than 1,000 rows or 1 MB, provide `virtualExportUrl` so users can
-download a streamed CSV export. Clipboard pastes of up to 1,000 rows and
+Ctrl+A selects all rows and visible columns, including unloaded rows. The browser
+holds only four boundary indices, never an array of every selected row.
+`virtualSelection` publishes these indices to Dash.
+
+For Excel-compatible **Ctrl+A then Ctrl+C** on large server-virtualized
+grids, provide `virtualClipboardUrl` pointing to an authenticated same-origin
+endpoint that streams headerless TSV. Pressing Ctrl+C or clicking Copy selection
+starts the browser clipboard write during the user gesture, and its
+`ClipboardItem` resolves the response asynchronously. The browser does not
+load grid rows into ReactGrid or send the selection through Dash. There is no
+arbitrary row/cell-count cap, but actual clipboard capacity depends on the
+browser, operating system and available memory. A separate `virtualExportUrl`
+can offer a CSV download if clipboard permissions or capacity prevent copying.
+Applications must authorise access to the entire requested range.
+Chromium-based browsers with Async Clipboard API and promised ClipboardItem
+support provide the streaming path; on unsupported browsers use CSV export.
+
+When no `virtualClipboardUrl` is configured, small ranges can still be copied
+using `virtualRangeRequest`/`virtualRangeData`, with the existing
+1,000-row/1 MB preparation limits. Clipboard **pastes** of up to 1,000 rows and
 20,000 cells are applied by the server, including cells in unloaded rows.
 Insertion and deletion operate at absolute positions, and undo/redo use
 transactional inverse receipts rather than loading the whole table.
@@ -284,6 +298,44 @@ validates window sizes and identities but is not an authentication layer.
 For large selections, provide `virtualExportUrl` pointing to your own
 authenticated CSV endpoint. `csv_chunks()` is a pure chunk generator that
 can be passed to a streaming HTTP response. No full export is materialised.
+
+To enable direct Ctrl+A Ctrl+C for large selections, also supply
+`virtualClipboardUrl="/clipboard.tsv"` on the grid and expose a GET endpoint
+using the same row provider:
+
+```python
+from itertools import chain
+from flask import Response, abort, request, stream_with_context
+from dash_reactgrid.stateless_virtual import tsv_chunks
+
+@app.server.route("/clipboard.tsv")
+def clipboard_tsv():
+    # Authenticate the caller and authorise access to this dataset.
+    if not authorised_for_dataset(request, DATASET):
+        abort(403)
+    if request.args.get("datasetId") != DATASET:
+        abort(403)
+    try:
+        stream = tsv_chunks(
+            start=int(request.args["start"]), end=int(request.args["end"]),
+            column_start=int(request.args["columnStart"]),
+            column_end=int(request.args["columnEnd"]),
+            column_ids=json.loads(request.args["columnIds"]),
+            row_count=count_rows(), columns=columns, fetch_rows=read_rows,
+        )
+        first = next(stream)   # reject invalid requests before HTTP 200
+        return Response(stream_with_context(chain([first], stream)),
+                        mimetype="text/plain",
+                        headers={"Cache-Control":"no-store"})
+    except (ValueError, KeyError, StopIteration):
+        abort(400)
+```
+
+Here `authorised_for_dataset` is an application-defined authorisation
+function and `json` is the standard Python module. The helper fetches
+small row windows and outputs tab-separated text with correct quoting of
+embedded tabs, line breaks and quotation marks; it omits the column headers
+for direct pasting into Excel. The response should not be cached.
 
 Clipboard and export requests include `columnIds` in the current visible
 column order. Resolve these against the original `columns` array to avoid

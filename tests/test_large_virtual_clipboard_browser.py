@@ -70,10 +70,12 @@ def run():
 
             # Drag across two column headers. Every intermediate range
             # update must retain all logical rows, not just the viewport.
-            label_header=wait.until(lambda _:driver.find_element(
-                By.CSS_SELECTOR,"#grid .rg-header-cell.rg-col-label"))
-            amount_header=driver.find_element(
-                By.CSS_SELECTOR,"#grid .rg-header-cell.rg-col-amount")
+            def header(text):
+                return next((h for h in driver.find_elements(
+                    By.CSS_SELECTOR,"#grid .rg-header-cell")
+                    if text in h.text),None)
+            label_header=wait.until(lambda _:header("Label"))
+            wait.until(lambda _:header("Amount"))
             label_header.click()
             def selection_is(start,end):
                 try:
@@ -84,8 +86,14 @@ def run():
                 except (ValueError,KeyError,TypeError):
                     return False
             wait.until(lambda _:selection_is(0,1))
-            ActionChains(driver).click_and_hold(label_header).move_to_element(
-                amount_header).release().perform()
+            # Moving by coordinates keeps the drag stable if a header
+            # selection causes ReactGrid to recreate its cell elements.
+            label_header=header("Label")
+            amount_header=header("Amount")
+            delta=(amount_header.rect["x"]+amount_header.rect["width"]/2
+                   -label_header.rect["x"]-label_header.rect["width"]/2)
+            ActionChains(driver).move_to_element(label_header).click_and_hold(
+                ).move_by_offset(delta,0).release().perform()
             wait.until(lambda _:selection_is(0,2))
             driver.execute_async_script("""
                 const done=arguments[arguments.length-1];

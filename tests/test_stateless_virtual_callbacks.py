@@ -17,6 +17,7 @@ spec.loader.exec_module(module)
 window_response = module.window_response
 clipboard_response = module.clipboard_response
 csv_chunks = module.csv_chunks
+tsv_chunks = module.tsv_chunks
 edit_ack = module.edit_ack
 
 
@@ -95,6 +96,42 @@ class StatelessVirtualCallbacksTests(unittest.TestCase):
         self.assertEqual(parsed[-1],["Row 1199","1199"])
         self.assertEqual(len(parsed),701)
         self.assertEqual(calls,[(500,503),(500,750),(750,1000),(1000,1200)])
+
+    def test_large_clipboard_tsv_streams_all_rows_without_a_dense_result(self):
+        calls=[]
+        def source(start,end):
+            calls.append((start,end))
+            return {"rowIds":[f"r{i}" for i in range(start,end)],
+                    "data":[[f"Record {i}",i] for i in range(start,end)]}
+        chunks=list(tsv_chunks(
+            start=0,end=100_000,column_start=0,column_end=2,
+            row_count=100_000,columns=self.columns,fetch_rows=source,
+            chunk_size=250))
+        self.assertEqual(len(chunks),400)
+        self.assertEqual(len(calls),400)
+        self.assertEqual(calls[0],(0,250))
+        self.assertEqual(calls[-1],(99750,100000))
+        self.assertTrue(all(end-start<=250 for start,end in calls))
+        self.assertTrue(chunks[0].startswith("Record 0\\t0\\r\\n"))
+        self.assertTrue(chunks[-1].endswith("Record 99999\\t99999"))
+        self.assertFalse(chunks[-1].endswith("\\r\\n"))
+
+    def test_streamed_tsv_quotes_embedded_tabs_newlines_and_hidden_columns(self):
+        cols=[{"columnId":"name"},{"columnId":"hidden"},{"columnId":"value"}]
+        def source(a,b):
+            return {"rowIds":["r1","r2"][a:b],
+                    "data":[["Contains\\ttab","secret",5],
+                            ['Line\\n"quote"',None,7]][a:b]}
+        stream="".join(tsv_chunks(start=0,end=2,column_start=0,
+            column_end=2,row_count=2,columns=cols,fetch_rows=source,
+            chunk_size=1,column_ids=["name","value"]))
+        parsed=list(csv.reader(io.StringIO(stream),delimiter="\\t"))
+        self.assertEqual(parsed,[["Contains\\ttab","5"],['Line\\n"quote"',"7"]])
+        for bad in (["name","name"],["name","does-not-exist"]):
+            with self.assertRaises(ValueError):
+                list(tsv_chunks(start=0,end=2,column_start=0,
+                    column_end=2,row_count=2,columns=cols,fetch_rows=source,
+                    column_ids=bad))
 
     def test_unsafe_numeric_row_ids_are_rejected(self):
         req={"datasetId":"a","requestId":1,"start":0,"end":2}

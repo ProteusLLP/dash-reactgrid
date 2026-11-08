@@ -115,7 +115,31 @@ def run():
                 By.CSS_SELECTOR,"#grid .rg-cell.rg-col-label")[1].click()
             ActionChains(driver).key_down(Keys.CONTROL).send_keys(
                 "c").key_up(Keys.CONTROL).perform()
-            wait.until(lambda _:clipboard()==edited_value)
+            try:
+                wait.until(lambda _:clipboard()==edited_value)
+            except Exception:
+                print("Pending copy expected:",repr(edited_value))
+                print("Pending copy observed:",repr(clipboard())[:300])
+                print("Rendered cell:",driver.find_elements(
+                    By.CSS_SELECTOR,"#grid .rg-cell.rg-col-label")[1].text)
+                print("Active element:",driver.execute_script("""
+                    const e=document.activeElement;
+                    return [e?.tagName,e?.className,e?.value];
+                """))
+                print("Grid errors:",[e.text for e in driver.find_elements(
+                    By.CSS_SELECTOR,"#grid [role=alert]")])
+                print("Native synthetic copy:",
+                      driver.execute_script("""
+                        const cell=document.querySelectorAll(
+                          '#grid .rg-cell.rg-col-label')[1];
+                        const dt=new DataTransfer();
+                        const event=new ClipboardEvent('copy',{
+                          bubbles:true,cancelable:true,clipboardData:dt});
+                        cell.dispatchEvent(event);
+                        return {handled:event.defaultPrevented,
+                                text:dt.getData('text/plain')};
+                      """))
+                raise
             assert "unacknowledged edit batch" in driver.find_element(
                 By.ID,"grid").text
 

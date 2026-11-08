@@ -31,6 +31,7 @@ app.layout=html.Div([
                   persisted_props=[]),
     html.Div(id="window-status"),
     html.Pre(id="pending-edit"),
+    html.Pre(id="selection-state"),
     html.Button("Toggle streaming",id="stream-toggle"),
     html.Div(id="stream-state"),
 ])
@@ -47,6 +48,11 @@ def capture_pending_edit(batch):
     # Deliberately do not acknowledge the edit. The browser must retain and
     # copy its optimistic value instead of reading stale provider data.
     return json.dumps(batch)
+
+@app.callback(Output("selection-state","children"),
+              Input("grid","virtualSelection"),prevent_initial_call=True)
+def capture_selection(selection):
+    return json.dumps(selection)
 
 @app.callback(Output("grid","virtualClipboardUrl"),
               Output("stream-state","children"),

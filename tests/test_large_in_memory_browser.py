@@ -71,6 +71,10 @@ def run():
             chord(Keys.CONTROL,"z")
             wait.until(lambda _:state().get("last",[])[0]=="Row 22049")
 
+            # Reload between independent operations to avoid a repeated click
+            # on the still-focused editor being interpreted as a double-click.
+            driver.refresh()
+            wait.until(lambda _:state().get("count")==22050)
             # The same range can be filled with the editor's new value.
             focus_first()
             chord(Keys.CONTROL,Keys.SHIFT,Keys.ARROW_DOWN)
@@ -94,6 +98,8 @@ def run():
             chord(Keys.CONTROL,"z")
             wait.until(lambda _:state().get("last",[])[0]=="Row 22049")
 
+            driver.refresh()
+            wait.until(lambda _:state().get("count")==22050)
             focus_first()
             chord(Keys.CONTROL,Keys.SHIFT,Keys.ARROW_DOWN)
             chord(Keys.DELETE)

@@ -132,7 +132,7 @@ export const buildGridRows = ({
     cache.set(rowId, { row, values, dropdownColumn });
     return row;
   };
-  const rows = [...buildHeaderRows(columns, styleHeader),
+  const rows = [...buildHeaderRows(columns, styleHeader, rowIds),
     ...data.map((values, index) => createRow(rowIds[index], values))];
   if (showGhost) {
     rows.push(createRow(GHOST_ROW_ID, blankRow(allColumns, null), blankRow(allColumns, newRow)));
@@ -149,7 +149,16 @@ export const buildGridRows = ({
 export const headerDepth = (columns) => Math.max(1, ...columns.map((column) =>
   Array.isArray(column.headerPath) ? column.headerPath.length + 1 : 1));
 
-export const buildHeaderRows = (columns, styleHeader) => {
+export const buildHeaderRows = (columns, styleHeader, rowIds = []) => {
+  // Avoid a collision with a real data row in the currently mounted window.
+  const usedIds = new Set(rowIds);
+  usedIds.add("header");
+  const groupId = (level) => {
+    let id = `header-group-${level}`;
+    while (usedIds.has(id)) id += "-synthetic";
+    usedIds.add(id);
+    return id;
+  };
   const depth = headerDepth(columns);
   const path = (column) => Array.isArray(column.headerPath) ? column.headerPath : [];
   const styleOf = (column) =>
@@ -183,7 +192,7 @@ export const buildHeaderRows = (columns, styleHeader) => {
       }
       i += span;
     }
-    headers.push({ rowId: `header-group-${level}`, cells,
+    headers.push({ rowId: groupId(level), cells,
       height: styleHeader?.height });
   }
   headers.push({

@@ -334,7 +334,20 @@ class FeatureMatrixChromeTests(unittest.TestCase):
             except (ValueError,AttributeError):
                 return False
 
-        self.waiter.until(lambda _:emitted())
+        try:
+            self.waiter.until(lambda _:emitted())
+        except Exception:
+            print("Focused-cell Shift+Enter emitted:",
+                  self.driver.find_element(By.ID,"review-virtual-edits").text)
+            print("Focused-cell Shift+Enter active element:",
+                  self.driver.execute_script("""
+                    const e=document.activeElement;
+                    return [e?.tagName,e?.className,e?.value];
+                  """))
+            print("Focused-cell Shift+Enter visible selection:",
+                  self.driver.find_element(By.CSS_SELECTOR,
+                      "#review-virtual .drg-selection-count").text)
+            raise
 
     def test_server_virtual_shift_enter_submits_multi_cell_fill(self):
         self.cell("review-virtual", "label", 0).click()

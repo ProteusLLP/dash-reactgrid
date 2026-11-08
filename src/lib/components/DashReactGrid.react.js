@@ -7,7 +7,7 @@ import { numberParser } from '../CustomNumberCell';
 import { percentParser } from '../PercentCell';
 import { createCellTemplates } from '../cellTemplates';
 import { ServerVirtualGrid } from '../ServerVirtualGrid.react';
-import { compileGridColumns, buildGridRows, pageBounds, canPasteOnPage, visibleGridColumns, resizeGridColumns } from '../gridRows';
+import { compileGridColumns, buildGridRows, pageBounds, canPasteOnPage, visibleGridColumns, resizeGridColumns, headerDepth } from '../gridRows';
 import { useReliableGrid } from '../useReliableGrid';
 import { decodeGridData } from '../numericData';
 import {
@@ -166,7 +166,10 @@ const ReactGridDataHandler = (props) => {
 
   // ReactGrid fails when nothing is left to scroll, as when every column of
   // a one-column table is sticky, so at least one row and column scroll.
-  const sticky = stickyCounts(props, columns.length, rows.length)
+  const sticky = stickyCounts({ ...props,
+    stickyTopRows: props.stickyTopRows > 0
+      ? props.stickyTopRows + headerDepth(columns) - 1 : 0,
+  }, columns.length, rows.length)
 
   /** Commit a batch only if it was persisted to the reliable outbox. */
   const publish = (next) => sync.publish(next, tracked)
@@ -689,6 +692,8 @@ DashReactGrid.propTypes = {
    * The columns: `columnId`, `title`, `type` (text, number, percent,
    * dropdown, checkbox, date or time), and optionally `width`, `align`,
    * `style`, `headerStyle`, `tooltip` (hover text for the header),
+   * `headerPath` (array of ancestor header labels, displayed as merged
+   * header bands above the leaf title),
    * `formatOptions` (Intl.NumberFormat options),
    * `values` (a dropdown's options), `resizable` (true by default),
    * `nonEditable`, `className` (every cell

@@ -412,8 +412,9 @@ Other properties:
 - To enter one value into several selected cells, select the cells, type in the
   active cell and press Shift+Enter. Target columns use their own value types;
   a single-cell Shift+Enter retains ordinary upward navigation.
-- Ordinary in-memory grid keyboard fill and multi-cell edits are limited to
-  20,000 cells per operation. In server-virtualized mode, Ctrl+D and Shift+Enter
+- Ordinary in-memory grids allow Ctrl+D, Shift+Enter, and Delete/Backspace
+  across any selected range, including more than 20,000 cells. Clipboard copy
+  retains a separate size safeguard. In server-virtualized mode, Ctrl+D and Shift+Enter
   use compact, unbounded row-range commands, so an entire selected column can
   be filled without fetching offscreen rows or sending the values to Dash.
   Select a column header or use Ctrl+Space from a focused cell to select the

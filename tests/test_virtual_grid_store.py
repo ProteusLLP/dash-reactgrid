@@ -1,4 +1,5 @@
 """Test server-backed grid operations, rollback, idempotency, undo/redo."""
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -85,7 +86,7 @@ class Operations(unittest.TestCase):
         self.assertEqual(apply(5,{"kind":"undo","targetSeq":4})["status"],"ok")
         self.assertEqual(store.read_range(1499,1500)["data"],[["Row 1499",4.5]])
 
-    def test_bulk_fill_skips_locked_and_conditional_cells(self):
+    def test_bulk_fill_skips_only_protected_cells_and_undoes_exact_changes(self):
         path=Path(self.tmp.name)/"protected-fill.sqlite3"
         columns=[{"columnId":"type"},
                  {"columnId":"value","editableWhen":[{"columnId":"type",
@@ -93,23 +94,74 @@ class Operations(unittest.TestCase):
                  {"columnId":"constant","nonEditable":True}]
         store=VirtualGridStore(path,"protected-fill",columns,
                                locked_cells=[["b","value"]])
-        store.seed_once([["open",1,"a"],["open",2,"b"],["closed",3,"c"]],
-                        ["a","b","c"])
+        original=[["open",1,"a"],["open",2,"b"],["closed",3,"c"]]
+        store.seed_once(original,["a","b","c"])
         base={"datasetId":"protected-fill","streamId":"session"}
-        changed=store.apply({**base,"seq":1,"edits":[
-            {"kind":"fillRange","start":0,"end":3,
-             "columnIds":["value"],"values":[99]}]})
-        self.assertEqual(changed["status"],"ok")
+        def apply(seq,operation):
+            return store.apply({**base,"seq":seq,"edits":[operation]})
+
+        self.assertEqual(apply(1,{"kind":"fillRange","start":0,"end":3,
+            "columnIds":["value"],"values":[99]})["status"],"ok")
         self.assertEqual(store.read()["data"],
                          [["open",99,"a"],["open",2,"b"],["closed",3,"c"]])
-        rejected=store.apply({**base,"seq":2,"edits":[
-            {"kind":"fillRange","start":0,"end":3,
-             "columnIds":["constant"],"values":["bad"]}]})
-        self.assertEqual(rejected["status"],"conflict")
-        self.assertEqual(store.apply({**base,"seq":2,"edits":[
-            {"kind":"undo","targetSeq":1}]} )["status"],"ok")
+
+        # A noneditable column and a locked cell must not suppress edits to
+        # other selected columns in the same row. Conditional edit rules use
+        # the original row values even when a sibling column is being changed.
+        self.assertEqual(apply(2,{"kind":"fillRange","start":0,"end":3,
+            "columnIds":["type","value","constant"],
+            "values":["closed",77,"bad"]})["status"],"ok")
         self.assertEqual(store.read()["data"],
-                         [["open",1,"a"],["open",2,"b"],["closed",3,"c"]])
+                         [["closed",77,"a"],["closed",2,"b"],["closed",3,"c"]])
+
+        # The inverse journal must contain only changed destinations. In
+        # particular, undo must never overwrite b/value or c/value.
+        with store.connect() as db:
+            receipt=db.execute(
+                "SELECT inverse_json FROM applied_batches "
+                "WHERE dataset_id=? AND stream_id=? AND seq=?",
+                ("protected-fill","session",2),
+            ).fetchone()
+        self.assertIsNotNone(receipt)
+        inverse=json.loads(receipt[0])[0]["edits"]
+        changed={op["columnIds"][0]:op["rowIds"] for op in inverse}
+        self.assertEqual(changed,{"type":["a","b"],"value":["a"]})
+
+        self.assertEqual(apply(3,{"kind":"undo","targetSeq":2})["status"],"ok")
+        self.assertEqual(store.read()["data"],
+                         [["open",99,"a"],["open",2,"b"],["closed",3,"c"]])
+        self.assertEqual(apply(4,{"kind":"undo","targetSeq":3})["status"],"ok")
+        self.assertEqual(store.read()["data"],
+                         [["closed",77,"a"],["closed",2,"b"],["closed",3,"c"]])
+        self.assertEqual(apply(5,{"kind":"undo","targetSeq":4})["status"],"ok")
+
+        # Multi-column Ctrl+D gets values from the source row, but each
+        # target cell still checks its own lock and original row rule.
+        self.assertEqual(apply(6,{"kind":"fillDown","sourceRow":0,
+            "start":1,"end":3,
+            "columnIds":["type","value","constant"]})["status"],"ok")
+        self.assertEqual(store.read()["data"],
+                         [["open",99,"a"],["open",2,"b"],["open",3,"c"]])
+        self.assertEqual(apply(7,{"kind":"undo","targetSeq":6})["status"],"ok")
+        self.assertEqual(store.read()["data"],
+                         [["open",99,"a"],["open",2,"b"],["closed",3,"c"]])
+        self.assertEqual(apply(8,{"kind":"undo","targetSeq":1})["status"],"ok")
+        self.assertEqual(store.read()["data"],original)
+
+    def test_bulk_fill_invalid_editability_rules_fail_atomically(self):
+        path=Path(self.tmp.name)/"malformed-fill.sqlite3"
+        store=VirtualGridStore(path,"malformed-fill",[
+            {"columnId":"name"},
+            {"columnId":"amount",
+             "editableWhen":[{"columnId":"missing","truthy":True}]},
+        ])
+        source=[["A",1],["B",2]]
+        store.seed_once(source,["a","b"])
+        result=store.apply({"datasetId":"malformed-fill","streamId":"session",
+            "seq":1,"edits":[{"kind":"fillRange","start":0,"end":2,
+                "columnIds":["name","amount"],"values":["X",10]}]})
+        self.assertEqual(result["status"],"conflict")
+        self.assertEqual(store.read()["data"],source)
 
     def test_duplicate_lost_acks_dont_apply_structural_operation_twice(self):
         event=self.event(1,{"kind":"insert","rowId":"new","position":2,"values":["N",7]})

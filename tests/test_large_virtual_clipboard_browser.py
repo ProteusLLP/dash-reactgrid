@@ -89,7 +89,33 @@ def run():
             assert len(restored.splitlines())==25_050
             assert restored.startswith("Row 0\t0")
 
-            print("Chrome virtual clipboard passed: full Ctrl+A Ctrl+C, native cell copy and toolbar copy preserve distinct selections")
+            # A loaded cell with an optimistic edit must remain copyable
+            # before the server ACK arrives. The provider still has Row 1,
+            # so server streaming would return stale data here.
+            label=driver.find_elements(
+                By.CSS_SELECTOR,"#grid .rg-cell.rg-col-label")[1]
+            label.click()
+            ActionChains(driver).send_keys("P").perform()
+            editor=wait.until(lambda _:driver.switch_to.active_element
+                if driver.switch_to.active_element.tag_name=="input" and
+                "rg-hidden-element" not in
+                    (driver.switch_to.active_element.get_attribute("class") or "")
+                else None)
+            editor.send_keys("ENDING")
+            editor.send_keys(Keys.ARROW_RIGHT)
+            wait.until(lambda _:"PENDING" in driver.find_element(
+                By.ID,"pending-edit").text)
+            wait.until(lambda _:"unacknowledged edit batch" in
+                driver.find_element(By.ID,"grid").text)
+            driver.find_elements(
+                By.CSS_SELECTOR,"#grid .rg-cell.rg-col-label")[1].click()
+            ActionChains(driver).key_down(Keys.CONTROL).send_keys(
+                "c").key_up(Keys.CONTROL).perform()
+            wait.until(lambda _:clipboard()=="PENDING")
+            assert "unacknowledged edit batch" in driver.find_element(
+                By.ID,"grid").text
+
+            print("Chrome virtual clipboard passed: full selection, toolbar focus and pending single-cell copy")
         finally:
             if driver:driver.quit()
             proc.terminate()

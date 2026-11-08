@@ -680,6 +680,32 @@ export const ServerVirtualGrid = (props) => {
         }
         return;
       }
+      if (shiftPointer.current && anchor.current && ranges.length && page) {
+        // Shift-click can change ReactGrid's selection without changing its
+        // focused cell, so focusChanged is not guaranteed to fire. Recover
+        // the endpoint from the native selected range and retain the first
+        // click as the keyboard-extension anchor.
+        const chosen=ranges[0];
+        const indices=(chosen.rows || []).map(row =>
+          page.rowIds.indexOf(row.rowId)).filter(idx=>idx>=0);
+        if (indices.length) {
+          const firstRow=range.start+Math.min(...indices);
+          const lastRow=range.start+Math.max(...indices);
+          const anchored=anchor.current;
+          const farRow=Math.abs(lastRow-anchored.row)>=
+            Math.abs(firstRow-anchored.row) ? lastRow : firstRow;
+          const firstCol=Math.min(chosen.first.column.idx,chosen.last.column.idx);
+          const lastCol=Math.max(chosen.first.column.idx,chosen.last.column.idx);
+          const farCol=Math.abs(lastCol-anchored.col)>=
+            Math.abs(firstCol-anchored.col) ? lastCol : firstCol;
+          const endpoint={row:farRow,col:farCol};
+          keyboardAnchor.current=anchored;
+          keyboardCursor.current=endpoint;
+          selectGlobal(extendSelection(anchored,endpoint.row,endpoint.col,
+            virtualRowCount,columns.length));
+        }
+        return;
+      }
       // After a plain click ReactGrid may retain a multi-column native
       // selection from an earlier keyboard range. Use the focused cell for
       // click-only gestures, but preserve native selections for real drags.

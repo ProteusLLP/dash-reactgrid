@@ -86,6 +86,36 @@ class Operations(unittest.TestCase):
         self.assertEqual(apply(5,{"kind":"undo","targetSeq":4})["status"],"ok")
         self.assertEqual(store.read_range(1499,1500)["data"],[["Row 1499",4.5]])
 
+    def test_multi_window_multi_column_fill_preserves_reverse_undo_order(self):
+        path=Path(self.tmp.name)/"multi-column-windows.sqlite3"
+        store=VirtualGridStore(path,"multi-column-windows",
+                               ["name","value"],
+                               locked_cells=[["r255","value"]])
+        original=[[f"Row {i}",i] for i in range(630)]
+        store.seed_once(original,[f"r{i}" for i in range(630)])
+        def apply(seq,op):
+            return store.apply({"datasetId":"multi-column-windows",
+                "streamId":"session","seq":seq,"edits":[op]})
+        fill={"kind":"fillRange","start":0,"end":630,
+              "columnIds":["name","value"],"values":["filled",99]}
+        self.assertEqual(apply(1,fill)["status"],"ok")
+        self.assertEqual(store.read_range(255,256)["data"],[["filled",255]])
+        self.assertEqual(store.read_range(629,630)["data"],[["filled",99]])
+        with store.connect() as db:
+            raw=db.execute(
+                "SELECT inverse_json FROM applied_batches "
+                "WHERE dataset_id=? AND stream_id=? AND seq=?",
+                ("multi-column-windows","session",1)).fetchone()[0]
+        undo=json.loads(raw)[0]["edits"]
+        self.assertEqual(len(undo),6)  # three 250-row windows, two columns
+        self.assertEqual(undo[0]["columnIds"],["value"])
+        self.assertEqual(undo[-1]["columnIds"],["name"])
+        self.assertEqual(apply(2,{"kind":"undo","targetSeq":1})["status"],"ok")
+        self.assertEqual(store.read()["data"],original)
+        self.assertEqual(apply(3,{"kind":"undo","targetSeq":2})["status"],"ok")
+        self.assertEqual(store.read_range(255,256)["data"],[["filled",255]])
+        self.assertEqual(store.read_range(629,630)["data"],[["filled",99]])
+
     def test_bulk_fill_skips_only_protected_cells_and_undoes_exact_changes(self):
         path=Path(self.tmp.name)/"protected-fill.sqlite3"
         columns=[{"columnId":"type"},

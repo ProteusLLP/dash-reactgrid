@@ -762,7 +762,11 @@ export const ServerVirtualGrid = (props) => {
     if (!globalRef.current) return;
     e.preventDefault();
     e.stopPropagation();
-    if (reliable.pending > 0) {
+    if (globalRef.current.end-globalRef.current.start > MAX_RANGE_ROWS) {
+      setCommandError(props.virtualExportUrl
+        ? "Select at most 1,000 rows to copy, or use Download selected CSV."
+        : "Select at most 1,000 rows to copy, or configure virtualClipboardUrl for large selections.");
+    } else if (reliable.pending > 0) {
       setCommandError("Save pending edits before copying a server range");
     } else if (typeof copyText === "string") {
       e.clipboardData.setData("text/plain",copyText);
@@ -816,6 +820,11 @@ export const ServerVirtualGrid = (props) => {
   };
 
   const handleKey = (e) => {
+    // The click marker belongs only to its pointer interaction. Clear it
+    // before ReactGrid's native keyboard navigation fires selectionChanged,
+    // otherwise Shift+Arrow can be mistaken for the earlier single click.
+    if (pointerGesture.current && !pointerGesture.current.pressed)
+      pointerGesture.current=null;
     if (isCellEditorTarget(e.target)) {
       if (e.key==="Enter" && e.shiftKey && !e.ctrlKey && !e.metaKey &&
           !e.altKey) multiCommit.current=true;

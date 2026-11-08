@@ -88,10 +88,24 @@ def run():
                 By.CSS_SELECTOR,"#grid .rg-cell.rg-col-label")[9]
             ActionChains(driver).key_down(Keys.SHIFT).click(
                 target).key_up(Keys.SHIFT).perform()
-            wait.until(lambda _:selection_matches(0,10,0,1))
+            try:
+                wait.until(lambda _:selection_matches(0,10,0,1))
+            except Exception:
+                print("Shift-click selection:",
+                      driver.find_element(By.ID,"selection-state").text)
+                print("Shift-click current focus:",driver.execute_script("""
+                    const e=document.activeElement;
+                    return [e?.tagName,e?.className,e?.value];
+                """))
+                raise
             ActionChains(driver).key_down(Keys.SHIFT).send_keys(
                 Keys.ARROW_DOWN).key_up(Keys.SHIFT).perform()
-            wait.until(lambda _:selection_matches(0,11,0,1))
+            try:
+                wait.until(lambda _:selection_matches(0,11,0,1))
+            except Exception:
+                print("Shift+Arrow selection:",
+                      driver.find_element(By.ID,"selection-state").text)
+                raise
 
             # Drag across two column headers. Every intermediate range
             # update must retain all logical rows, not just the viewport.

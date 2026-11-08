@@ -270,6 +270,8 @@ class FeatureMatrixChromeTests(unittest.TestCase):
         self.waiter.until(lambda _: self.state("grouped-paged")["data"][2][0] == 77.5)
         self.assertEqual(self.state("grouped-paged")["data"][0][0], 1)
 
+        # Leave the active paste target before creating a keyboard range.
+        self.driver.find_element(By.TAG_NAME, "h3").click()
         self.cell("grouped-paged", "uk1", 0).click()
         self.chord(Keys.CONTROL, Keys.SHIFT, Keys.ARROW_DOWN)
         try:

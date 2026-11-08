@@ -153,8 +153,13 @@ class Operations(unittest.TestCase):
         store=VirtualGridStore(path,"malformed-fill",[
             {"columnId":"name"},
             {"columnId":"amount",
-             "editableWhen":[{"columnId":"missing","truthy":True}]},
+             "editableWhen":[
+                 {"columnId":"name","in":["open"]},
+                 {"columnId":"missing","truthy":True},
+             ]},
         ])
+        # The first edit rule rejects row A. The later invalid reference
+        # must still fail the whole transaction instead of being hidden.
         source=[["A",1],["B",2]]
         store.seed_once(source,["a","b"])
         result=store.apply({"datasetId":"malformed-fill","streamId":"session",

@@ -56,3 +56,5 @@ jobs:
         run: python3 tests/test_virtual_reliable_browser.py
       - name: Test in-memory operations across more than 20,000 cells
         run: python3 tests/test_large_in_memory_browser.py
+      - name: Test Ctrl+A Ctrl+C clipboard streaming over 25,000 virtual rows
+        run: python3 tests/test_large_virtual_clipboard_browser.py

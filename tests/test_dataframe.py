@@ -79,7 +79,9 @@ class DataFrameTests(unittest.TestCase):
         self.assertEqual(props["columns"][2]["headerPath"], ["Rates", "USD"])
         self.assertEqual(props["columns"][3]["headerPath"], ["Returns", "Equity"])
         self.assertEqual(len(set(c["columnId"] for c in props["columns"])), 4)
-        self.assertEqual(props["data"][0][1], None)
+        numeric = decode_numpy_data(props["data"])
+        import math
+        self.assertTrue(math.isnan(float(numeric[0][1])))
         json.dumps(grid.to_plotly_json())
 
         duplicate = pd.DataFrame([[1, 2, 3]], columns=["A", "A", "A__2"])

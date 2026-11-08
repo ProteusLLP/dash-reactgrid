@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   boundedSelection,extendSelection,parseClipboardTsv,makeRangePaste,
   copyRequestFor,matchesCopyResponse,initialHistory,historyStorageKey,
-  loadHistory,saveHistory,nextHistory,
+  loadHistory,saveHistory,nextHistory,editableFillColumns,
 } from "../virtualOperations.js";
 const cols=[{columnId:"name",type:"text"},{columnId:"amount",type:"number"}];
 const selected={start:500,end:800,columnStart:0,columnEnd:2};
@@ -50,6 +50,25 @@ test("copy requests use stable visible IDs, rejecting a stale column response",(
   assert.equal(matchesCopyResponse({...request,text:"A\t5"},request),true);
   assert.equal(matchesCopyResponse({...request,columnIds:["name","hidden"],text:"A\t5"},request),false);
   assert.equal(matchesCopyResponse({...request,columnIds:null,text:"A\t5"},request),false);
+});
+
+test("virtual fill commands exclude non-editable columns without misaligning values",()=>{
+  const columns=[
+    {columnId:"label",type:"text"},
+    {columnId:"constant",type:"text",nonEditable:true},
+    {columnId:"amount",type:"number"},
+  ];
+  assert.deepEqual(editableFillColumns(columns,["updated","ignored",17]),{
+    columnIds:["label","amount"],values:["updated",17],
+  });
+  assert.deepEqual(editableFillColumns(columns),{
+    columnIds:["label","amount"],
+  });
+  assert.deepEqual(editableFillColumns([columns[1]],["ignore"]),{
+    columnIds:[],values:[],
+  });
+  assert.deepEqual(editableFillColumns([columns[1]]),{columnIds:[]});
+  assert.throws(()=>editableFillColumns(columns,["missing"]),/match selected columns/);
 });
 
 test("undo and redo history references transaction receipts after reload",()=>{

@@ -33,7 +33,10 @@ export const virtualRawCellCopyText = (page, rowOffset, columnId, allColumns) =>
   const index=allColumns.findIndex(col=>col.columnId===columnId);
   const row=page?.data?.[rowOffset];
   if (index<0 || !Array.isArray(row) || index>=row.length) return null;
-  return escapeTsvCell(row[index] == null ? "" : row[index]);
+  // Optimistic time edits can hold Date instances until their ACK arrives.
+  // Match JSON serialization, which the server receives as an ISO timestamp.
+  const raw=row[index] instanceof Date ? row[index].toJSON() : row[index];
+  return escapeTsvCell(raw == null ? "" : raw);
 };
 
 /** RFC4180-style TSV including quoted tabs, newlines and escaped double quotes. */

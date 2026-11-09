@@ -64,7 +64,17 @@ export const scrollTopForVirtualRow = (row, total, rowHeight, viewportHeight, al
   const desired = maxFirst ? Math.min(first,maxFirst) / maxFirst * maxScroll : 0;
   // At the top, don't scroll past the requested row. At the bottom, round
   // forward so the moving endpoint is inside the visible portion.
-  return Math.min(maxScroll,alignToTop ? Math.floor(desired) : Math.ceil(desired));
+  let position=Math.min(maxScroll,alignToTop ? Math.floor(desired) : Math.ceil(desired));
+  if (alignToTop && total-row<=visible*2) {
+    // At the end of the dataset the bottom spacer is exhausted. Cap the
+    // upward scroll to the actual top of the requested full-height row,
+    // rather than scrolling several pixels past it.
+    const rowTop=Math.max(0,Math.min(maxScroll,
+      Math.min(total*rowHeight,MAX_BROWSER_SCROLL_PX)-
+        (total-row)*rowHeight));
+    position=Math.min(position,rowTop);
+  }
+  return position;
 };
 
 export const viewportKey = (datasetId, start, end) =>

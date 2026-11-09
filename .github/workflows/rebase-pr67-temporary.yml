@@ -37,12 +37,10 @@ jobs:
           test -z "$(git ls-files --unmerged)"
           git diff --check
           # Refuse to discard either branch's key functionality.
-          grep -q 'FindBar' src/lib/ServerVirtualGrid.react.js
-          grep -q 'virtualFindRequest' src/lib/ServerVirtualGrid.react.js
-          grep -q 'virtualClipboardUrl' src/lib/ServerVirtualGrid.react.js
-          grep -q 'virtualClipboard' src/lib/ServerVirtualGrid.react.js
-          grep -q 'virtualSpacerHeights' src/lib/serverVirtual.js
-          grep -q 'scrollTopForVirtualRow' src/lib/serverVirtual.js
+          for item in 'FindBar|src/lib/ServerVirtualGrid.react.js' 'virtualFindRequest|src/lib/ServerVirtualGrid.react.js' 'virtualClipboardUrl|src/lib/ServerVirtualGrid.react.js' 'virtualClipboard|src/lib/ServerVirtualGrid.react.js' 'virtualSpacerHeights|src/lib/serverVirtual.js' 'scrollTopForVirtualRow|src/lib/serverVirtual.js'; do
+            pat="${item%%|*}"; file="${item#*|}"
+            if grep -q "$pat" "$file"; then echo "PRESENT $pat in $file"; else echo "::error::MISSING $pat in $file"; fi
+          done
           echo "Integrated source and primary invariants checked."
       - name: Install dependencies
         run: |

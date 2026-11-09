@@ -26,6 +26,10 @@ test("loaded date and time cells copy overlaid raw data with hidden columns",()=
   const overlaid={data:[["secret","2026-11-10","2026-11-10T09:30:00Z"]]};
   assert.equal(virtualRawCellCopyText(overlaid,0,"start",cols),"2026-11-10");
   assert.equal(virtualRawCellCopyText(overlaid,0,"at",cols),"2026-11-10T09:30:00Z");
+  const pending={data:[["secret","2026-11-10",
+    new Date("2026-11-10T09:30:00.000Z")]]};
+  assert.equal(virtualRawCellCopyText(pending,0,"at",cols),
+    "2026-11-10T09:30:00.000Z");
   assert.equal(virtualRawCellCopyText({data:[["secret",'a"b',null]]},0,"start",cols),
     '"a""b"');
   assert.equal(virtualRawCellCopyText({data:[["secret",null,null]]},0,"start",cols),"");

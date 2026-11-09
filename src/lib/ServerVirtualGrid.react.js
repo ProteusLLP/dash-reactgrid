@@ -5,11 +5,12 @@ import { FindBar } from "./FindBar.react";
 import { matchesFindResponse, resolveFindCursor } from "./find";
 import { overlayVirtualEdits } from "./virtualOverlay";
 import { clipboardStreamUrl, writeStreamedClipboard } from "./virtualClipboard";
-import { compileGridColumns, visibleGridColumns, resizeGridColumns } from "./gridRows";
+import { compileGridColumns, visibleGridColumns, resizeGridColumns, headerDepth } from "./gridRows";
 import { decodeGridData, isPackedNumericData } from "./numericData";
 import {
   addViewportCache, buildVirtualRows, loadedRow, validViewportResponse,
-  virtualRowWindow, scrollTopForVirtualRow, viewportKey, VIRTUAL_LOADING_PREFIX,
+  virtualRowWindow, scrollTopForVirtualRow, virtualScrollTopForRow,
+  virtualScrollTopForRenderedRow, virtualSpacerHeights, viewportKey, VIRTUAL_LOADING_PREFIX,
   VIRTUAL_SPACER_TOP, VIRTUAL_SPACER_BOTTOM,
 } from "./serverVirtual";
 import {
@@ -310,11 +311,24 @@ export const ServerVirtualGrid = (props) => {
       page, rowHeight:virtualRowHeight, viewportHeight:virtualViewportHeight,
       readOnly:editingBlocked, locked, styleHeader, openDropdown,
       selection:visualSelection,
-    }) : [],
-    [valid, columns, descriptors, allColumns, virtualRowCount,
+    });
+    // Preserve Find highlights through ReactGrid virtual spacer remounts.
+    if (!findMatch || !page || findMatch.row < range.start ||
+        findMatch.row >= range.start + page.rowIds.length) return built;
+    const targetId = page.rowIds[findMatch.row - range.start];
+    const columnIndex = columns.findIndex((col) => col.columnId === findMatch.columnId);
+    if (columnIndex < 0) return built;
+    return built.map((row) => row.rowId !== targetId ? row : ({
+      ...row,
+      cells:row.cells.map((cell, index) => index !== columnIndex ? cell : ({
+        ...cell, className:(cell.className || "").trim() + " rg-find-match" +
+          (cell.type === "dropdown" ? " " : ""),
+      })),
+    }));
+  }, [valid, columns, descriptors, allColumns, virtualRowCount,
       range.start, range.end, range.first, page,
       virtualRowHeight, virtualViewportHeight, editingBlocked, locked,
-      styleHeader, openDropdown, visualSelection]);
+      styleHeader, openDropdown, visualSelection, findMatch]);
 
   const visibleHighlights = useMemo(() => {
     if (!page) return [];

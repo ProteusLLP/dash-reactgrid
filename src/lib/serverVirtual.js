@@ -190,7 +190,9 @@ export const buildVirtualRows = ({
   const firstOffset=(range.first-range.start)*rowHeight;
   const topHeight=Math.max(0,Math.min(spacerHeight,
     scrollAtFirst-firstOffset));
-  const rows = [built.rows[0]];
+  const bottomHeight = spacerHeight - topHeight;
+  const headerCount = headerDepth(columns);
+  const rows = built.rows.slice(0, headerCount);
   if (topHeight > 0) rows.push(spacer(VIRTUAL_SPACER_TOP, topHeight));
   for (let i=0;i<rangeSize;i++) {
     const rendered = built.rows[i+headerCount];

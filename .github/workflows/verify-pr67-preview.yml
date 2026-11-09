@@ -27,7 +27,7 @@ jobs:
       - name: JavaScript unit tests
         run: npm run test:js
       - name: Python backend and contract tests
-        run: python -m unittest tests.test_component_contract tests.test_stateless_virtual_callbacks tests.test_virtual_grid_store tests.test_dataframe -v
+        run: python -m unittest tests.test_component_contract tests.test_rebase_generated tests.test_stateless_virtual_callbacks tests.test_virtual_grid_store tests.test_dataframe -v
       - name: Chrome editing and clipboard matrix
         run: python tests/test_feature_matrix_browser.py
       - name: Chrome server virtualization and search

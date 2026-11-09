@@ -91,12 +91,12 @@ jobs:
           s = p.read_text()
           main_tests = subprocess.check_output(
               ["git", "show", "origin/main:src/lib/__tests__/serverVirtual.test.mjs"], text=True)
-          start = main_tests.index("import {\\n")
+          start = main_tests.index("import {\n")
           stop = main_tests.index('} from "../serverVirtual.js";', start) + len('} from "../serverVirtual.js";')
           combined_import = main_tests[start:stop].replace(
               "virtualRowWindow, virtualScrollTopForRow",
               "virtualRowWindow, scrollTopForVirtualRow, virtualScrollTopForRow")
-          start = s.index("import {\\n")
+          start = s.index("import {\n")
           stop = s.index('} from "../serverVirtual.js";', start) + len('} from "../serverVirtual.js";')
           s = s[:start] + combined_import + s[stop:]
           p.write_text(s)

@@ -16,6 +16,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          # Keep the Chrome/Dash regression environment reproducible as
+          # GitHub-hosted Ubuntu changes its system Python version.
+          python-version: '3.14'
       - name: Install build and test dependencies
         run: npm ci --legacy-peer-deps
       - name: Run JavaScript unit tests

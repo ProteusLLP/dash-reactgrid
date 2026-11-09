@@ -11,17 +11,21 @@
 
 \usage{
 dashReactGrid(id=NULL, className=NULL, columns=NULL, data=NULL,
-disableVirtualScrolling=NULL, dropdownMenuPortal=NULL,
-edits=NULL, editAck=NULL, editDatasetId=NULL, enableColumnSelection=NULL,
-enableFillHandle=NULL, enableRangeSelection=NULL,
-enableRowSelection=NULL, hiddenColumns=NULL,
-highlights=NULL, isExtendable=NULL, lockedCells=NULL,
-newRow=NULL, persisted_props=NULL, persistence=NULL,
-persistence_type=NULL, readOnly=NULL, rowIds=NULL,
-rowPageSize=NULL, virtualRowCount=NULL, virtualDatasetId=NULL, virtualRowHeight=NULL, virtualWindowSize=NULL, virtualViewportHeight=NULL, virtualRequest=NULL, virtualData=NULL, virtualRangeRequest=NULL, virtualRangeData=NULL, virtualSelection=NULL, virtualExportUrl=NULL, selectedCell=NULL, transmitSparseEdits=NULL, selectedRange=NULL, selectedRowIds=NULL,
-stickyBottomRows=NULL, stickyLeftColumns=NULL,
-stickyRightColumns=NULL, stickyTopRows=NULL, style=NULL,
-styleHeader=NULL)
+  disableVirtualScrolling=NULL, dropdownMenuPortal=NULL, edits=NULL,
+  editAck=NULL, editDatasetId=NULL, enableColumnSelection=NULL,
+  enableFillHandle=NULL, enableRangeSelection=NULL,
+  enableRowSelection=NULL, hiddenColumns=NULL, highlights=NULL,
+  isExtendable=NULL, lockedCells=NULL, newRow=NULL, persisted_props=NULL,
+  persistence=NULL, persistence_type=NULL, readOnly=NULL, rowIds=NULL,
+  rowPageSize=NULL, virtualRowCount=NULL, virtualDatasetId=NULL,
+  virtualRowHeight=NULL, virtualWindowSize=NULL,
+  virtualViewportHeight=NULL, virtualRequest=NULL, virtualData=NULL,
+  virtualRangeRequest=NULL, virtualRangeData=NULL, virtualSelection=NULL,
+  virtualExportUrl=NULL, selectedCell=NULL, transmitSparseEdits=NULL,
+  selectedRange=NULL, selectedRowIds=NULL, stickyBottomRows=NULL,
+  stickyLeftColumns=NULL, stickyRightColumns=NULL, stickyTopRows=NULL,
+  style=NULL, styleHeader=NULL, virtualFindRequest=NULL,
+  virtualFindData=NULL)
 }
 
 \arguments{
@@ -31,8 +35,12 @@ styleHeader=NULL)
 
 \item{columns}{Logical | numeric | character | named list | unnamed list. The columns: `columnId`, `title`, `type` (text, number, percent,
 dropdown, checkbox, date or time), and optionally `width`, `align`,
-`style`, `headerStyle`, `formatOptions` (Intl.NumberFormat options),
-`values` (a dropdown's options), `nonEditable`, `className` (every cell
+`style`, `headerStyle`, `tooltip` (hover text for the header),
+`headerPath` (array of ancestor header labels, displayed as merged
+header bands above the leaf title),
+`formatOptions` (Intl.NumberFormat options),
+`values` (a dropdown's options), `resizable` (true by default),
+`nonEditable`, `className` (every cell
 also has `rg-col-<columnId>`) and
 `editableWhen` (rules on the row's other values, see `rulesHold`; a
 cell whose rules fail is locked and has the class `rg-cell-na`). A cell
@@ -49,9 +57,12 @@ in something that clips or scrolls, such as a card or the grid's own
 scroll area, so menus can extend past its edges and show above nearby
 content. Off by default, which keeps ReactGrid's own dropdown.}
 
-\item{editAck}{Named list. Server acknowledgement for a committed sparse edit batch.}
+\item{editAck}{Named list. Authoritative server acknowledgement returned from a Dash callback:
+{datasetId, streamId, seq, status: "ok" | "retry" | "error" | "conflict", message?}.
+Only status "ok" removes the head batch from the durable outbox.}
 
-\item{editDatasetId}{Character. Dataset identity required when transmitting sparse edits.}
+\item{editDatasetId}{Character. Stable identifier for the authoritative dataset. Required in sparse mode
+to recover pending batches across reloads without cross-dataset replay.}
 
 \item{edits}{Named list. The edits behind the latest change to `data` (read only): `seq`, which
 increases with every change, and `edits`, each one of
@@ -86,35 +97,15 @@ an object by column id. Blank if omitted.}
 
 \item{readOnly}{Logical. Whether every cell is locked, no row can be added and none deleted.}
 
-\item{transmitSparseEdits}{Logical. Publish only edits to Dash, keeping changes to the table in browser memory; an external data or rowIds update replaces the local snapshot.}
-
-\item{virtualRowCount}{Total number of logical rows supplied by the server. Setting a nonnegative integer enables continuous server-side virtualization.}
-
-\item{virtualDatasetId}{Stable identity of the ordered server dataset; change when sorting, filtering or rebuilding rows to invalidate cached windows.}
-
-\item{virtualRowHeight}{Fixed row height in pixels, default 25.}
-
-\item{virtualWindowSize}{Target number of rows to request on each scroll window, default 120.}
-
-\item{virtualViewportHeight}{Scrollable grid height in pixels, default 420.}
-
-\item{virtualRequest}{Browser request {datasetId, requestId, start, end}, with zero-based start inclusive and end exclusive.}
-
-\item{virtualRangeRequest}{Read-only absolute-range clipboard request containing datasetId, requestId, start, end, columnStart, columnEnd.}
-
-\item{virtualRangeData}{Server response echoing clipboard request boundaries with text or error.}
-
-\item{virtualSelection}{Compact absolute selection with half-open row/column indices, including unloaded rows.}
-
-\item{virtualExportUrl}{Optional app-provided authenticated URL for streaming selected rows as CSV.}
-
-\item{virtualData}{Server response {datasetId, requestId, start, rowIds, data} containing exactly the requested rows, or a matching {error}.}
-
-\item{rowPageSize}{Numeric. Maximum data rows displayed per page for very large tables. Selections and clipboard operations are page-local.}
-
 \item{rowIds}{Unnamed list. An id per row of `data`. Given, edits name rows by these ids, rows the
 user adds get ids starting `new-`, and rows can be deleted from the
 context menu. Omitted, rows are named by position.}
+
+\item{rowPageSize}{Numeric. Optional maximum data rows shown on one page, e.g. 250. ReactGrid
+creates a cell matrix for all supplied rows even with virtual scrolling.
+Paging bounds that work for very large datasets; page selection and
+clipboard operations refer only to the current page.
+The whole data array is still transferred to Dash on edits.}
 
 \item{selectedCell}{Logical | numeric | character | named list | unnamed list. }
 
@@ -133,6 +124,48 @@ context menu. Omitted, rows are named by position.}
 \item{style}{Named list. The style of the container (div)}
 
 \item{styleHeader}{Named list. }
+
+\item{transmitSparseEdits}{Logical. When true, publish only {edits: {seq, edits}} through setProps.
+The changed table is retained locally in the browser, including new
+and deleted rows, and is replaced only by an external data/rowIds
+update. Default false publishes full data as before.}
+
+\item{virtualData}{Named list. Server response {datasetId, requestId, start, rowIds, data} or
+{datasetId, requestId, start, error}. Must echo the request identity.}
+
+\item{virtualDatasetId}{Character. Stable identifier of the ordered server dataset. Change it when the
+sort, filter, contents or revision changes to invalidate cached windows.}
+
+\item{virtualExportUrl}{Character. Application-provided URL for authenticated streamed CSV exports.}
+
+\item{virtualFindData}{Named list. Search response {datasetId,requestId,query,rowIndex,columnId}, with
+null indices when no match, or {datasetId,requestId,query,error}.}
+
+\item{virtualFindRequest}{Named list. Ctrl+F server search request: {datasetId, requestId, query,
+afterRow, afterColumn, direction, columnIds}. The start is exclusive;
+search wraps once across all rows, not just the loaded window.}
+
+\item{virtualRangeData}{Named list. Server response echoing virtualRangeRequest and containing text or error.
+Clipboards are limited to a bounded range; large selections use export.}
+
+\item{virtualRangeRequest}{Named list. Read-only request for preparing clipboard text across unloaded rows:
+{datasetId,requestId,start,end,columnStart,columnEnd}.}
+
+\item{virtualRequest}{Named list. Read-only row request {datasetId, requestId, start, end}. Start inclusive,
+end exclusive. Return exactly end-start rows from the backend.}
+
+\item{virtualRowCount}{Numeric. Server-backed continuous virtualization: provide the total number of
+logical rows; set data=[] and omit rowIds. The client requests bounded
+row windows through virtualRequest and receives them in virtualData.
+Supplying a nonnegative integer enables virtual mode instead of paging.}
+
+\item{virtualRowHeight}{Numeric. Fixed height in pixels of each data row, default 25.}
+
+\item{virtualSelection}{Named list. Compact absolute-index selection, not an array of every selected row.}
+
+\item{virtualViewportHeight}{Numeric. Height in pixels of the scrollable viewport, default 420.}
+
+\item{virtualWindowSize}{Numeric. Approximate number of rows fetched per request, default 120.}
 }
 
 \value{named list of JSON elements corresponding to React.js properties and their values}

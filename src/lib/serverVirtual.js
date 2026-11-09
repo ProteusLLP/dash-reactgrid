@@ -16,7 +16,7 @@ export const DEFAULT_VIRTUAL_ROW_HEIGHT = 25;
 export const MAX_BROWSER_SCROLL_PX = 20_000_000;
 
 export const virtualRowWindow = (scrollTop, total, rowHeight = DEFAULT_VIRTUAL_ROW_HEIGHT,
-  windowSize = DEFAULT_VIRTUAL_WINDOW_SIZE, viewportHeight = 400) => {
+  windowSize = DEFAULT_VIRTUAL_WINDOW_SIZE, viewportHeight = 400, priorityRow = null) => {
   if (!Number.isSafeInteger(total) || total < 0) throw new RangeError("virtualRowCount must be a nonnegative integer");
   if (!Number.isFinite(rowHeight) || rowHeight <= 0) throw new RangeError("virtualRowHeight must be positive");
   if (!Number.isSafeInteger(windowSize) || windowSize <= 0) throw new RangeError("virtualWindowSize must be a positive integer");
@@ -41,8 +41,58 @@ export const virtualRowWindow = (scrollTop, total, rowHeight = DEFAULT_VIRTUAL_R
   // Never allow the selected visual range to fall into a compressed spacer.
   start = Math.max(start, Math.max(0, first + visible - size));
   start = Math.min(start, Math.max(0, first));
+  // When very large tables compress millions of rows into a few pixels,
+  // the browser can round the scroll coordinate to an adjacent window.
+  // A Find jump supplies the actual absolute row: keep it in the bounded
+  // window even if the quantized scrollTop falls on the next row boundary.
+  if (Number.isSafeInteger(priorityRow) && priorityRow >= 0 && priorityRow < total)
+    start = Math.max(0, Math.min(maxStart,
+      Math.max(Math.min(start,priorityRow),priorityRow-size+1)));
   const end = Math.min(total, start + size);
   return { start, end, first, visible, size, totalHeight };
+};
+
+/** Map an absolute row to the compressed browser scrollbar coordinates. */
+export const virtualScrollTopForRow = (row, total, rowHeight = DEFAULT_VIRTUAL_ROW_HEIGHT,
+  viewportHeight = 400) => {
+  if (!total) return 0;
+  const visible = Math.ceil(Math.max(1, viewportHeight) / rowHeight) + 2;
+  const maximum = Math.max(0, Math.min(total * rowHeight, MAX_BROWSER_SCROLL_PX) - viewportHeight);
+  const fraction = Math.min(1, Math.max(0, row / Math.max(1, total - visible)));
+  return fraction * maximum;
+};
+
+/**
+ * Geometry used by ReactGrid's virtual spacer rows. The offscreen rows are
+ * compressed for very large datasets, but loaded rows retain full height.
+ * Both rendering and Find scrolling must use the same geometry.
+ */
+export const virtualSpacerHeights = (rowCount, rowHeight, range) => {
+  const windowHeight = (range.end - range.start) * rowHeight;
+  const physicalHeight = Math.min(rowCount * rowHeight, MAX_BROWSER_SCROLL_PX);
+  const spacerHeight = Math.max(0, physicalHeight - windowHeight);
+  const maxStart = Math.max(0, rowCount - (range.end - range.start));
+  const topHeight = maxStart
+    ? Math.min(spacerHeight, Math.max(0, range.start / maxStart * spacerHeight))
+    : 0;
+  return { topHeight, bottomHeight: spacerHeight - topHeight, physicalHeight };
+};
+
+/**
+ * Scroll a found row into the *visible* viewport of its pinned loaded window.
+ * Mapping a logical row directly to the compressed scrollbar instead can
+ * leave the cell hundreds of pixels below the viewport, even when loaded.
+ */
+export const virtualScrollTopForRenderedRow = (
+  row, rowCount, rowHeight, range, viewportHeight = 400, headerHeight = 0,
+) => {
+  if (!Number.isSafeInteger(row) || row < range.start || row >= range.end)
+    throw new RangeError("Find destination must be inside its loaded window");
+  const { topHeight, physicalHeight } = virtualSpacerHeights(rowCount, rowHeight, range);
+  const rowTop = headerHeight + topHeight + (row - range.start) * rowHeight;
+  const centerOffset = Math.max(0, (viewportHeight - rowHeight) / 2);
+  const maximum = Math.max(0, physicalHeight + headerHeight - viewportHeight);
+  return Math.max(0, Math.min(maximum, rowTop - centerOffset));
 };
 
 export const viewportKey = (datasetId, start, end) =>
@@ -96,13 +146,7 @@ export const buildVirtualRows = ({
   // distances are compressed when the logical table exceeds browser limits.
   // Mapping the window start over the available physical spacer distance
   // also ensures the final rows line up with the bottom of the scrollbar.
-  const windowHeight = rangeSize * rowHeight;
-  const physicalHeight = Math.min(rowCount * rowHeight, MAX_BROWSER_SCROLL_PX);
-  const spacerHeight = Math.max(0, physicalHeight - windowHeight);
-  const maxStart = Math.max(0, rowCount - rangeSize);
-  const topHeight = maxStart
-    ? Math.min(spacerHeight, Math.max(0, range.start / maxStart * spacerHeight))
-    : 0;
+  const { topHeight, bottomHeight } = virtualSpacerHeights(rowCount, rowHeight, range);
   const headerCount = headerDepth(columns);
   const rows = built.rows.slice(0, headerCount);
   if (topHeight > 0) rows.push(spacer(VIRTUAL_SPACER_TOP, topHeight));
@@ -122,7 +166,6 @@ export const buildVirtualRows = ({
       })),
     });
   }
-  const bottomHeight = spacerHeight - topHeight;
   if (bottomHeight > 0) rows.push(spacer(VIRTUAL_SPACER_BOTTOM, bottomHeight));
   return rows;
 };

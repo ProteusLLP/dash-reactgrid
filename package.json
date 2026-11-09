@@ -17,7 +17,7 @@
     "prepublishOnly": "npm run validate-init",
     "build:js": "webpack --mode production && node scripts/normalize-dash-bundle.mjs",
     "test:js": "node --experimental-detect-module --test",
-    "build:backends": "dash-generate-components ./src/lib/components dash_reactgrid -p package-info.json --r-prefix '' --jl-prefix '' --ignore \\.test\\.",
+    "build:backends": "dash-generate-components ./src/lib/components dash_reactgrid -p package-info.json --r-prefix '' --jl-prefix '' --ignore \\.test\\. && python scripts/preserve_generated_signatures.py",
     "build:backends-activated": "(. venv/bin/activate || venv\\scripts\\activate && npm run build:py_and_r)",
     "build": "npm run build:js && npm run build:backends",
     "build:activated": "npm run build:js && npm run build:backends-activated"

@@ -235,6 +235,27 @@ The component updates its row count from the committed acknowledgement and
 invalidates stale viewport caches. Server virtual mode is read-only unless
 reliable sparse transmission is enabled.
 
+**Ctrl+F search:** Click or focus a grid cell and press Ctrl+F (Cmd+F on
+macOS). Type a substring, then use Enter / Shift+Enter or the Next / Previous
+buttons. The search wraps in both directions, searches visible columns only,
+and highlights the match. Escape closes the find bar. Normal in-memory grids
+search the complete local dataset, including other `rowPageSize` pages.
+
+Server-virtualized grids send `virtualFindRequest` to a stateless Dash
+callback and receive `virtualFindData`. Matches can be anywhere in the
+logical dataset: the browser loads the bounded window containing the match,
+then scrolls to its actual rendered cell position. For very large datasets,
+compressed scrollbar spacers do not change the full height of loaded rows;
+the matching cell is brought inside the visible viewport and that bounded
+window remains anchored while it is being viewed. Scrolling away resumes
+normal server virtualization. The search request includes
+`datasetId`, `requestId`, `query`, `afterRow`, `afterColumn`,
+`direction` (`forward` or `backward`), and visible `columnIds`.
+Return `{datasetId,requestId,query,rowIndex,columnId}` (zero-based), or
+null `rowIndex` / `columnId` for no match. Stale responses are discarded.
+You must implement this callback for virtual search; matching only against
+the loaded viewport is insufficient.
+
 **Global selection:** Use Shift-click while scrolling to extend a selection
 or the From row / To row inputs to select a range by absolute row index.
 Ctrl+A selects all rows. The browser holds only the four boundary indices,
@@ -287,7 +308,7 @@ injects its own data-access functions. For example:
 from dash import Dash, Input, Output, callback
 from dash_reactgrid import DashReactGrid
 from dash_reactgrid.stateless_virtual import (
-    window_response, clipboard_response, edit_ack,
+    window_response, clipboard_response, find_response, edit_ack,
 )
 
 # These functions already belong to your application. They may access
@@ -323,6 +344,15 @@ def fetch_window(request):
         columns=columns, fetch_rows=read_rows,
     )
 
+@callback(Output("grid", "virtualFindData"),
+          Input("grid", "virtualFindRequest"),
+          prevent_initial_call=True)
+def find_anywhere(request):
+    return find_response(
+        request, dataset_id=DATASET, row_count=count_rows(),
+        columns=columns, fetch_rows=read_rows, chunk_size=250,
+    )
+
 @callback(Output("grid", "editAck"), Input("grid", "edits"),
           prevent_initial_call=True)
 def save_commands(batch):
@@ -343,6 +373,10 @@ The row provider and commit function in this example are application-supplied,
 not provided by the grid. A production application must authorise access to
 the requested dataset and enforce edit rules on the data source. The helper
 validates window sizes and identities but is not an authentication layer.
+For indexed databases, implement the same find-response contract with an
+indexed query rather than scanning. The provided `find_response` reads
+bounded chunks (no full-table materialisation) but a search of many millions
+of rows may be expensive, so applications should consider server-side indexes.
 
 For large selections, provide `virtualExportUrl` pointing to your own
 authenticated CSV endpoint. `csv_chunks()` is a pure chunk generator that

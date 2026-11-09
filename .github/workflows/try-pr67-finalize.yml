@@ -1,0 +1,66 @@
+name: Integrate latest PR67 edits onto rebased source
+on:
+  push:
+    branches:
+      - automation/pr67-rebase-finalize
+permissions:
+  contents: write
+jobs:
+  combine-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Cherry-pick feature commits after original preview
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin feat/virtual-whole-column-fill
+          echo "Pinned source 891d87c16ebbca285459aa9bb95d5fdc03546a9d"
+          if ! git cherry-pick 354727ec28df471e63be7666c02beca1798e3740..891d87c16ebbca285459aa9bb95d5fdc03546a9d; then
+            echo "Source conflicts, refusing automatic overwrite:"
+            git diff --name-only --diff-filter=U
+            git status --short
+            exit 1
+          fi
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - name: Install and regenerate browser and language bindings
+        run: |
+          python -m pip install "dash>=3,<5" "pyyaml>=6,<7" "numpy>=1.23,<3" "pandas>=2,<3" "selenium>=4,<5"
+          npm ci --legacy-peer-deps
+          npm run build
+      - name: JavaScript tests
+        run: npm run test:js
+      - name: Python regression tests
+        run: python -m unittest tests.test_component_contract tests.test_rebase_generated tests.test_stateless_virtual_callbacks tests.test_virtual_grid_store tests.test_dataframe -v
+      - name: Chrome cell interactions
+        run: python tests/test_feature_matrix_browser.py
+      - name: Chrome server virtualization and search
+        run: python tests/test_server_virtual_browser.py
+      - name: Chrome large virtual clipboard
+        run: python tests/test_large_virtual_clipboard_browser.py
+      - name: Chrome large in-memory
+        run: python tests/test_large_in_memory_browser.py
+      - name: Commit regenerated outputs and push verified preview
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git add -u -- R/dashReactGrid.R dash_reactgrid/DashReactGrid.py dash_reactgrid/dash_reactgrid.min.js dash_reactgrid/dash_reactgrid.min.js.map dash_reactgrid/metadata.json dash_reactgrid/package-info.json deps/dash_reactgrid.min.js deps/dash_reactgrid.min.js.map inst/deps/dash_reactgrid.min.js inst/deps/dash_reactgrid.min.js.map man/dashReactGrid.Rd src/jl/dashreactgrid.jl
+          git rm -f --ignore-unmatch .github/workflows/try-pr67-finalize.yml .github/workflows/verify-pr67-preview.yml
+          git rm -f --ignore-unmatch .github/workflows/rebuild-virtual-assets-once.yml
+          if ! git diff --cached --quiet; then
+            git -c commit.gpgsign=false commit -m "build: regenerate all bindings after rebase and drop temporary workflows"
+          fi
+          git diff --exit-code
+          auth="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" \
+            push --force-with-lease="refs/heads/automation/pr67-rebase-finalize:${{ github.sha }}" origin HEAD:refs/heads/automation/pr67-rebase-finalize

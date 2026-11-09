@@ -19,7 +19,7 @@ import {
 } from "./keyboard";
 import {
   boundedSelection, extendSelection, copyRequestFor, matchesCopyResponse,
-  selectedColumnIds, editableFillColumns, escapeTsvCell,
+  selectedColumnIds, editableFillColumns, escapeTsvCell, virtualRawCellCopyText,
   makeRangePaste, historyStorageKey, initialHistory, loadHistory,
   saveHistory, nextHistory, MAX_RANGE_ROWS,
 } from "./virtualOperations";
@@ -803,10 +803,7 @@ export const ServerVirtualGrid = (props) => {
     // Read the overlaid page data, which includes optimistic edits, and
     // use the same raw serialisation as the streamed TSV endpoint.
     if (column?.type==="date" || column?.type==="time") {
-      const originalColumn=allColumns.findIndex(c=>c.columnId===column.columnId);
-      if (originalColumn<0) return null;
-      const raw=page.data[rowOffset]?.[originalColumn];
-      return escapeTsvCell(raw == null ? "" : raw);
+      return virtualRawCellCopyText(page,rowOffset,column.columnId,allColumns);
     }
     const rowId=page.rowIds[rowOffset];
     const row=rows.find(item=>item.rowId===rowId);

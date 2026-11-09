@@ -7,7 +7,7 @@ import { compileGridColumns, visibleGridColumns, resizeGridColumns } from "./gri
 import { decodeGridData, isPackedNumericData } from "./numericData";
 import {
   addViewportCache, buildVirtualRows, loadedRow, validViewportResponse,
-  virtualRowWindow, viewportKey, VIRTUAL_LOADING_PREFIX,
+  virtualRowWindow, scrollTopForVirtualRow, viewportKey, VIRTUAL_LOADING_PREFIX,
   VIRTUAL_SPACER_TOP, VIRTUAL_SPACER_BOTTOM,
 } from "./serverVirtual";
 import {
@@ -571,6 +571,17 @@ export const ServerVirtualGrid = (props) => {
     selectGlobal(boundedSelection(selected.start,selected.end,
       selected.columnStart,selected.columnEnd,
       virtualRowCount,columns.length));
+    const pageRows=Math.max(1,
+      Math.floor((virtualViewportHeight-virtualRowHeight)/virtualRowHeight));
+    const needScroll=next.row<range.first || next.row>=range.first+pageRows;
+    if (needScroll) {
+      const position=scrollTopForVirtualRow(next.row,virtualRowCount,
+        virtualRowHeight,virtualViewportHeight,next.row<range.first);
+      if (viewportRef.current) viewportRef.current.scrollTop=position;
+      setScrollTop(position);
+    }
+    // Focus the moving endpoint as its virtual window becomes available.
+    setKeyboardFocus(next);
     setCommandError(null);
   };
 
@@ -746,6 +757,7 @@ export const ServerVirtualGrid = (props) => {
         handler: deleteSelection,
       }],
     focusChanged: (location) => {
+      if (suppressNativeSelection.current) return;
       focused.current=location;
       // A header drag is a column selection even if ReactGrid briefly
       // reports focus on a loaded data cell during the gesture.

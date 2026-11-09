@@ -791,7 +791,16 @@ export const ServerVirtualGrid = (props) => {
         handler: deleteSelection,
       }],
     focusChanged: (location) => {
-      if (suppressNativeSelection.current) return;
+      if (suppressNativeSelection.current) {
+        // Programmatic Ctrl+Arrow focus changes must still update the cell
+        // used by subsequent Ctrl+Space/Ctrl+D. Only the range and its
+        // keyboard anchor are frozen during this navigation.
+        if (isDataId(location.rowId)) {
+          focused.current=location;
+          setProps({selectedCell:location});
+        }
+        return;
+      }
       focused.current=location;
       // A header drag is a column selection even if ReactGrid briefly
       // reports focus on a loaded data cell during the gesture.

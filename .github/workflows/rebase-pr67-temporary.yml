@@ -83,6 +83,14 @@ jobs:
               insert = "  if (Number.isSafeInteger(priorityRow) && priorityRow >= 0 && priorityRow < total)\n    start = Math.max(0, Math.min(maxStart,\n      Math.max(Math.min(start, priorityRow), priorityRow-size+1)));\n"
               assert needle in s
               s = s.replace(needle, insert + needle, 1)
+          if "const bottomHeight = spacerHeight - topHeight;" not in s and "if (bottomHeight > 0)" in s:
+              s = s.replace("  if (bottomHeight > 0) rows.push",
+                            "  const bottomHeight = spacerHeight - topHeight;\n  if (bottomHeight > 0) rows.push")
+          p.write_text(s)
+          p = Path("src/lib/__tests__/serverVirtual.test.mjs")
+          s = p.read_text()
+          if "virtualScrollTopForRow," not in s:
+              s = s.replace("scrollTopForVirtualRow,", "scrollTopForVirtualRow, virtualScrollTopForRow, virtualScrollTopForRenderedRow, virtualSpacerHeights,")
           p.write_text(s)
           PY
           # Refuse to discard either branch's key functionality.

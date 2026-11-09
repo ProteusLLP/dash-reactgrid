@@ -1190,6 +1190,14 @@ export const ServerVirtualGrid = (props) => {
   };
 
   const handleKey = (e) => {
+    if (e.target.closest?.(".drg-find")) return;
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey &&
+        e.key.toLowerCase()==="f") {
+      e.preventDefault();e.stopPropagation();
+      setFindFocusToken((token) => token + 1);
+      setFindOpen(true);
+      return;
+    }
     // The click marker belongs only to its pointer interaction. Clear it
     // before ReactGrid's native keyboard navigation fires selectionChanged,
     // otherwise Shift+Arrow can be mistaken for the earlier single click.

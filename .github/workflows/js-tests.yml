@@ -25,6 +25,8 @@ jobs:
         run: npm ci --legacy-peer-deps
       - name: Run JavaScript unit tests
         run: npm run test:js
+      - name: Validate guarded generated-file rebase
+        run: python3 -m unittest tests.test_rebase_generated -v
       - name: Compile component
         run: npm run build:js
       - name: Verify committed browser assets match source

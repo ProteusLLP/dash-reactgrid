@@ -1,0 +1,28 @@
+name: Compile virtual-grid assets
+on:
+  push:
+    branches:
+      - feat/virtual-whole-column-fill
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --legacy-peer-deps
+      - run: npm run build:js
+      - name: Commit generated bundles
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add dash_reactgrid/dash_reactgrid.min.js dash_reactgrid/dash_reactgrid.min.js.map
+          if ! git diff --cached --quiet; then
+            git commit -m "Rebuild assets for corrected virtual scroll boundaries"
+            git push origin HEAD:feat/virtual-whole-column-fill
+          fi

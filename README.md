@@ -682,3 +682,33 @@ If you have selected install_dependencies during the prompt, you can skip this p
     1. Publish this repository to GitHub
     2. Tag your GitHub repository with the plotly-dash tag so that it appears here: https://github.com/topics/plotly-dash
     3. Create a post in the Dash community forum: https://community.plotly.com/c/dash
+
+
+### Rebasing branches with generated-file conflicts
+
+The minified JavaScript assets, Dash component metadata, Python/R/Julia
+bindings and R documentation are generated outputs tracked for packaging.
+After rebasing source code, **regenerate** these files rather than retaining
+an arbitrary side of a conflict. In a clean feature-branch working tree:
+
+```bash
+git fetch origin main
+npm ci --legacy-peer-deps
+python -m pip install "dash>=3,<5" "pyyaml>=6,<7"
+python scripts/rebase_generated.py origin/main
+npm run test:js
+git push --force-with-lease
+```
+
+The helper resolves conflicts **only** on its strict allowlist of generated
+paths, taking the upstream side temporarily during a rebase. It then runs
+`npm run build` to recreate the combined JavaScript and backend bindings,
+and commits changes to those generated files. Any conflict in handwritten
+source, tests, or build scripts stops the rebase for manual review without
+discarding either side. It also refuses dirty working trees and never pushes.
+
+Once the workflow is available on the default branch, the GitHub Actions
+**Rebase feature branch (generated files safe)** workflow can do the same with
+a branch-name input. It backs up the old head and only force-pushes with a
+lease after the JavaScript, Python and Chrome regression checks succeed.
+

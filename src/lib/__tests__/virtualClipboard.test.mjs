@@ -14,6 +14,23 @@ test("streaming clipboard URL preserves visible selection and hidden-column orde
   assert.deepEqual(JSON.parse(parsed.searchParams.get("columnIds")),["name","amount"]);
 });
 
+test("clipboard URL rejects invalid dataset, coordinates and visible columns",()=>{
+  const good={start:0,end:100,columnStart:0,columnEnd:1};
+  const cols=[{columnId:"name"}];
+  assert.throws(()=>clipboardStreamUrl("/clipboard","",good,cols),
+    /dataset ID/);
+  assert.throws(()=>clipboardStreamUrl("/clipboard","ds",
+    {...good,start:null},cols),/selection boundaries/);
+  assert.throws(()=>clipboardStreamUrl("/clipboard","ds",
+    {...good,end:0},cols),/selection boundaries/);
+  assert.throws(()=>clipboardStreamUrl("/clipboard","ds",
+    {...good,columnEnd:2},cols),/visible range/);
+  assert.throws(()=>clipboardStreamUrl("/clipboard","ds",good,null),
+    /visible range/);
+  assert.throws(()=>clipboardStreamUrl("", "ds",good,cols),
+    /streaming endpoint/);
+});
+
 test("clipboard write starts before awaited fetch and keeps a promised Blob",async()=>{
   let resolveFetch;
   const sequence=[];
@@ -39,7 +56,7 @@ test("clipboard write starts before awaited fetch and keeps a promised Blob",asy
 test("write reports unavailable clipboard and upstream failures",async()=>{
   assert.throws(()=>writeStreamedClipboard({
     url:"/clipboard",clipboard:null,ClipboardItemCtor:null,fetcher:null,
-  }),/browser cannot stream/);
+  }),/not supported in this browser/);
   let data;
   class Item {constructor(value){data=value["text/plain"]}}
   const promise=writeStreamedClipboard({

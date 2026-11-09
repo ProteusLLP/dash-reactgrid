@@ -44,6 +44,19 @@ jobs:
           # The main branch has a standalone import and PR 67 adds the same
           # symbol to the grouped virtualOperations import.
           s = s.replace('import { escapeTsvCell } from "./virtualOperations";\n', '')
+          main_grid = subprocess.check_output(
+              ["git", "show", "origin/main:src/lib/ServerVirtualGrid.react.js"], text=True)
+          # Preserve FindBar's highlighting and PR 67's viewport sizing.
+          start = main_grid.index("  const rows = useMemo(")
+          stop = main_grid.index("  const visibleHighlights = useMemo(", start)
+          rows = main_grid[start:stop].replace(
+              "page, rowHeight:virtualRowHeight, readOnly:editingBlocked",
+              "page, rowHeight:virtualRowHeight, viewportHeight:virtualViewportHeight, readOnly:editingBlocked")
+          rows = rows.replace("range.start, range.end, page, virtualRowHeight",
+                              "range.start, range.end, range.first, page, virtualRowHeight, virtualViewportHeight")
+          start = s.index("  const rows = useMemo(")
+          stop = s.index("  const visibleHighlights = useMemo(", start)
+          s = s[:start] + rows + s[stop:]
           p.write_text(s)
           p = Path("src/lib/serverVirtual.js")
           s = p.read_text()

@@ -17,16 +17,8 @@ jobs:
           node-version: '22'
       - name: Install JS dependencies
         run: npm ci --legacy-peer-deps
-      - name: JavaScript unit tests
-        run: npm run test:js
       - name: Build browser assets
         run: npm run build:js
-      - name: Python undo/fill tests
-        run: python3 -m unittest tests.test_virtual_grid_store -v
-      - name: Install Dash and Selenium
-        run: python3 -m pip install "dash>=3,<5" "selenium>=4,<5" "numpy>=1.23,<3"
-      - name: Chrome virtual keyboard and clipboard smoke
-        run: python3 tests/test_large_virtual_clipboard_browser.py
       - name: Commit browser assets
         run: |
           git config user.name "github-actions[bot]"

@@ -1,0 +1,53 @@
+name: Verify virtual-grid review fixes
+on:
+  push:
+    branches:
+      - feat/virtual-whole-column-fill
+permissions:
+  contents: read
+  statuses: write
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install JavaScript dependencies
+        run: npm ci --legacy-peer-deps
+      - name: Test JavaScript
+        run: npm run test:js
+      - name: Verify compiled bundle
+        run: |
+          npm run build:js
+          git diff --exit-code -- dash_reactgrid/dash_reactgrid.min.js dash_reactgrid/dash_reactgrid.min.js.map
+      - name: Test Python backend and provider
+        run: |
+          python3 -m unittest tests.test_virtual_grid_store -v
+          python3 -m unittest discover -s tests -p test_stateless_virtual_callbacks.py -v
+          python3 -m unittest discover -s tests -p test_sparse_edit_server.py -v
+      - name: Install Chrome test dependencies
+        run: python3 -m pip install "dash>=3,<5" "selenium>=4,<5" "numpy>=1.23,<3"
+      - name: Test browser interaction matrix
+        run: python3 tests/test_feature_matrix_browser.py
+      - name: Test server virtualization
+        run: python3 tests/test_server_virtual_browser.py
+      - name: Test durable virtual editing
+        run: python3 tests/test_virtual_operations_browser.py && python3 tests/test_virtual_reliable_browser.py
+      - name: Test large in-memory editing
+        run: python3 tests/test_large_in_memory_browser.py
+      - name: Test streamed clipboard and keyboard ranges
+        run: python3 tests/test_large_virtual_clipboard_browser.py
+      - name: Record result on commit
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESULT: ${{ job.status }}
+        run: |
+          if [ "$RESULT" = success ]; then state=success; else state=failure; fi
+          gh api -X POST "repos/${{ github.repository }}/statuses/${{ github.sha }}" \
+            -f state="$state" \
+            -f context="review-full-ci" \
+            -f description="Virtual-grid review tests: $RESULT" \
+            -f target_url="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"

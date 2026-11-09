@@ -72,7 +72,9 @@ def run_test():
 
         # Closing an untouched search must restore the grid keyboard target.
         cells=driver.find_elements(By.CSS_SELECTOR,"#grid .rg-cell.rg-col-name")
-        cells[-1].click()
+        # Click a currently visible cell: the last materialised cell can be
+        # far below the viewport and Selenium's auto-scroll remounts it.
+        cells[1].click()
         ActionChains(driver).key_down(Keys.CONTROL).send_keys("f").key_up(Keys.CONTROL).perform()
         close_input=wait.until(lambda _:driver.find_element(
             By.CSS_SELECTOR,'#grid .drg-find input[type="search"]'))
@@ -83,7 +85,9 @@ def run_test():
         # Ctrl+F must find cells not present in the currently loaded window.
         cells=driver.find_elements(By.CSS_SELECTOR,"#grid .rg-cell.rg-col-name")
         assert len(cells)>1
-        cells[-1].click()
+        # Click a currently visible cell: the last materialised cell can be
+        # far below the viewport and Selenium's auto-scroll remounts it.
+        cells[1].click()
         # A global selection must not remain active after Find jumps to a
         # single offscreen match; Ctrl+D would otherwise edit the old range.
         ActionChains(driver).key_down(Keys.CONTROL).send_keys("a").key_up(Keys.CONTROL).perform()
@@ -102,8 +106,10 @@ def run_test():
             By.CSS_SELECTOR,"#grid .rg-find-match"))>0)
         wait.until(lambda _:"1 rows selected" in driver.find_element(
             By.CSS_SELECTOR,"#grid .drg-selection-count").text)
-        assert driver.find_element(By.CSS_SELECTOR,
-            '#grid .drg-virtual-toolbar input[type="number"]').get_attribute("value")=="100000"
+        # Range selection now uses native keyboard and mouse controls; the
+        # former From/To toolbar is intentionally absent.
+        assert not driver.find_elements(By.CSS_SELECTOR,
+            "#grid .drg-virtual-toolbar")
         assert len(driver.find_elements(By.CSS_SELECTOR,"#grid .rg-cell"))<1000
 
         # Changing the query must invalidate the cursor and jump back to top.

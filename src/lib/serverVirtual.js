@@ -84,6 +84,49 @@ export const scrollTopForVirtualRow = (row, total, rowHeight, viewportHeight, al
   return position;
 };
 
+/** Map an absolute row to the compressed browser scrollbar coordinates. */
+export const virtualScrollTopForRow = (row, total, rowHeight = DEFAULT_VIRTUAL_ROW_HEIGHT,
+  viewportHeight = 400) => {
+  if (!total) return 0;
+  const visible = Math.ceil(Math.max(1, viewportHeight) / rowHeight) + 2;
+  const maximum = Math.max(0, Math.min(total * rowHeight, MAX_BROWSER_SCROLL_PX) - viewportHeight);
+  const fraction = Math.min(1, Math.max(0, row / Math.max(1, total - visible)));
+  return fraction * maximum;
+};
+
+/**
+ * Geometry used by ReactGrid's virtual spacer rows. The offscreen rows are
+ * compressed for very large datasets, but loaded rows retain full height.
+ * Both rendering and Find scrolling must use the same geometry.
+ */
+export const virtualSpacerHeights = (rowCount, rowHeight, range) => {
+  const windowHeight = (range.end - range.start) * rowHeight;
+  const physicalHeight = Math.min(rowCount * rowHeight, MAX_BROWSER_SCROLL_PX);
+  const spacerHeight = Math.max(0, physicalHeight - windowHeight);
+  const maxStart = Math.max(0, rowCount - (range.end - range.start));
+  const topHeight = maxStart
+    ? Math.min(spacerHeight, Math.max(0, range.start / maxStart * spacerHeight))
+    : 0;
+  return { topHeight, bottomHeight: spacerHeight - topHeight, physicalHeight };
+};
+
+/**
+ * Scroll a found row into the *visible* viewport of its pinned loaded window.
+ * Mapping a logical row directly to the compressed scrollbar instead can
+ * leave the cell hundreds of pixels below the viewport, even when loaded.
+ */
+export const virtualScrollTopForRenderedRow = (
+  row, rowCount, rowHeight, range, viewportHeight = 400, headerHeight = 0,
+) => {
+  if (!Number.isSafeInteger(row) || row < range.start || row >= range.end)
+    throw new RangeError("Find destination must be inside its loaded window");
+  const { topHeight, physicalHeight } = virtualSpacerHeights(rowCount, rowHeight, range);
+  const rowTop = headerHeight + topHeight + (row - range.start) * rowHeight;
+  const centerOffset = Math.max(0, (viewportHeight - rowHeight) / 2);
+  const maximum = Math.max(0, physicalHeight + headerHeight - viewportHeight);
+  return Math.max(0, Math.min(maximum, rowTop - centerOffset));
+};
+
 export const viewportKey = (datasetId, start, end) =>
   JSON.stringify([datasetId, start, end]);
 

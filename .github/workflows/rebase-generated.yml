@@ -1,0 +1,63 @@
+name: Rebase feature branch (generated files safe)
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Existing feature branch to rebase onto main'
+        required: true
+        type: string
+permissions:
+  contents: write
+jobs:
+  guarded-rebase:
+    runs-on: ubuntu-latest
+    env:
+      TARGET_BRANCH: ${{ inputs.branch }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Validate branch and retain trusted rebase helper
+        run: |
+          set -euo pipefail
+          git check-ref-format --branch "$TARGET_BRANCH"
+          case "$TARGET_BRANCH" in main|master|dev) echo "Refusing to rewrite base branch"; exit 1 ;; esac
+          cp scripts/rebase_generated.py "$RUNNER_TEMP/rebase_generated.py"
+          git fetch origin main "refs/heads/$TARGET_BRANCH:refs/remotes/origin/$TARGET_BRANCH"
+          old_sha="$(git rev-parse "refs/remotes/origin/$TARGET_BRANCH")"
+          echo "OLD_SHA=$old_sha" >> "$GITHUB_ENV"
+          git checkout -B "$TARGET_BRANCH" "$old_sha"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - name: Install build and test dependencies
+        run: |
+          python -m pip install "dash>=3,<5" "pyyaml>=6,<7" "numpy>=1.23,<3" "pandas>=2,<3" "selenium>=4,<5"
+          npm ci --legacy-peer-deps
+      - name: Rebase with generated conflicts only, then regenerate
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          python "$RUNNER_TEMP/rebase_generated.py" origin/main
+      - name: JavaScript regression tests
+        run: npm run test:js
+      - name: Python contract and server tests
+        run: python -m unittest tests.test_component_contract tests.test_rebase_generated tests.test_stateless_virtual_callbacks tests.test_virtual_grid_store -v
+      - name: Chrome matrix
+        run: python tests/test_feature_matrix_browser.py
+      - name: Chrome virtualized Find and scrolling
+        run: python tests/test_server_virtual_browser.py
+      - name: Chrome large virtual clipboard and fill
+        run: python tests/test_large_virtual_clipboard_browser.py
+      - name: Chrome large in-memory
+        run: python tests/test_large_in_memory_browser.py
+      - name: Back up original head and push successful rebase with lease
+        run: |
+          set -euo pipefail
+          backup="refs/heads/backup/generated-rebase-${TARGET_BRANCH//\//-}-${OLD_SHA:0:8}"
+          git push origin "$OLD_SHA:$backup"
+          git push --force-with-lease="refs/heads/$TARGET_BRANCH:$OLD_SHA" origin "HEAD:refs/heads/$TARGET_BRANCH"

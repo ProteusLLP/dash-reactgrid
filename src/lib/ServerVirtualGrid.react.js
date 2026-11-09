@@ -785,7 +785,18 @@ export const ServerVirtualGrid = (props) => {
         candidate.columnEnd-candidate.columnStart!==1 || !page ||
         candidate.start<range.start ||
         candidate.start>=range.start+page.rowIds.length) return null;
-    const rowId=page.rowIds[candidate.start-range.start];
+    const rowOffset=candidate.start-range.start;
+    const column=columns[candidate.columnStart];
+    // Date/time cells render their values as date/time fields, not .text.
+    // Read the overlaid page data, which includes optimistic edits, and
+    // use the same raw serialisation as the streamed TSV endpoint.
+    if (column?.type==="date" || column?.type==="time") {
+      const originalColumn=allColumns.findIndex(c=>c.columnId===column.columnId);
+      if (originalColumn<0) return null;
+      const raw=page.data[rowOffset]?.[originalColumn];
+      return escapeTsvCell(raw == null ? "" : raw);
+    }
+    const rowId=page.rowIds[rowOffset];
     const row=rows.find(item=>item.rowId===rowId);
     const cell=row?.cells?.[candidate.columnStart];
     return cell ? escapeTsvCell(textOf(cell)) : null;

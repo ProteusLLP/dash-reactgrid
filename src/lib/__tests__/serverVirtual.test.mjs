@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   DEFAULT_VIRTUAL_ROW_HEIGHT, MAX_BROWSER_SCROLL_PX,
   VIRTUAL_SPACER_TOP, VIRTUAL_SPACER_BOTTOM, VIRTUAL_LOADING_PREFIX,
-  virtualRowWindow, viewportKey, validViewportResponse, addViewportCache,
+  virtualRowWindow, scrollTopForVirtualRow, viewportKey, validViewportResponse, addViewportCache,
   buildVirtualRows,
 } from "../serverVirtual.js";
 import { compileGridColumns } from "../gridRows.js";
@@ -29,6 +29,25 @@ test("scroll position maps to bounded server windows at top, middle and bottom",
   assert.equal(bottom.end,100000);
   assert.equal(bottom.start,99880);
   assert.equal(bottom.first,99982);
+});
+
+test("virtual Shift+Arrow scrolls logical endpoints into view without loading all rows",()=>{
+  const rowHeight=25, viewport=420;
+  for (const total of [25050,2_000_000]) {
+    const lowerRow=1000;
+    const top=scrollTopForVirtualRow(lowerRow,total,rowHeight,viewport,true);
+    const bottom=scrollTopForVirtualRow(lowerRow,total,rowHeight,viewport,false);
+    const topWindow=virtualRowWindow(top,total,rowHeight,120,viewport);
+    const bottomWindow=virtualRowWindow(bottom,total,rowHeight,120,viewport);
+    assert.ok(topWindow.first<=lowerRow,"upward endpoint must not scroll past row");
+    assert.ok(lowerRow-topWindow.first<=2,"upward endpoint is near top");
+    assert.ok(bottomWindow.first<=lowerRow);
+    assert.ok(lowerRow-bottomWindow.first<Math.floor(viewport/rowHeight),
+      "downward endpoint is visible");
+    assert.ok(bottomWindow.start<=lowerRow && bottomWindow.end>lowerRow);
+    assert.ok(bottom<=MAX_BROWSER_SCROLL_PX);
+  }
+  assert.equal(scrollTopForVirtualRow(0,25050,25,420,true),0);
 });
 
 test("adjacent scroll positions reuse the same window to avoid request storms",()=>{

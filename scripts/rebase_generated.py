@@ -114,7 +114,11 @@ def build_generated() -> None:
     unexpected = sorted((changed | untracked) - GENERATED)
     if unexpected:
         raise RuntimeError("Build touched non-generated files: " + ", ".join(unexpected))
-    git("add", "-A", "--", *sorted(GENERATED))
+    # Stage only paths that actually changed. A pathspec for a generated
+    # file absent from a Python-only/test repository makes git add fail.
+    to_stage = sorted((changed | untracked) & GENERATED)
+    if to_stage:
+        git("add", "-A", "--", *to_stage)
     if subprocess.run(["git", "diff", "--cached", "--quiet"]).returncode:
         git("commit", "-m", "build: regenerate bindings and assets after rebase")
 

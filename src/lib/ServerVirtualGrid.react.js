@@ -1116,12 +1116,13 @@ export const ServerVirtualGrid = (props) => {
     // Native single-cell selection is copyable without any Dash request.
     // This also avoids stale, asynchronously prepared range clipboard data.
     const normal = selection.current;
-    const toolbarMatches=current && globalSelection &&
-      current.start===globalSelection.start &&
-      current.end===globalSelection.end &&
-      current.columnStart===globalSelection.columnStart &&
-      current.columnEnd===globalSelection.columnEnd;
-    if (!toolbarMatches && normal.length) {
+    const singleCell = selected &&
+      selected.end-selected.start===1 &&
+      selected.columnEnd-selected.columnStart===1;
+    // A large global range must never fall through to a stale native
+    // selection. In particular, Ctrl+A then disabling streaming must be
+    // intercepted and explain the 1,000-row clipboard limit.
+    if ((!selected || singleCell) && normal.length) {
       const txt=selectionText(rows,normal,textOf);
       if (txt!==null) {
         e.preventDefault();e.stopPropagation();

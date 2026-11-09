@@ -1,4 +1,4 @@
-name: Temporary PR 67 Chrome fix verification
+name: Temporary PR 67 full regression verification
 
 on:
   push:
@@ -6,56 +6,56 @@ on:
       - automation/rebase-pr67-20261109
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  verify-and-build:
+  full-check:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout PR 67 branch
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           ref: feat/virtual-whole-column-fill
-          fetch-depth: 0
-          persist-credentials: true
-      - name: Verify source head and configure Git
-        run: |
-          set -euo pipefail
-          git fetch origin feat/virtual-whole-column-fill
-          test "$(git rev-parse HEAD)" = "6dad580a25a8e8328e2a9c2d467db3384b88a3b1"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          fetch-depth: 1
+      - name: Verify tested PR commit
+        run: test "$(git rev-parse HEAD)" = "ea18b9446fdf1bfef93cb3fc89ac427857e1a0ad"
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
       - uses: actions/setup-python@v5
         with:
           python-version: '3.14'
-      - name: Install and build
+      - name: Install Node dependencies
+        run: npm ci --legacy-peer-deps
+      - name: Test JavaScript
+        run: npm run test:js
+      - name: Compile and verify committed assets
         run: |
-          npm ci --legacy-peer-deps
           npm run build:js
-          npm run test:js
-      - name: Install Chrome test dependencies
+          git diff --exit-code -- dash_reactgrid/dash_reactgrid.min.js dash_reactgrid/dash_reactgrid.min.js.map
+      - name: Run large-grid benchmarks
+        run: |
+          node --experimental-detect-module scripts/benchmark-large-grid.mjs
+          node --experimental-detect-module scripts/benchmark-numpy-data.mjs
+      - name: Run stateless and virtual backend tests
+        run: |
+          python3 -m unittest discover -s tests -p test_stateless_virtual_callbacks.py -v
+          python3 -m unittest discover -s tests -p test_sparse_edit_server.py -v
+          python3 -m unittest discover -s tests -p test_virtual_grid_store.py -v
+      - name: Install Python and Chrome requirements
         run: python3 -m pip install "dash>=3,<5" "selenium>=4,<5" "numpy>=1.23,<3" "pandas>=2,<3"
-      - name: Test Ctrl+F on server-virtual grids
+      - name: Run Python API and data tests
         run: |
-          python3 -m unittest -v \
-            tests.test_feature_matrix_browser.FeatureMatrixChromeTests.test_virtual_find_cell_copies_without_preparing_a_range \
-            tests.test_feature_matrix_browser.FeatureMatrixChromeTests.test_virtual_find_clears_public_native_selection \
-            tests.test_feature_matrix_browser.FeatureMatrixChromeTests.test_virtual_find_dataset_replacement_clears_old_edit_destination \
-            tests.test_feature_matrix_browser.FeatureMatrixChromeTests.test_virtual_find_date_and_time_copies_provider_values \
-            tests.test_feature_matrix_browser.FeatureMatrixChromeTests.test_virtual_find_enter_does_not_issue_duplicate_pending_requests \
-            tests.test_feature_matrix_browser.FeatureMatrixChromeTests.test_virtual_find_selection_rebases_and_copies_loaded_cell \
-            tests.test_feature_matrix_browser.FeatureMatrixChromeTests.test_virtual_find_structural_ack_clears_old_edit_destination
-      - name: Commit and push regenerated asset files
+          python3 -m unittest tests.test_column tests.test_dataframe tests.test_numpy_data tests.test_component_contract -v
+      - name: Run Chrome feature matrix
+        run: python3 tests/test_feature_matrix_browser.py
+      - name: Run sparse browser tests
+        run: python3 tests/test_sparse_browser.py
+      - name: Run virtual browser tests
         run: |
-          set -euo pipefail
-          git diff --check
-          git add -- dash_reactgrid/dash_reactgrid.min.js dash_reactgrid/dash_reactgrid.min.js.map \
-            deps/dash_reactgrid.min.js deps/dash_reactgrid.min.js.map \
-            inst/deps/dash_reactgrid.min.js inst/deps/dash_reactgrid.min.js.map
-          if ! git diff --cached --quiet; then
-            git commit -m "build: regenerate Dash bundles after virtual Find restoration"
-            git push origin HEAD:refs/heads/feat/virtual-whole-column-fill
-          fi
+          python3 tests/test_server_virtual_browser.py
+          python3 tests/test_virtual_operations_browser.py
+          python3 tests/test_virtual_reliable_browser.py
+      - name: Run large dataset Chrome tests
+        run: |
+          python3 tests/test_large_in_memory_browser.py
+          python3 tests/test_large_virtual_clipboard_browser.py

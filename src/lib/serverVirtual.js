@@ -84,14 +84,14 @@ export const virtualSpacerHeights = (rowCount, rowHeight, range) => {
  * leave the cell hundreds of pixels below the viewport, even when loaded.
  */
 export const virtualScrollTopForRenderedRow = (
-  row, rowCount, rowHeight, range, viewportHeight = 400,
+  row, rowCount, rowHeight, range, viewportHeight = 400, headerHeight = 0,
 ) => {
   if (!Number.isSafeInteger(row) || row < range.start || row >= range.end)
     throw new RangeError("Find destination must be inside its loaded window");
   const { topHeight, physicalHeight } = virtualSpacerHeights(rowCount, rowHeight, range);
-  const rowTop = topHeight + (row - range.start) * rowHeight;
+  const rowTop = headerHeight + topHeight + (row - range.start) * rowHeight;
   const centerOffset = Math.max(0, (viewportHeight - rowHeight) / 2);
-  const maximum = Math.max(0, physicalHeight - viewportHeight);
+  const maximum = Math.max(0, physicalHeight + headerHeight - viewportHeight);
   return Math.max(0, Math.min(maximum, rowTop - centerOffset));
 };
 

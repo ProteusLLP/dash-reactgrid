@@ -1,0 +1,32 @@
+name: Diagnose PR 67 integration
+on:
+  push:
+    branches:
+      - automation/pr67-rebase-20261109
+permissions:
+  contents: write
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Show merge conflicts before regeneration
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git merge --no-commit --no-ff origin/main || :
+          echo "=== CONFLICTING PATHS ==="
+          git diff --name-only --diff-filter=U
+          echo "=== CONTENT CONFLICT HUNKS ==="
+          for f in $(git diff --name-only --diff-filter=U); do
+            case "$f" in
+              src/*|scripts/*|tests/*|package.json|README.md)
+                echo "========== $f =========="
+                grep -n -C 6 -E '^<<<<<<< |^=======|^>>>>>>> ' "$f" | head -240 || :
+                ;;
+            esac
+          done

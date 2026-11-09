@@ -19,7 +19,6 @@ import {
   clearSelectedCells, focusedRange, isCellEditorTarget,
   selectAllRanges, selectionText,
 } from "./keyboard";
-import { escapeTsvCell } from "./virtualOperations";
 import {
   boundedSelection, extendSelection, copyRequestFor, matchesCopyResponse,
   selectedColumnIds, editableFillColumns, escapeTsvCell, virtualRawCellCopyText,

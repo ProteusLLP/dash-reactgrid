@@ -1,0 +1,34 @@
+name: Diagnose PR67 squash integration with main
+on:
+  push:
+    branches:
+      - automation/pr67-squash-rebase-final
+permissions:
+  contents: read
+jobs:
+  merge-diagnostics:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Squash-merge latest PR source without losing changes
+        run: |
+          set -u
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin feat/virtual-whole-column-fill
+          echo "Pinned feature commit: 8108f56a3e846e15c40f96734c1b72d576e4012d"
+          git merge --squash 8108f56a3e846e15c40f96734c1b72d576e4012d
+          code="$?"
+          echo "Merge exit status: $code"
+          echo "Unmerged paths:"
+          git diff --name-only --diff-filter=U
+          echo "Staged paths:"
+          git diff --cached --name-only | head -70
+          echo "CONFLICT MARKERS:"
+          for path in $(git diff --name-only --diff-filter=U); do
+            echo "==== $path ===="
+            grep -n -A15 -B5 '^<<<<<<<\|^=======\|^>>>>>>>' "$path" | head -110 || true
+          done
+          exit 0

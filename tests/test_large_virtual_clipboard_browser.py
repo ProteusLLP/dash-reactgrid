@@ -271,6 +271,26 @@ def run():
             assert "Preparing selection for clipboard" not in driver.find_element(
                 By.CSS_SELECTOR,"#grid .drg-virtual-error").text
 
+            # Date/time cell types have no .text property in ReactGrid.
+            # A loaded single-cell copy must use the raw overlaid values,
+            # preserving hidden-column indexing and the server TSV format.
+            for column,expected in [
+                    ("day","2026-11-09"),
+                    ("at","2026-11-09T14:30:00Z")]:
+                cell=wait.until(lambda _:driver.find_elements(
+                    By.CSS_SELECTOR,f"#typed-grid .rg-cell.rg-col-{column}"))[0]
+                cell.click()
+                copied_typed=driver.execute_script("""
+                    const e=new ClipboardEvent('copy',{
+                      bubbles:true,cancelable:true,
+                      clipboardData:new DataTransfer()});
+                    document.querySelector('#typed-grid .drg-virtual-viewport')
+                      .dispatchEvent(e);
+                    return {handled:e.defaultPrevented,
+                      value:e.clipboardData.getData('text/plain')};
+                """)
+                assert copied_typed=={"handled":True,"value":expected},copied_typed
+
             print("Chrome virtual clipboard passed: full selection, toolbar focus and pending single-cell copy")
         finally:
             if driver:driver.quit()

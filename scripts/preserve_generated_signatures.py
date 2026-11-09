@@ -28,7 +28,7 @@ def update_python():
     if not all(name in declarations for name in LEGACY_PYTHON):
         raise RuntimeError("Generated Python wrapper lost a published property")
     reordered = [declarations[name] for name in LEGACY_PYTHON]
-    preferred_new = ["virtualFindRequest", "virtualFindData"]
+    preferred_new = ["virtualClipboardUrl", "virtualFindRequest", "virtualFindData"]
     reordered += [declarations[name] for name in preferred_new
                   if name in declarations and name not in LEGACY_PYTHON]
     reordered += [line for line in args if
@@ -60,7 +60,7 @@ def update_r():
         raise RuntimeError("Generated R wrapper lost a published property")
     ordered = [declarations[name] for name in LEGACY_R]
     # Keep the newly introduced request/response pair in API order.
-    preferred_new = ["virtualFindRequest", "virtualFindData"]
+    preferred_new = ["virtualClipboardUrl", "virtualFindRequest", "virtualFindData"]
     ordered += [declarations[name] for name in preferred_new
                 if name in declarations and name not in LEGACY_R]
     ordered += [entry for entry in entries if

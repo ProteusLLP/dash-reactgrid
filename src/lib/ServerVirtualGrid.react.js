@@ -11,7 +11,7 @@ import {
   VIRTUAL_SPACER_TOP, VIRTUAL_SPACER_BOTTOM,
 } from "./serverVirtual";
 import {
-  applyChanges, blankRow, newRowId, pastedValue, rowsInRanges, textOf, valueOf,
+  applyChanges, blankRow, columnClass, newRowId, pastedValue, rowsInRanges, textOf, valueOf,
 } from "./model";
 import {
   clearSelectedCells, focusedRange, isCellEditorTarget,
@@ -75,6 +75,7 @@ export const ServerVirtualGrid = (props) => {
   const globalRef = useRef(null);
   const anchor = useRef(null);
   const shiftPointer = useRef(false);
+  const shiftClickColumn = useRef(null);
   const columnHeaderPointer = useRef(false);
   const pointerGesture = useRef(null);
   const [fromInput, setFromInput] = useState("1");
@@ -698,7 +699,8 @@ export const ServerVirtualGrid = (props) => {
           const lastCol=Math.max(chosen.first.column.idx,chosen.last.column.idx);
           const farCol=Math.abs(lastCol-anchored.col)>=
             Math.abs(firstCol-anchored.col) ? lastCol : firstCol;
-          const endpoint={row:farRow,col:farCol};
+          const endpoint={row:farRow,
+            col:shiftClickColumn.current ?? farCol};
           keyboardAnchor.current=anchored;
           keyboardCursor.current=endpoint;
           selectGlobal(extendSelection(anchored,endpoint.row,endpoint.col,
@@ -891,6 +893,7 @@ export const ServerVirtualGrid = (props) => {
     // focus callback may arrive after pointerup, so it cannot be reset there.
     columnHeaderPointer.current=false;
     shiftPointer.current=false;
+    shiftClickColumn.current=null;
     if (isCellEditorTarget(e.target)) {
       if (e.key==="Enter" && e.shiftKey && !e.ctrlKey && !e.metaKey &&
           !e.altKey) multiCommit.current=true;
@@ -1067,6 +1070,11 @@ export const ServerVirtualGrid = (props) => {
           e.target.closest?.(".rg-cell"))
           ? {x:e.clientX,y:e.clientY,moved:false,pressed:true} : null;
         shiftPointer.current=e.shiftKey;
+        const cell=e.target.closest?.(".rg-cell");
+        shiftClickColumn.current=e.shiftKey && cell
+          ? columns.findIndex(column =>
+              cell.classList.contains(columnClass(column.columnId))) : null;
+        if (shiftClickColumn.current===-1) shiftClickColumn.current=null;
         keyboardAnchor.current=null;
         keyboardCursor.current=null;
         suppressNativeSelection.current=false;

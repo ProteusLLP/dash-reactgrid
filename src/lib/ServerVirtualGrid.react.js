@@ -251,11 +251,13 @@ export const ServerVirtualGrid = (props) => {
   const rows = useMemo(() => valid && columns.length && virtualRowCount > 0 ?
     buildVirtualRows({
       columns, descriptors, allColumns, rowCount:virtualRowCount, range,
-      page, rowHeight:virtualRowHeight, readOnly:editingBlocked, locked,
-      styleHeader, openDropdown, selection:visualSelection,
+      page, rowHeight:virtualRowHeight, viewportHeight:virtualViewportHeight,
+      readOnly:editingBlocked, locked, styleHeader, openDropdown,
+      selection:visualSelection,
     }) : [],
     [valid, columns, descriptors, allColumns, virtualRowCount,
-      range.start, range.end, page, virtualRowHeight, editingBlocked, locked,
+      range.start, range.end, range.first, page,
+      virtualRowHeight, virtualViewportHeight, editingBlocked, locked,
       styleHeader, openDropdown, visualSelection]);
 
   const visibleHighlights = useMemo(() => {

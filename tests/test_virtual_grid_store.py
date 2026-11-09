@@ -86,6 +86,29 @@ class Operations(unittest.TestCase):
         self.assertEqual(apply(5,{"kind":"undo","targetSeq":4})["status"],"ok")
         self.assertEqual(store.read_range(1499,1500)["data"],[["Row 1499",4.5]])
 
+    def test_fill_preserves_json_boolean_vs_numeric_distinction_on_undo(self):
+        path=Path(self.tmp.name)/"bool-number.sqlite3"
+        store=VirtualGridStore(path,"bool-number",["value"])
+        store.seed_once([[True],[1],[False],[0]],["a","b","c","d"])
+        original=store.read()["data"]
+        def apply(seq,operation):
+            result=store.apply({"datasetId":"bool-number","streamId":"session",
+                "seq":seq,"edits":[operation]})
+            self.assertEqual(result["status"],"ok",result)
+            return result
+        apply(1,{"kind":"fillDown","sourceRow":0,"start":1,"end":4,
+                 "columnIds":["value"]})
+        self.assertEqual(store.read()["data"],[[True],[True],[True],[True]])
+        apply(2,{"kind":"undo","targetSeq":1})
+        self.assertEqual(store.read()["data"],original)
+        apply(3,{"kind":"undo","targetSeq":2})
+        self.assertEqual(store.read()["data"],[[True],[True],[True],[True]])
+        apply(4,{"kind":"fillRange","start":0,"end":4,
+                 "columnIds":["value"],"values":[1]})
+        self.assertEqual(store.read()["data"],[[1],[1],[1],[1]])
+        apply(5,{"kind":"undo","targetSeq":4})
+        self.assertEqual(store.read()["data"],[[True],[True],[True],[True]])
+
     def test_multi_window_multi_column_fill_preserves_reverse_undo_order(self):
         path=Path(self.tmp.name)/"multi-column-windows.sqlite3"
         store=VirtualGridStore(path,"multi-column-windows",

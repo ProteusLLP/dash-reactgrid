@@ -50,6 +50,35 @@ test("virtual Shift+Arrow scrolls logical endpoints into view without loading al
   assert.equal(scrollTopForVirtualRow(0,25050,25,420,true),0);
 });
 
+test("compressed virtual spacer layout actually displays requested keyboard endpoints",()=>{
+  for (const total of [25050,2_000_000]) {
+    for (const requested of [17,40,1000,total-20]) {
+      for (const up of [true,false]) {
+        const scroll=scrollTopForVirtualRow(requested,total,25,420,up);
+        const range=virtualRowWindow(scroll,total,25,120,420);
+        assert.ok(range.start<=requested && range.end>requested);
+        const page={
+          rowIds:Array.from({length:range.end-range.start},(_,j)=>
+            "r"+(range.start+j)),
+          data:Array.from({length:range.end-range.start},(_,j)=>
+            ["valid",range.start+j,true]),
+        };
+        const rows=buildVirtualRows({
+          columns:cols,descriptors,allColumns:cols,rowCount:total,
+          range,page,rowHeight:25,viewportHeight:420,
+          readOnly:false,locked:new Set(),
+        });
+        const spacer=rows.find(r=>r.rowId===VIRTUAL_SPACER_TOP)?.height||0;
+        const y=spacer+(requested-range.start)*25-scroll;
+        assert.ok(y>=-1 && y<=420,
+          `Row ${requested} of ${total} is offscreen at ${y}px`);
+        const height=rows.slice(1).reduce((sum,row)=>sum+row.height,0);
+        assert.ok(Math.abs(height-Math.min(total*25,MAX_BROWSER_SCROLL_PX))<0.01);
+      }
+    }
+  }
+});
+
 test("adjacent scroll positions reuse the same window to avoid request storms",()=>{
   const p=virtualRowWindow(100_000,100000,25,120,400);
   const q=virtualRowWindow(100_001,100000,25,120,400);

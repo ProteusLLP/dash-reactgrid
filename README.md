@@ -243,8 +243,12 @@ search the complete local dataset, including other `rowPageSize` pages.
 
 Server-virtualized grids send `virtualFindRequest` to a stateless Dash
 callback and receive `virtualFindData`. Matches can be anywhere in the
-logical dataset: the browser scrolls to the returned absolute row and then
-loads its normal bounded viewport. The search request includes
+logical dataset: the browser loads the bounded window containing the match,
+then scrolls to its actual rendered cell position. For very large datasets,
+compressed scrollbar spacers do not change the full height of loaded rows;
+the matching cell is brought inside the visible viewport and that bounded
+window remains anchored while it is being viewed. Scrolling away resumes
+normal server virtualization. The search request includes
 `datasetId`, `requestId`, `query`, `afterRow`, `afterColumn`,
 `direction` (`forward` or `backward`), and visible `columnIds`.
 Return `{datasetId,requestId,query,rowIndex,columnId}` (zero-based), or

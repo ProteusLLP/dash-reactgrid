@@ -4,32 +4,31 @@ import { useReliableGrid } from "./useReliableGrid";
 import { FindBar } from "./FindBar.react";
 import { matchesFindResponse, resolveFindCursor } from "./find";
 import { overlayVirtualEdits } from "./virtualOverlay";
+import { clipboardStreamUrl, writeStreamedClipboard } from "./virtualClipboard";
 import { compileGridColumns, visibleGridColumns, resizeGridColumns, headerDepth } from "./gridRows";
 import { decodeGridData, isPackedNumericData } from "./numericData";
 import {
   addViewportCache, buildVirtualRows, loadedRow, validViewportResponse,
-  virtualRowWindow, virtualScrollTopForRow, virtualScrollTopForRenderedRow,
-  virtualSpacerHeights, viewportKey, VIRTUAL_LOADING_PREFIX,
+  virtualRowWindow, scrollTopForVirtualRow, virtualScrollTopForRow, virtualScrollTopForRenderedRow, viewportKey, VIRTUAL_LOADING_PREFIX,
   VIRTUAL_SPACER_TOP, VIRTUAL_SPACER_BOTTOM,
 } from "./serverVirtual";
 import {
-  applyChanges, blankRow, newRowId, pastedValue, rowsInRanges, textOf, valueOf,
+  applyChanges, blankRow, columnClass, newRowId, pastedValue, rowsInRanges, textOf, valueOf,
 } from "./model";
 import {
   clearSelectedCells, focusedRange, isCellEditorTarget,
   selectAllRanges, selectionText,
 } from "./keyboard";
-import { escapeTsvCell } from "./virtualOperations";
 import {
   boundedSelection, extendSelection, copyRequestFor, matchesCopyResponse,
-  selectedColumnIds,
-  makeRangePaste, parseClipboardTsv, historyStorageKey, initialHistory, loadHistory,
+  editableFillColumns, escapeTsvCell, virtualRawCellCopyText,
+  makeRangePaste, historyStorageKey, initialHistory, loadHistory,
   saveHistory, nextHistory, MAX_RANGE_ROWS,
 } from "./virtualOperations";
 import { numberParser } from "./CustomNumberCell";
 import { percentParser } from "./PercentCell";
 import { createCellTemplates } from "./cellTemplates";
-import { sheetEdge, keyboardRectangle, keyboardArea, MAX_KEYBOARD_EDIT_CELLS } from "./spreadsheetKeyboard";
+import { sheetEdge, keyboardRectangle, keyboardArea } from "./spreadsheetKeyboard";
 
 const parsers = { number: numberParser, percent: percentParser };
 const EMPTY_DATA = [];
@@ -75,12 +74,14 @@ export const ServerVirtualGrid = (props) => {
   const globalRef = useRef(null);
   const anchor = useRef(null);
   const shiftPointer = useRef(false);
-  const [fromInput, setFromInput] = useState("1");
-  const [toInput, setToInput] = useState("1");
+  const shiftClickColumn = useRef(null);
+  const columnHeaderPointer = useRef(false);
+  const pointerGesture = useRef(null);
   const [commandError, setCommandError] = useState(null);
   const [historyError, setHistoryError] = useState(null);
   const [copyText, setCopyText] = useState(null);
   const [copyError, setCopyError] = useState(null);
+  const [streamingCopy, setStreamingCopy] = useState(false);
   const copyCounter = useRef(0);
   const copyPending = useRef(null);
   const lastAcknowledgedRevision = useRef(-1);
@@ -304,7 +305,7 @@ export const ServerVirtualGrid = (props) => {
     if (!valid || !columns.length || !virtualRowCount) return [];
     const built = buildVirtualRows({
       columns, descriptors, allColumns, rowCount:virtualRowCount, range,
-      page, rowHeight:virtualRowHeight, readOnly:editingBlocked, locked,
+      page, rowHeight:virtualRowHeight, viewportHeight:virtualViewportHeight, readOnly:editingBlocked, locked,
       styleHeader, openDropdown, selection:visualSelection,
     });
     // ReactGrid highlights can be lost when its virtual spacer layout
@@ -323,7 +324,7 @@ export const ServerVirtualGrid = (props) => {
       }),
     });
   }, [valid, columns, descriptors, allColumns, virtualRowCount,
-      range.start, range.end, page, virtualRowHeight, editingBlocked, locked,
+      range.start, range.end, range.first, page, virtualRowHeight, virtualViewportHeight, editingBlocked, locked,
       styleHeader, openDropdown, visualSelection, findMatch]);
 
   const visibleHighlights = useMemo(() => {
@@ -394,11 +395,10 @@ export const ServerVirtualGrid = (props) => {
 
   const selectGlobal = (candidate) => {
     if (!candidate) return;
-    findSelection.current=null;
+    // A keyboard or mouse range selection supersedes any older click.
+    pointerGesture.current=null;
     globalRef.current = candidate;
     setGlobalSelection(candidate);
-    setFromInput(String(candidate.start + 1));
-    setToInput(String(candidate.end));
     setCopyText(null);
     setCopyError(null);
     copyPending.current=null;
@@ -412,22 +412,9 @@ export const ServerVirtualGrid = (props) => {
       { row: range.start + offset, col: column };
   };
 
-  const applyRangeInputs = () => {
-    const selection = boundedSelection(
-      Number(fromInput) - 1, Number(toInput), 0, columns.length,
-      virtualRowCount, columns.length,
-    );
-    if (!selection) {
-      setCommandError("Enter a valid inclusive row range within the dataset");
-      return;
-    }
-    setCommandError(null);
-    selectGlobal(selection);
-  };
-
   const insertRow = (append = false) => {
     const position = append ? virtualRowCount :
-      (globalSelection?.start ?? globalRef.current?.start ?? range.first);
+      (globalRef.current?.start ?? globalSelection?.start ?? range.first);
     const id = "new-" + (window.crypto?.randomUUID?.() || newRowId());
     submitOperation([{
       kind: "insert", rowId: id, position,
@@ -436,9 +423,9 @@ export const ServerVirtualGrid = (props) => {
   };
 
   const deleteSelection = () => {
-    // Destructive toolbar actions operate on the displayed global range,
-    // never on a later native cell focus that has not updated the toolbar.
-    const sel = globalSelection;
+    // Use the latest keyboard or mouse selection, including native clicks
+    // that have not yet updated React state.
+    const sel = globalRef.current || globalSelection;
     if (!sel || editingBlocked) return;
     const count = sel.end - sel.start;
     if (count > MAX_RANGE_ROWS) {
@@ -471,21 +458,19 @@ export const ServerVirtualGrid = (props) => {
     return () => window.clearTimeout(timer);
   }, [globalSelection]);
 
-  // Prepare range data asynchronously via Dash, so the eventual Copy click
-  // is a genuine user gesture and can use the synchronous clipboard event.
+  // Prepare bounded selections asynchronously via Dash for native Ctrl+C.
+  // Large selections should use the streaming clipboard endpoint.
   useEffect(() => {
     setCopyText(null);
     setCopyError(null);
     copyPending.current=null;
-    if (!globalSelection) return;
+    if (!globalSelection || props.virtualClipboardUrl) return;
     // A click focusing a single cell is NOT a request to fetch its content.
     // In particular, don't trigger a Dash response during double-click edit.
     if ((globalSelection.end - globalSelection.start) *
         (globalSelection.columnEnd - globalSelection.columnStart) === 1) return;
-    if (globalSelection.end - globalSelection.start > MAX_RANGE_ROWS) {
-      setCopyError("Large selections must use Download CSV");
-      return;
-    }
+    // Copy limits do not apply to server-side fill operations.
+    if (globalSelection.end - globalSelection.start > MAX_RANGE_ROWS) return;
     const timer = window.setTimeout(() => {
       if (copyPending.current) return;
       const request = copyRequestFor(virtualDatasetId,
@@ -494,7 +479,8 @@ export const ServerVirtualGrid = (props) => {
       setPropsRef.current({virtualRangeRequest:request});
     }, 150);
     return () => window.clearTimeout(timer);
-  }, [globalSelection, virtualDatasetId, props.editAck?.revision]);
+  }, [globalSelection, virtualDatasetId, props.virtualClipboardUrl,
+    props.editAck?.revision]);
 
   useEffect(() => {
     if (!matchesCopyResponse(virtualRangeData, copyPending.current)) return;
@@ -507,108 +493,130 @@ export const ServerVirtualGrid = (props) => {
     }
   }, [virtualRangeData]);
 
-  const copySelection = () => {
-    if (globalSelection &&
-        globalSelection.end-globalSelection.start > MAX_RANGE_ROWS) {
-      setCopyError("Use Download CSV for selections exceeding 1,000 rows");
+  // Native copy streams the current selection whenever an endpoint is provided.
+  const streamSelectionToClipboard = (selected) => {
+    if (!selected) return;
+    if (reliable.pending > 0) {
+      setCopyError("Save pending edits before copying a server range");
       return;
     }
-    if (typeof copyText !== "string") {
-      if (globalSelection) {
-        // A manual click is a retry even when an earlier prefetch is still
-        // outstanding. Dash receives a fresh requestId to trigger the callback.
-        const request=copyRequestFor(virtualDatasetId,
-          ++copyCounter.current,globalSelection,columns);
-        copyPending.current=request;
-        setPropsRef.current({virtualRangeRequest:request});
+    try {
+      const url=clipboardStreamUrl(
+        props.virtualClipboardUrl,virtualDatasetId,selected,columns);
+      // ClipboardItem accepts a Promise<Blob>. Start the write during the
+      // user gesture, before awaiting the potentially large HTTP response.
+      const writing=writeStreamedClipboard({
+        url,clipboard:window.navigator.clipboard,
+        ClipboardItemCtor:window.ClipboardItem,fetcher:window.fetch.bind(window),
+      });
+      setCopyError(null);
+      setStreamingCopy(true);
+      writing.then(() => {
+        setStreamingCopy(false);
         setCopyError(null);
-      }
-      return;
+      }).catch(error => {
+        setStreamingCopy(false);
+        setCopyError(error.message || "Could not copy the selected range");
+      });
+    } catch(error) {
+      setStreamingCopy(false);
+      const reason=error.message || "Clipboard streaming unavailable";
+      setCopyError(reason + ". The application can offer a separate CSV export.");
     }
-    // A textarea fallback works even where navigator.clipboard needs
-    // additional permissions or the page is not a secure context.
-    const textarea = document.createElement("textarea");
-    textarea.value = copyText;
-    textarea.style.position = "fixed";
-    textarea.style.opacity = "0";
-    document.body.appendChild(textarea);
-    textarea.focus();
-    textarea.select();
-    let copied = false;
-    try { copied = document.execCommand("copy"); }
-    finally { document.body.removeChild(textarea); }
-    if (!copied && window.navigator.clipboard?.writeText) {
-      window.navigator.clipboard.writeText(copyText).then(
-        () => setCommandError(null),
-        () => setCommandError("Clipboard permission denied; use Download CSV"),
-      );
-    } else if (!copied) {
-      setCommandError("Clipboard is unavailable in this browser");
-    } else setCommandError(null);
   };
 
-  const exportUrl = props.virtualExportUrl && globalSelection
-    ? props.virtualExportUrl +
-      (props.virtualExportUrl.includes("?") ? "&" : "?") +
-      new URLSearchParams({
-        start: String(globalSelection.start), end: String(globalSelection.end),
-        columnStart: String(globalSelection.columnStart),
-        columnEnd: String(globalSelection.columnEnd),
-        columnIds: JSON.stringify(selectedColumnIds(globalSelection, columns)),
-        datasetId: props.editDatasetId,
-      }).toString()
-    : null;
-
-  const submitRepeated = (sel, values, start = sel.start, end = sel.end) => {
-    const count=end-start;
+  // A whole-column operation stays compact even when target rows have not
+  // been requested from Dash. The server returns the normal durable edit ACK.
+  const submitRepeated = (sel, values, start, end) => {
+    if (!sel) {
+      setCommandError("Select a range before filling cells");
+      return false;
+    }
+    const first=start ?? sel.start;
+    const last=end ?? sel.end;
+    if (!Number.isSafeInteger(first) || !Number.isSafeInteger(last) ||
+        last <= first) {
+      setCommandError("Select at least one destination row to fill");
+      return false;
+    }
     const target=columns.slice(sel.columnStart,sel.columnEnd);
-    if (count<1) return;
-    if (count>MAX_RANGE_ROWS || count*target.length>MAX_KEYBOARD_EDIT_CELLS) {
-      setCommandError("Fill and multi-cell editing are limited to 1,000 rows and 20,000 cells");
-      return;
+    if (!Array.isArray(values) || values.length !== target.length) {
+      setCommandError("Fill values do not match the selected columns");
+      return false;
     }
-    if (target.some((col)=>col.nonEditable)) {
-      setCommandError("Cannot change a selection containing non-editable columns");
-      return;
+    const eligible=editableFillColumns(target,values);
+    if (!eligible.columnIds.length) {
+      setCommandError("The selected columns are all non-editable");
+      return false;
     }
-    submitOperation([{kind:"paste",start,columnIds:target.map(c=>c.columnId),
-      rows:Array.from({length:count},()=>values.slice())}]);
+    return Boolean(submitOperation([{kind:"fillRange",start:first,
+      end:last,...eligible}]));
   };
 
   const fillDown = () => {
     if (editingBlocked) return;
-    const sel=globalSelection || globalRef.current;
-    if (!sel) return;
-    const multiple=sel.end-sel.start>1;
-    const sourceRow=multiple ? sel.start : sel.start-1;
-    if (sourceRow<0) return;
-    const target=columns.slice(sel.columnStart,sel.columnEnd);
-    let source=null;
-    if (page && sourceRow>=range.start &&
-        sourceRow<range.start+page.data.length) {
-      const values=page.data[sourceRow-range.start];
-      source=target.map((col)=>values[allColumns.findIndex(c=>c.columnId===col.columnId)]);
-    } else if (multiple && globalSelection &&
-               typeof copyText==="string" && reliable.pending===0 &&
-               globalSelection.start===sel.start &&
-               globalSelection.end===sel.end &&
-               globalSelection.columnStart===sel.columnStart &&
-               globalSelection.columnEnd===sel.columnEnd) {
-      try {
-        const first=parseClipboardTsv(copyText)[0];
-        if (first && first.length===target.length)
-          source=first.map((value,i)=>pastedValue(target[i],
-            {type:"text",text:value},parsers));
-      } catch (error) {
-        setCommandError(error.message);
-        return;
-      }
-    }
-    if (!source) {
-      setCommandError("Fill down needs the source row loaded or prepared for copying");
+    const sel=globalRef.current || globalSelection;
+    if (!sel) {
+      setCommandError("Select cells to fill down");
       return;
     }
-    submitRepeated(sel,source,multiple ? sel.start+1 : sel.start,sel.end);
+    const multiple=sel.end-sel.start>1;
+    const sourceRow=multiple ? sel.start : sel.start-1;
+    if (sourceRow<0) {
+      setCommandError("Fill down needs a source row above the destination");
+      return;
+    }
+    const target=editableFillColumns(
+      columns.slice(sel.columnStart,sel.columnEnd));
+    if (!target.columnIds.length) {
+      setCommandError("The selected columns are all non-editable");
+      return;
+    }
+    const start=multiple ? sel.start+1 : sel.start;
+    if (start>=sel.end) {
+      setCommandError("Select at least one destination row to fill down");
+      return;
+    }
+    // Resolve the source on the server, even if it is outside the viewport.
+    submitOperation([{kind:"fillDown",sourceRow,start,end:sel.end,...target}]);
+  };
+
+  // Use absolute cell coordinates for Shift+Arrow rather than ReactGrid's
+  // native selected rows, which can expand into unrelated columns after
+  // a mouse click. No virtual row needs to be loaded to extend the range.
+  const extendByArrow = (key) => {
+    if (!virtualRowCount || !columns.length) return;
+    const focusedPlace=focused.current
+      ? selectionAt(focused.current.rowId,focused.current.columnId) : null;
+    const current=keyboardCursor.current || focusedPlace ||
+      (globalRef.current
+        ? {row:globalRef.current.start,col:globalRef.current.columnStart} : null);
+    if (!current) return;
+    const next={...current};
+    if (key==="ArrowDown") next.row=Math.min(next.row+1,virtualRowCount-1);
+    else if (key==="ArrowUp") next.row=Math.max(0,next.row-1);
+    else if (key==="ArrowRight") next.col=Math.min(next.col+1,columns.length-1);
+    else if (key==="ArrowLeft") next.col=Math.max(0,next.col-1);
+    const anchor=keyboardAnchor.current || focusedPlace || current;
+    keyboardAnchor.current=anchor;
+    keyboardCursor.current=next;
+    suppressNativeSelection.current=true;
+    const selected=keyboardRectangle(anchor,next);
+    selectGlobal(boundedSelection(selected.start,selected.end,
+      selected.columnStart,selected.columnEnd,
+      virtualRowCount,columns.length));
+    const pageRows=Math.max(1,
+      Math.floor((virtualViewportHeight-virtualRowHeight)/virtualRowHeight));
+    const needScroll=next.row<range.first || next.row>=range.first+pageRows;
+    if (needScroll) {
+      const position=scrollTopForVirtualRow(next.row,virtualRowCount,
+        virtualRowHeight,virtualViewportHeight,next.row<range.first);
+      if (viewportRef.current) viewportRef.current.scrollTop=position;
+      setScrollTop(position);
+    }
+    // Focus the moving endpoint as its virtual window becomes available.
+    setKeyboardFocus(next);
+    setCommandError(null);
   };
 
   const updateFindQuery = (value) => {
@@ -778,6 +786,7 @@ export const ServerVirtualGrid = (props) => {
   }, [findMatch,page,range.start,columns]);
 
   const navigateToEdge = (key,shift) => {
+    pointerGesture.current=null;
     if (!virtualRowCount) return;
     findSelection.current=null;
     const focusedPlace=focused.current
@@ -831,7 +840,7 @@ export const ServerVirtualGrid = (props) => {
     handleChanges: (changes) => {
       if (multiCommit.current && changes.length===1) {
         multiCommit.current=false;
-        const sel=globalSelection || globalRef.current;
+        const sel=globalRef.current || globalSelection;
         const change=changes[0];
         const source=columnById.get(change.columnId);
         if (sel && source && keyboardArea(sel)>1) {
@@ -871,6 +880,59 @@ export const ServerVirtualGrid = (props) => {
       // entirely in refs; use toolbar/Shift-click for global range state.
       const ids=rowsInRanges(ranges).filter(isDataId);
       setProps({selectedRange:ranges,selectedRowIds:ids});
+      if (columnHeaderPointer.current) {
+        // Header drags emit multiple selectionChanged events, including
+        // another after pointer release. Keep interpreting them as whole
+        // logical-column selections until the next user interaction.
+        if (ranges.length && virtualRowCount) {
+          const selected=ranges[0];
+          const first=Math.min(selected.first.column.idx,selected.last.column.idx);
+          const last=Math.max(selected.first.column.idx,selected.last.column.idx)+1;
+          const whole=boundedSelection(0,virtualRowCount,first,last,
+            virtualRowCount,columns.length);
+          if (whole) selectGlobal(whole);
+        }
+        return;
+      }
+      if (shiftPointer.current && anchor.current && ranges.length && page) {
+        // Shift-click can change ReactGrid's selection without changing its
+        // focused cell, so focusChanged is not guaranteed to fire. Recover
+        // the endpoint from the native selected range and retain the first
+        // click as the keyboard-extension anchor.
+        const chosen=ranges[0];
+        const indices=(chosen.rows || []).map(row =>
+          page.rowIds.indexOf(row.rowId)).filter(idx=>idx>=0);
+        if (indices.length) {
+          const firstRow=range.start+Math.min(...indices);
+          const lastRow=range.start+Math.max(...indices);
+          const anchored=anchor.current;
+          const farRow=Math.abs(lastRow-anchored.row)>=
+            Math.abs(firstRow-anchored.row) ? lastRow : firstRow;
+          const firstCol=Math.min(chosen.first.column.idx,chosen.last.column.idx);
+          const lastCol=Math.max(chosen.first.column.idx,chosen.last.column.idx);
+          const farCol=Math.abs(lastCol-anchored.col)>=
+            Math.abs(firstCol-anchored.col) ? lastCol : firstCol;
+          const endpoint={row:farRow,
+            col:shiftClickColumn.current ?? farCol};
+          keyboardAnchor.current=anchored;
+          keyboardCursor.current=endpoint;
+          selectGlobal(extendSelection(anchored,endpoint.row,endpoint.col,
+            virtualRowCount,columns.length));
+        }
+        return;
+      }
+      // After a plain click ReactGrid may retain a multi-column native
+      // selection from an earlier keyboard range. Use the focused cell for
+      // click-only gestures, but preserve native selections for real drags.
+      const click=pointerGesture.current;
+      if (click && !click.moved && focused.current) {
+        const place=selectionAt(focused.current.rowId,focused.current.columnId);
+        if (place) {
+          globalRef.current=boundedSelection(place.row,place.row+1,
+            place.col,place.col+1,virtualRowCount,columns.length);
+          return;
+        }
+      }
       if (page && ranges.length && !shiftPointer.current) {
         const chosen=ranges[0];
         const indices=(chosen.rows || []).map((row) =>
@@ -891,18 +953,47 @@ export const ServerVirtualGrid = (props) => {
       if (next.some((column, index) => column !== allColumns[index]))
         setProps({columns: next});
     },
-    contextMenu: (selectedRowIds,selectedColIds,selectionMode,menuOptions) =>
-      editingBlocked || !globalSelection ? menuOptions : [...(menuOptions || []), {
+    contextMenu: (selectedRowIds,selectedColIds,selectionMode,menuOptions) => {
+      if (editingBlocked) return menuOptions;
+      const options=[...(menuOptions || []),
+        {id:"insertVirtualRow",label:"Insert row above",handler:()=>insertRow(false)},
+        {id:"appendVirtualRow",label:"Append row",handler:()=>insertRow(true)},
+      ];
+      if (globalRef.current || globalSelection) options.push({
         id:"deleteVirtualSelection",label:"Delete selected rows",
-        handler: deleteSelection,
-      }],
+        handler:deleteSelection,
+      });
+      if (historyRef.current.undo.length && !reliable.pending) options.push({
+        id:"undoVirtualEdit",label:"Undo",handler:undoOperation,
+      });
+      if (historyRef.current.redo.length && !reliable.pending) options.push({
+        id:"redoVirtualEdit",label:"Redo",handler:redoOperation,
+      });
+      return options;
+    },
     focusChanged: (location) => {
+      if (suppressNativeSelection.current) {
+        // Programmatic Ctrl+Arrow focus changes must still update the cell
+        // used by subsequent Ctrl+Space/Ctrl+D. Only the range and its
+        // keyboard anchor are frozen during this navigation.
+        if (isDataId(location.rowId)) {
+          focused.current=location;
+          setProps({selectedCell:location});
+        }
+        return;
+      }
       focused.current=location;
-      if (!isDataId(location.rowId)) return;
+      // A header drag is a column selection even if ReactGrid briefly
+      // reports focus on a loaded data cell during the gesture.
+      if (columnHeaderPointer.current || !isDataId(location.rowId)) return;
       setProps({selectedCell:location});
       const place=selectionAt(location.rowId,location.columnId);
       if (!place) return;
       if (shiftPointer.current && anchor.current) {
+        // Shift-click establishes the same anchor for subsequent Shift+Arrow
+        // extensions. The focused cell is the moving end of the selection.
+        keyboardAnchor.current=anchor.current;
+        keyboardCursor.current=place;
         selectGlobal(extendSelection(
           anchor.current,place.row,place.col,
           virtualRowCount,columns.length,
@@ -923,41 +1014,46 @@ export const ServerVirtualGrid = (props) => {
   const onColumnResized = useCallback((...args) => latest.current.resizeColumn(...args),[]);
   const onContextMenu = useCallback((...args) => latest.current.contextMenu(...args),[]);
 
+  // Copy a loaded single cell from the locally overlaid viewport, including
+  // unacknowledged sparse edits. A server fetch could return stale content.
+  const loadedSingleCellText = (candidate) => {
+    if (!candidate || candidate.end-candidate.start!==1 ||
+        candidate.columnEnd-candidate.columnStart!==1 || !page ||
+        candidate.start<range.start ||
+        candidate.start>=range.start+page.rowIds.length) return null;
+    const rowOffset=candidate.start-range.start;
+    const column=columns[candidate.columnStart];
+    // Date/time cells render their values as date/time fields, not .text.
+    // Read the overlaid page data, which includes optimistic edits, and
+    // use the same raw serialisation as the streamed TSV endpoint.
+    if (column?.type==="date" || column?.type==="time") {
+      return virtualRawCellCopyText(page,rowOffset,column.columnId,allColumns);
+    }
+    const rowId=page.rowIds[rowOffset];
+    const row=rows.find(item=>item.rowId===rowId);
+    const cell=row?.cells?.[candidate.columnStart];
+    return cell ? escapeTsvCell(textOf(cell)) : null;
+  };
+
   const handleCopy = (e) => {
     if (isCellEditorTarget(e.target)) return;
-    const current=globalRef.current;
-    const found=findSelection.current;
-    if (current && found && columns[current.columnStart]?.columnId===found.columnId &&
-        current.start===found.row &&
-        current.end===found.row+1 && current.columnStart>=0 &&
-        current.columnEnd===current.columnStart+1 && page &&
-        found.row>=range.start && found.row<range.start+page.rowIds.length) {
-      const rowId=page.rowIds[found.row-range.start];
-      const row=rows.find((candidate) => candidate.rowId===rowId);
-      const cell=row?.cells[current.columnStart];
-      if (cell) {
-        e.preventDefault();
-        e.stopPropagation();
-        const column=columns[current.columnStart];
-        const sourceIndex=allColumns.findIndex((c) => c.columnId===column.columnId);
-        const value=page.data[found.row-range.start]?.[sourceIndex];
-        // Date/time descriptors use date/time fields instead of text. Copy
-        // the original provider scalar to avoid losing its exact ISO value.
-        const copied=(column.type==="date" || column.type==="time")
-          ? (value == null ? "" : String(value)) : textOf(cell);
-        e.clipboardData.setData("text/plain",escapeTsvCell(copied));
-        return;
-      }
+    const selected=globalRef.current || globalSelection;
+    const immediate=loadedSingleCellText(selected);
+    if (immediate !== null) {
+      e.preventDefault();e.stopPropagation();
+      e.clipboardData.setData("text/plain",immediate);
+      return;
+    }
+    if (props.virtualClipboardUrl && selected) {
+      e.preventDefault();
+      e.stopPropagation();
+      streamSelectionToClipboard(selected);
+      return;
     }
     // Native single-cell selection is copyable without any Dash request.
     // This also avoids stale, asynchronously prepared range clipboard data.
     const normal = selection.current;
-    const toolbarMatches=current && globalSelection &&
-      current.start===globalSelection.start &&
-      current.end===globalSelection.end &&
-      current.columnStart===globalSelection.columnStart &&
-      current.columnEnd===globalSelection.columnEnd;
-    if (!toolbarMatches && normal.length) {
+    if (normal.length && !globalSelection) {
       const txt=selectionText(rows,normal,textOf);
       if (txt!==null) {
         e.preventDefault();e.stopPropagation();
@@ -968,7 +1064,9 @@ export const ServerVirtualGrid = (props) => {
     if (!globalRef.current) return;
     e.preventDefault();
     e.stopPropagation();
-    if (reliable.pending > 0) {
+    if (globalRef.current.end-globalRef.current.start > MAX_RANGE_ROWS) {
+      setCommandError("Select at most 1,000 rows to copy, or configure virtualClipboardUrl for large selections.");
+    } else if (reliable.pending > 0) {
       setCommandError("Save pending edits before copying a server range");
     } else if (typeof copyText === "string") {
       e.clipboardData.setData("text/plain",copyText);
@@ -1022,20 +1120,44 @@ export const ServerVirtualGrid = (props) => {
   };
 
   const handleKey = (e) => {
-    if (e.target.closest?.(".drg-find")) return;
-    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey &&
-        e.key.toLowerCase()==="f") {
-      e.preventDefault();e.stopPropagation();
-      setFindFocusToken((token) => token + 1);
-      setFindOpen(true);
-      return;
-    }
+    // The click marker belongs only to its pointer interaction. Clear it
+    // before ReactGrid's native keyboard navigation fires selectionChanged,
+    // otherwise Shift+Arrow can be mistaken for the earlier single click.
+    if (pointerGesture.current && !pointerGesture.current.pressed)
+      pointerGesture.current=null;
+    // Keyboard input finishes any prior pointer gesture. The Shift-click
+    // focus callback may arrive after pointerup, so it cannot be reset there.
+    columnHeaderPointer.current=false;
+    shiftPointer.current=false;
+    shiftClickColumn.current=null;
     if (isCellEditorTarget(e.target)) {
       if (e.key==="Enter" && e.shiftKey && !e.ctrlKey && !e.metaKey &&
           !e.altKey) multiCommit.current=true;
       return;
     }
     const modified=(e.ctrlKey || e.metaKey) && !e.altKey;
+    if (modified && !e.shiftKey && e.key.toLowerCase()==="c" &&
+        props.virtualClipboardUrl) {
+      const selected=globalRef.current || globalSelection;
+      // Let the native copy event synchronously set clipboardData for a
+      // loaded cell, regardless of pending acknowledgements.
+      if (loadedSingleCellText(selected)!==null) return;
+      if (selected) {
+        e.preventDefault(); e.stopPropagation();
+        streamSelectionToClipboard(selected);
+      }
+      return;
+    }
+    if (modified && !e.shiftKey && (e.code==="Space" || e.key===" ")) {
+      const cell=focused.current;
+      const col=columns.findIndex(c=>c.columnId===cell?.columnId);
+      if (col>=0 && virtualRowCount) {
+        e.preventDefault();e.stopPropagation();
+        selectGlobal(boundedSelection(0,virtualRowCount,col,col+1,
+          virtualRowCount,columns.length));
+      }
+      return;
+    }
     if (!modified && !e.shiftKey &&
         ["ArrowUp","ArrowDown","ArrowLeft","ArrowRight","Tab","Enter"].includes(e.key)) {
       findSelection.current=null;
@@ -1044,9 +1166,26 @@ export const ServerVirtualGrid = (props) => {
       suppressNativeSelection.current=false;
       setKeyboardFocus(null);
     }
+    if (e.shiftKey && !modified &&
+        ["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.key)) {
+      e.preventDefault();e.stopPropagation();
+      extendByArrow(e.key);
+      return;
+    }
     if (modified && ["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.key)) {
       e.preventDefault(); e.stopPropagation();
       navigateToEdge(e.key,e.shiftKey);
+      return;
+    }
+    // Spreadsheet-style structural shortcuts, also available in the menu.
+    if (modified && (e.key==="+" || e.key==="=" || e.code==="NumpadAdd")) {
+      e.preventDefault();e.stopPropagation();
+      if (!editingBlocked) insertRow(false);
+      return;
+    }
+    if (modified && (e.key==="-" || e.code==="NumpadSubtract")) {
+      e.preventDefault();e.stopPropagation();
+      deleteSelection();
       return;
     }
     if (modified) {
@@ -1058,6 +1197,7 @@ export const ServerVirtualGrid = (props) => {
           }
           return;
         case "a":
+          pointerGesture.current=null;
           e.preventDefault();
           e.stopPropagation();
           if (virtualRowCount) {
@@ -1124,85 +1264,59 @@ export const ServerVirtualGrid = (props) => {
   const selectedCount = globalSelection ? globalSelection.end - globalSelection.start : 0;
 
   return <div className="drg-virtual">
-    {findOpen && <FindBar query={findQuery} onQuery={updateFindQuery}
-      onFind={runFind} focusToken={findFocusToken}
-      onClose={() => {
-        findPending.current=null;
-        findFocusPending.current=null;
-        setFindBusy(false);
-        setFindOpen(false);
-        viewportRef.current?.querySelector("input.rg-hidden-element")
-          ?.focus({preventScroll:true});
-      }}
-      busy={findBusy} status={findStatus}/>}
-    <div className="drg-virtual-toolbar" aria-label="Server grid actions">
-      <label>From row <input type="number" min="1"
-        max={Math.max(1,virtualRowCount)} value={fromInput}
-        onChange={(e) => setFromInput(e.target.value)}/></label>
-      <label>To row <input type="number" min="1"
-        max={Math.max(1,virtualRowCount)} value={toInput}
-        onChange={(e) => setToInput(e.target.value)}/></label>
-      <button type="button" disabled={!virtualRowCount} onClick={applyRangeInputs}>
-        Select range</button>
-      <button type="button" disabled={!virtualRowCount} onClick={() =>
-        selectGlobal(boundedSelection(0,virtualRowCount,0,columns.length,
-          virtualRowCount,columns.length))}>Select all</button>
+    <div className="drg-virtual-selection-status" role="status" aria-live="polite">
       <span className="drg-selection-count">
         {globalSelection ? selectedCount.toLocaleString() + " rows selected" :
           virtualRowCount.toLocaleString() + " rows"}
       </span>
-      <button type="button" disabled={!globalSelection ||
-        selectedCount > MAX_RANGE_ROWS || reliable.pending > 0}
-        onClick={copySelection}>
-        {typeof copyText === "string" ? "Copy selection" : "Prepare copy"}</button>
-      {exportUrl && <a href={exportUrl} download>Download selected CSV</a>}
-      {!readOnly && props.transmitSparseEdits && <>
-        <button type="button" disabled={editingBlocked}
-          onClick={() => insertRow(false)}>Insert row</button>
-        <button type="button" disabled={editingBlocked}
-          onClick={() => insertRow(true)}>Append row</button>
-        <button type="button" disabled={editingBlocked || !globalSelection ||
-          selectedCount > MAX_RANGE_ROWS}
-          onClick={deleteSelection}>Delete selected rows</button>
-        <button type="button" disabled={editingBlocked || reliable.pending>0 ||
-          !history.undo.length} onClick={undoOperation}>Undo</button>
-        <button type="button" disabled={editingBlocked || reliable.pending>0 ||
-          !history.redo.length} onClick={redoOperation}>Redo</button>
-      </>}
+      {streamingCopy && <span> Copying selection to clipboard</span>}
     </div>
-    {!virtualRowCount && <div className="drg-virtual-empty">No rows. Use Append row to create one.</div>}
+    {!virtualRowCount && <div className="drg-virtual-empty">No rows. Focus the grid and press Ctrl+Plus to insert a row.</div>}
     {(commandError || copyError || historyError) &&
       <div role="alert" className="drg-virtual-error">
         {[commandError,copyError,historyError].filter(Boolean).join(" ")}
       </div>}
     <div className="drg-virtual-viewport" ref={viewportRef}
-      onScroll={(e) => {
-        const top=e.currentTarget.scrollTop;
-        if (findWindowPin) {
-          const {topHeight}=virtualSpacerHeights(virtualRowCount,
-            virtualRowHeight,findWindowPin.range);
-          const end=topHeight+
-            (findWindowPin.range.end-findWindowPin.range.start)*virtualRowHeight;
-          // Keep these loaded rows while the user scrolls within them.
-          // Normal virtualization resumes when the viewport leaves the
-          // bounded window.
-          if (top+virtualViewportHeight <= topHeight+1 || top >= end-1)
-            setFindWindowPin(null);
-        }
-        setScrollTop(top);
-      }}
+      tabIndex={0}
+      onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
       onCopy={handleCopy} onPasteCapture={handlePaste}
       onKeyDownCapture={handleKey}
       onPointerDownCapture={(e) => {
-        findFocusPending.current=null;
-        findSelection.current=null;
+        columnHeaderPointer.current=Boolean(props.enableColumnSelection !== false &&
+          e.target.closest?.(".rg-header-cell"));
+        pointerGesture.current=(!e.shiftKey && !columnHeaderPointer.current &&
+          e.target.closest?.(".rg-cell"))
+          ? {x:e.clientX,y:e.clientY,moved:false,pressed:true} : null;
         shiftPointer.current=e.shiftKey;
+        const cell=e.target.closest?.(".rg-cell");
+        shiftClickColumn.current=e.shiftKey && cell
+          ? columns.findIndex(column =>
+              cell.classList.contains(columnClass(column.columnId))) : null;
+        if (shiftClickColumn.current===-1) shiftClickColumn.current=null;
         keyboardAnchor.current=null;
         keyboardCursor.current=null;
         suppressNativeSelection.current=false;
         setKeyboardFocus(null);
       }}
-      onPointerUpCapture={() => {shiftPointer.current=false;}}
+      onPointerMoveCapture={(e) => {
+        const gesture=pointerGesture.current;
+        if (gesture?.pressed &&
+            Math.abs(e.clientX-gesture.x)+Math.abs(e.clientY-gesture.y)>5)
+          gesture.moved=true;
+      }}
+      onPointerUpCapture={() => {
+        // ReactGrid may invoke focusChanged after pointerup capture; retain
+        // shiftPointer until the next pointerdown/keydown to preserve the
+        // anchor for the completed Shift-click selection.
+        if (pointerGesture.current) {
+          const wasDrag=pointerGesture.current.moved;
+          pointerGesture.current.pressed=false;
+          if (wasDrag) window.setTimeout(() => {
+            if (globalRef.current && keyboardArea(globalRef.current)>1)
+              selectGlobal(globalRef.current);
+          }, 0);
+        }
+      }}
       style={{height:virtualViewportHeight,overflowY:"auto",overflowX:"auto"}}>
       {grid}
     </div>

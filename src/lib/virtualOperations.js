@@ -25,6 +25,20 @@ export const escapeTsvCell = (value) => {
   return /[\t\n\r"]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
 };
 
+/** For date/time and other raw-value cells, copy the authoritative
+ * value from the locally overlaid page. Match columns by ID because hidden
+ * columns are still present in page.data but absent from the visible grid.
+ */
+export const virtualRawCellCopyText = (page, rowOffset, columnId, allColumns) => {
+  const index=allColumns.findIndex(col=>col.columnId===columnId);
+  const row=page?.data?.[rowOffset];
+  if (index<0 || !Array.isArray(row) || index>=row.length) return null;
+  // Optimistic time edits can hold Date instances until their ACK arrives.
+  // Match JSON serialization, which the server receives as an ISO timestamp.
+  const raw=row[index] instanceof Date ? row[index].toJSON() : row[index];
+  return escapeTsvCell(raw == null ? "" : raw);
+};
+
 /** RFC4180-style TSV including quoted tabs, newlines and escaped double quotes. */
 export const parseClipboardTsv = (text) => {
   const output=[];
@@ -72,6 +86,24 @@ export const makeRangePaste = (text, selection, columns, totalRows, convert) => 
     throw new Error("Cannot paste into a non-editable column");
   return {kind:"paste",start:selection.start,columnIds:target.map(x=>x.columnId),
     rows:parsed.map(row=>row.map((value,i)=>convert(target[i],value)))};
+};
+
+/** Keep non-editable columns out of virtual fill commands. Values remain
+ * aligned with the selected column IDs, even when a middle column is skipped.
+ * Per-row locked and conditional cells are checked by the authoritative host.
+ */
+export const editableFillColumns = (selectedColumns, values = null) => {
+  if (values !== null && (!Array.isArray(values) ||
+      values.length !== selectedColumns.length))
+    throw new RangeError("Fill values must match selected columns");
+  const columnIds=[];
+  const filtered=[];
+  selectedColumns.forEach((column,index) => {
+    if (column.nonEditable) return;
+    columnIds.push(column.columnId);
+    if (values !== null) filtered.push(values[index]);
+  });
+  return values === null ? {columnIds} : {columnIds, values:filtered};
 };
 
 export const selectedColumnIds = (selection, visibleColumns) =>

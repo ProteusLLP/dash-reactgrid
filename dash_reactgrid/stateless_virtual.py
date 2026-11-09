@@ -276,6 +276,34 @@ def csv_chunks(*, start, end, column_start, column_end, row_count, columns,
         yield buffer.getvalue()
 
 
+def tsv_chunks(*, start, end, column_start, column_end, row_count, columns,
+               fetch_rows, chunk_size=250, column_ids=None):
+    """Yield Excel-compatible tab-separated rows, without a header.
+
+    Each provider call is bounded to chunk_size rows; this function does not
+    construct a full selection or retain server-side state. The caller must
+    authorise the current user and dataset before serving the stream.
+    """
+    count = _bounded_int(row_count, "row_count", 0, 2**53 - 1)
+    start = _bounded_int(start, "start", 0, count)
+    end = _bounded_int(end, "end", start, count)
+    first = _bounded_int(column_start, "column_start", 0, len(columns))
+    last = _bounded_int(column_end, "column_end", first, len(columns))
+    if start >= end or first >= last or not 1 <= chunk_size <= DEFAULT_MAX_WINDOW_ROWS:
+        raise ValueError("Invalid TSV export range or chunk size")
+    indices, _ = _column_selection(columns, first, last, column_ids)
+    for position in range(start, end, chunk_size):
+        stop = min(position + chunk_size, end)
+        result = _valid_rows(fetch_rows(position, stop), stop - position, len(columns))
+        buffer = io.StringIO()
+        writer = csv.writer(buffer, delimiter="\t", lineterminator="\r\n")
+        for row in result["data"]:
+            writer.writerow(["" if row[i] is None else str(row[i]) for i in indices])
+        text = buffer.getvalue()
+        # A trailing row separator would add an empty row in some paste targets.
+        yield text[:-2] if stop == end and text.endswith("\r\n") else text
+
+
 def edit_ack(batch, *, dataset_id, apply_batch):
     """Forward an edit command to an application-defined commit function.
 

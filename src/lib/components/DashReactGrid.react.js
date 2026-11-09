@@ -32,7 +32,7 @@ import { parseClipboardTsv } from '../virtualOperations';
 import {
   sheetEdge, keyboardRectangle, keyboardArea, nativeRectangle,
   publicKeyboardRange, keyboardHighlights, fillDownChanges,
-  multiEditChanges, keyboardClipboardText, MAX_KEYBOARD_EDIT_CELLS,
+  multiEditChanges, keyboardClipboardText,
 } from '../spreadsheetKeyboard';
 
 const locale = window.navigator.language
@@ -102,6 +102,7 @@ const ReactGridDataHandler = (props) => {
   const selection = useRef(null)
   const focused = useRef(null)
   const shortcutRange = useRef(null)
+  const retainedKeyboardRange = useRef(null)
   const shortcutAnchor = useRef(null)
   const shortcutCursor = useRef(null)
   const suppressNativeSelection = useRef(false)
@@ -121,6 +122,7 @@ const ReactGridDataHandler = (props) => {
   // Ignore that stale target until a real user selection or navigation occurs.
   const findInvalidated = useRef(false)
   const multiCommit = useRef(false)
+  const pendingMultiSelection = useRef(null)
   const lastMultiSelection = useRef(null)
 
   // The server sends new columns only when it remounts the table, which
@@ -261,10 +263,12 @@ const ReactGridDataHandler = (props) => {
       const changed = cellChanges[0]
       const source = columns[displayedColumnIndex.get(changed.columnId)]
       const sourceRow = rowIndexesOf(table.rowIds).get(changed.rowId)
-      const rect = shortcutRange.current ||
+      const rect = retainedKeyboardRange.current ||
+        pendingMultiSelection.current || shortcutRange.current ||
         lastMultiSelection.current ||
         nativeRectangle(selection.current, pageStart, table.data.length,
-          columns.length, null, headerCount)
+          columns.length)
+      pendingMultiSelection.current = null
       if (source && rect && sourceRow >= rect.start && sourceRow < rect.end &&
           keyboardArea(rect) > 1) {
         try {
@@ -282,6 +286,7 @@ const ReactGridDataHandler = (props) => {
       }
     }
     multiCommit.current = false
+    pendingMultiSelection.current = null
     const changes = []
     cellChanges.forEach((cellChange) => {
       const column = columns[displayedColumnIndex.get(cellChange.columnId)]
@@ -389,8 +394,7 @@ const ReactGridDataHandler = (props) => {
   }
 
   const handleSelectionChanged = (ranges) => {
-    if (suppressNativeSelection.current || findInvalidated.current) return
-    findSelection.current=null
+    if (suppressNativeSelection.current || retainedKeyboardRange.current) return
     selection.current = ranges
     shortcutRange.current = null
     setShortcutHighlight(null)
@@ -543,6 +547,8 @@ const ReactGridDataHandler = (props) => {
       shortcutAnchor.current = anchor
       shortcutCursor.current = target
       shortcutRange.current = rect
+      retainedKeyboardRange.current = rect
+      lastMultiSelection.current = rect
       setShortcutHighlight(rect)
       suppressNativeSelection.current = true
       setProps({
@@ -555,6 +561,7 @@ const ReactGridDataHandler = (props) => {
       shortcutAnchor.current = target
       shortcutCursor.current = target
       shortcutRange.current = null
+      retainedKeyboardRange.current = null
       lastMultiSelection.current = null
       setShortcutHighlight(null)
       suppressNativeSelection.current = true
@@ -575,8 +582,8 @@ const ReactGridDataHandler = (props) => {
   }
 
   const activeRectangle = () =>
-    shortcutRange.current || nativeRectangle(selection.current,pageStart,
-      table.data.length,columns.length,focusedPosition(),headerCount)
+    retainedKeyboardRange.current || shortcutRange.current || nativeRectangle(selection.current,pageStart,
+      table.data.length,columns.length,focusedPosition())
 
   const fillDown = () => {
     if (editingBlocked) return
@@ -632,7 +639,15 @@ const ReactGridDataHandler = (props) => {
     }
     if (isCellEditorTarget(e.target)) {
       if (e.key === "Enter" && e.shiftKey && !e.ctrlKey && !e.metaKey &&
-          !e.altKey) multiCommit.current = true
+          !e.altKey) {
+        multiCommit.current = true
+        // ReactGrid may change its selection while closing an active editor.
+        // Snapshot the large absolute range before it can be collapsed.
+        pendingMultiSelection.current = retainedKeyboardRange.current ||
+          shortcutRange.current || lastMultiSelection.current ||
+          nativeRectangle(selection.current,pageStart,
+            table.data.length,columns.length)
+      }
       return
     }
     if (!e.ctrlKey && !e.metaKey && !e.altKey &&
@@ -643,6 +658,7 @@ const ReactGridDataHandler = (props) => {
       shortcutAnchor.current = null
       shortcutCursor.current = null
       shortcutRange.current = null
+      retainedKeyboardRange.current = null
       setShortcutHighlight(null)
       setJumpLocation(null)
     }
@@ -654,10 +670,6 @@ const ReactGridDataHandler = (props) => {
         e.stopPropagation()
         const rect=shortcutRange.current
         if (editingBlocked) return
-        if (keyboardArea(rect)>MAX_KEYBOARD_EDIT_CELLS) {
-          setKeyboardError("Clear is limited to 20,000 cells per operation")
-          return
-        }
         const changes=[]
         for (let ri=rect.start;ri<rect.end;ri++) {
           const rowId=table.rowIds[ri]
@@ -712,6 +724,7 @@ const ReactGridDataHandler = (props) => {
             setJumpLocation(null)
             // ReactGrid selects the entire matrix without notifying onSelectionChanged.
             // Keep our clipboard selection and Dash's selectedRange in sync.
+            retainedKeyboardRange.current = null
             const ranges = selectAllRanges(selection.current, rows, columns, focused.current)
             if (ranges) handleSelectionChanged(ranges)
           }
@@ -797,6 +810,7 @@ const ReactGridDataHandler = (props) => {
     selection.current = null
     focused.current = null
     shortcutRange.current = null
+    retainedKeyboardRange.current = null
     shortcutAnchor.current = null
     shortcutCursor.current = null
     findSelection.current=null
@@ -815,6 +829,8 @@ const ReactGridDataHandler = (props) => {
         findSelection.current=null
         suppressNativeSelection.current=false
         shortcutRange.current=null
+        retainedKeyboardRange.current=null
+        lastMultiSelection.current=null
         shortcutAnchor.current=null
         shortcutCursor.current=null
         setShortcutHighlight(null)
@@ -892,6 +908,7 @@ DashReactGrid.defaultProps = {
   virtualFindData: null,
   virtualSelection: null,
   virtualExportUrl: null,
+  virtualClipboardUrl: null,
   transmitSparseEdits: false,
   editDatasetId: null,
   editAck: null,
@@ -1053,6 +1070,8 @@ DashReactGrid.propTypes = {
   virtualSelection: PropTypes.object,
   /** Application-provided URL for authenticated streamed CSV exports. */
   virtualExportUrl: PropTypes.string,
+  /** Authenticated same-origin endpoint streaming selected rows as TSV without a header. */
+  virtualClipboardUrl: PropTypes.string,
   /**
    * When true, publish only {edits: {seq, edits}} through setProps.
    * The changed table is retained locally in the browser, including new

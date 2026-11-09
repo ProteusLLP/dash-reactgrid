@@ -568,6 +568,35 @@ If you have selected install_dependencies during the prompt, you can skip this p
     - Make sure the stylesheets are added to the `_css_dist` dict in `dash_reactgrid/__init__.py` so dash will serve them automatically when the component suite is requested.
 - [Review your code](./review_checklist.md)
 
+### Rebasing branches with generated assets
+
+The generated JavaScript bundles, Dash component bindings, metadata and R/Julia
+wrappers are committed to this repository for packaging. Parallel feature
+branches may modify them even when their source changes are compatible. Never
+resolve these conflicts by overwriting handwritten source files.
+
+From a clean feature branch, after `git fetch origin main`, run:
+
+```bash
+python scripts/rebase_generated.py origin/main
+npm run test:js
+python -m unittest tests.test_rebase_generated -v
+git push --force-with-lease
+```
+
+The helper accepts conflicts **only** in a fixed allowlist of generated files.
+During `git rebase`, it temporarily retains the upstream versions of those
+files, continues replaying feature commits, then runs `npm run build` to
+regenerate the bindings and browser assets from the combined source. It commits
+rebuilt generated files if they changed. A conflict in a source file stops
+without choosing either version, and the helper never pushes on its own.
+
+Once this workflow is present on the default branch, maintainers can also run
+**Actions → Rebase feature branch (generated files safe) → Run workflow**, with
+the existing feature branch name. It backs up the original head, rebuilds and
+runs the JS, Python and Chrome regression tests, and only then pushes using a
+force-with-lease check. Do not use the workflow for untrusted branches.
+
 ### Create a production build and publish:
 
 1. Build your code:

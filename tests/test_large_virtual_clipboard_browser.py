@@ -107,6 +107,23 @@ def run():
                       driver.find_element(By.ID,"selection-state").text)
                 raise
 
+            # Repeated Shift+Down must scroll when the moving endpoint
+            # passes the displayed viewport without discarding row 0.
+            for _ in range(15):
+                ActionChains(driver).key_down(Keys.SHIFT).send_keys(
+                    Keys.ARROW_DOWN).key_up(Keys.SHIFT).perform()
+            wait.until(lambda _:selection_matches(0,26,0,1))
+            viewport=driver.find_element(
+                By.CSS_SELECTOR,"#grid .drg-virtual-viewport")
+            wait.until(lambda _:driver.execute_script(
+                "return arguments[0].scrollTop",viewport)>0)
+            driver.execute_script(
+                "arguments[0].scrollTop=0;arguments[0].dispatchEvent("
+                "new Event('scroll',{bubbles:true}));",viewport)
+            wait.until(lambda _:driver.find_elements(
+                By.CSS_SELECTOR,"#grid .rg-cell.rg-col-label") and
+                "Row 0" in driver.find_element(By.ID,"grid").text)
+
             # Drag across two column headers. Every intermediate range
             # update must retain all logical rows, not just the viewport.
             def header(text):

@@ -39,7 +39,10 @@ jobs:
             esac
             git add -- "$path"
           done < <(git diff --name-only --diff-filter=U)
-          # Do not create commits modifying workflow files with GITHUB_TOKEN.\n          git show origin/main:.github/workflows/js-tests.yml > .github/workflows/js-tests.yml\n          git add -- .github/workflows/js-tests.yml\n          git -c commit.gpgsign=false commit -m "TEMP: integrate main prior to squash rebase"
+          # Keep the mainline workflow unchanged so Actions can push.
+          git show origin/main:.github/workflows/js-tests.yml > .github/workflows/js-tests.yml
+          git add -- .github/workflows/js-tests.yml
+          git -c commit.gpgsign=false commit -m "TEMP: integrate main prior to squash rebase"
           git reset --soft origin/main
           git -c commit.gpgsign=false commit -m "feat: combine virtual whole-column editing and mainline features"
           python -m pip install --quiet "dash>=3,<5" "numpy>=1.23,<3" "pyyaml>=6,<7"

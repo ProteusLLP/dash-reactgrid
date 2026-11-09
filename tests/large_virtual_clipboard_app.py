@@ -16,12 +16,31 @@ COLUMNS=[
     {"columnId":"amount","title":"Amount","type":"number","width":100},
 ]
 
+TYPE_COLS=[
+    {"columnId":"hidden","title":"Hidden","type":"text"},
+    {"columnId":"day","title":"Day","type":"date"},
+    {"columnId":"at","title":"At","type":"time"},
+]
+TYPE_DATA=[
+    ["private","2026-11-09","2026-11-09T14:30:00Z"],
+    ["private","2026-11-10","2026-11-10T09:00:00Z"],
+]
+
+def read_typed_rows(start,end):
+    return {"rowIds":[f"t{i}" for i in range(start,end)],
+            "data":TYPE_DATA[start:end]}
+
 def read_rows(start,end):
     return {"rowIds":[f"r{i}" for i in range(start,end)],
             "data":[[f"Row {i}","private",i] for i in range(start,end)]}
 
 app=Dash(__name__)
 app.layout=html.Div([
+    DashReactGrid(id="typed-grid",columns=TYPE_COLS,data=[],rowIds=[],
+                  hiddenColumns=["hidden"],virtualRowCount=2,
+                  virtualDatasetId="typed-v1",virtualWindowSize=30,
+                  virtualViewportHeight=150,
+                  virtualClipboardUrl="/clipboard.tsv",persisted_props=[]),
     DashReactGrid(id="grid",columns=COLUMNS,data=[],rowIds=[],
                   hiddenColumns=["hidden"],virtualRowCount=COUNT,
                   virtualDatasetId=DATASET,virtualWindowSize=100,
@@ -35,6 +54,12 @@ app.layout=html.Div([
     html.Button("Toggle streaming",id="stream-toggle"),
     html.Div(id="stream-state"),
 ])
+
+@app.callback(Output("typed-grid","virtualData"),
+              Input("typed-grid","virtualRequest"),prevent_initial_call=True)
+def fetch_typed_window(req):
+    return window_response(req,dataset_id="typed-v1",row_count=2,
+                           columns=TYPE_COLS,fetch_rows=read_typed_rows)
 
 @app.callback(Output("grid","virtualData"),Output("window-status","children"),
               Input("grid","virtualRequest"),prevent_initial_call=True)

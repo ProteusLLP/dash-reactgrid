@@ -523,13 +523,30 @@ export const ServerVirtualGrid = (props) => {
 
   // A whole-column operation stays compact even when target rows have not
   // been requested from Dash. The server returns the normal durable edit ACK.
-  const submitRepeated = (sel, values, start = sel.start, end = sel.end) => {
-    if (end <= start) return;
+  const submitRepeated = (sel, values, start, end) => {
+    if (!sel) {
+      setCommandError("Select a range before filling cells");
+      return false;
+    }
+    const first=start ?? sel.start;
+    const last=end ?? sel.end;
+    if (!Number.isSafeInteger(first) || !Number.isSafeInteger(last) ||
+        last <= first) {
+      setCommandError("Select at least one destination row to fill");
+      return false;
+    }
     const target=columns.slice(sel.columnStart,sel.columnEnd);
-    if (values.length !== target.length) return;
+    if (!Array.isArray(values) || values.length !== target.length) {
+      setCommandError("Fill values do not match the selected columns");
+      return false;
+    }
     const eligible=editableFillColumns(target,values);
-    if (!eligible.columnIds.length) return;
-    submitOperation([{kind:"fillRange",start,end,...eligible}]);
+    if (!eligible.columnIds.length) {
+      setCommandError("The selected columns are all non-editable");
+      return false;
+    }
+    return Boolean(submitOperation([{kind:"fillRange",start:first,
+      end:last,...eligible}]));
   };
 
   const fillDown = () => {

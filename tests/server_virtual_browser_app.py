@@ -2,7 +2,7 @@
 import os
 from dash import Dash, Input, Output, html
 from dash_reactgrid import DashReactGrid
-from dash_reactgrid.stateless_virtual import window_response
+from dash_reactgrid.stateless_virtual import window_response, find_response
 
 PORT = int(os.environ.get("VIRTUAL_BROWSER_PORT", "8061"))
 TOTAL_ROWS = 100_000
@@ -46,6 +46,22 @@ def fetch_window(request):
     )
     start, end = request["start"], request["end"]
     return response, f"Fetched {start}:{end} ({end-start} rows)"
+
+
+@app.callback(
+    Output("grid","virtualFindData"),
+    Input("grid","virtualFindRequest"),
+    prevent_initial_call=True,
+)
+def search_all_rows(request):
+    # Search uses bounded reads from the same stateless, authoritative provider.
+    def rows_for(start,end):
+        return {"rowIds":[f"r{i}" for i in range(start,end)],
+                "data":[[f"Row {i}", float(i)] for i in range(start,end)]}
+    return find_response(
+        request,dataset_id="synthetic-100k-v1",row_count=TOTAL_ROWS,
+        columns=COLUMNS,fetch_rows=rows_for,chunk_size=250,
+    )
 
 if __name__ == "__main__":
     app.run(host="127.0.0.1",port=PORT,debug=False)

@@ -1,12 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ReactGrid } from "@silevis/reactgrid";
 import { useReliableGrid } from "./useReliableGrid";
+import { FindBar } from "./FindBar.react";
+import { matchesFindResponse, resolveFindCursor } from "./find";
 import { overlayVirtualEdits } from "./virtualOverlay";
 import { compileGridColumns, visibleGridColumns, resizeGridColumns, headerDepth } from "./gridRows";
 import { decodeGridData, isPackedNumericData } from "./numericData";
 import {
   addViewportCache, buildVirtualRows, loadedRow, validViewportResponse,
-  virtualRowWindow, viewportKey, VIRTUAL_LOADING_PREFIX,
+  virtualRowWindow, virtualScrollTopForRow, viewportKey, VIRTUAL_LOADING_PREFIX,
   VIRTUAL_SPACER_TOP, VIRTUAL_SPACER_BOTTOM,
 } from "./serverVirtual";
 import {
@@ -16,6 +18,7 @@ import {
   clearSelectedCells, focusedRange, isCellEditorTarget,
   selectAllRanges, selectionText,
 } from "./keyboard";
+import { escapeTsvCell } from "./virtualOperations";
 import {
   boundedSelection, extendSelection, copyRequestFor, matchesCopyResponse,
   selectedColumnIds,
@@ -42,7 +45,7 @@ const EMPTY_IDS = [];
 export const ServerVirtualGrid = (props) => {
   const {
     columns: allColumns, hiddenColumns, virtualRowCount: suppliedRowCount,
-    virtualData: sourceVirtualData, virtualRangeData,
+    virtualData: sourceVirtualData, virtualRangeData, virtualFindData,
     virtualDatasetId, virtualRowHeight = 25, virtualWindowSize = 120,
     virtualViewportHeight = 420, setProps, readOnly, lockedCells,
     styleHeader, highlights, dropdownMenuPortal,
@@ -90,8 +93,42 @@ export const ServerVirtualGrid = (props) => {
   const keyboardAnchor = useRef(null);
   const keyboardCursor = useRef(null);
   const [keyboardFocus, setKeyboardFocus] = useState(null);
+  const [findOpen, setFindOpen] = useState(false);
+  const [findFocusToken, setFindFocusToken] = useState(0);
+  const [findQuery, setFindQuery] = useState("");
+  const [findStatus, setFindStatus] = useState("");
+  const [findBusy, setFindBusy] = useState(false);
+  const [findMatch, setFindMatch] = useState(null);
+  const findCursor = useRef(null);
+  const findSelection = useRef(null);
+  const findPending = useRef(null);
+  const findFocusPending = useRef(null);
+  const findCounter = useRef(0);
   const multiCommit = useRef(false);
   const suppressNativeSelection = useRef(false);
+
+  // An absolute Find destination is valid only for the ordered dataset in
+  // which it was created. Invalidate the edit destination and the Dash props
+  // together, including on ACKs where rows may have been reordered.
+  const clearFindDestination = (force = false) => {
+    if (!force && !findSelection.current) return;
+    findSelection.current=null;
+    findFocusPending.current=null;
+    keyboardAnchor.current=null;
+    keyboardCursor.current=null;
+    anchor.current=null;
+    globalRef.current=null;
+    selection.current=[];
+    focused.current=null;
+    suppressNativeSelection.current=false;
+    setKeyboardFocus(null);
+    setGlobalSelection(null);
+    setCopyText(null);
+    setCopyError(null);
+    copyPending.current=null;
+    setPropsRef.current({selectedCell:null,selectedRange:[],selectedRowIds:[],
+      virtualSelection:null});
+  };
 
   const columns = useMemo(() =>
     visibleGridColumns(allColumns, hiddenColumns), [allColumns, hiddenColumns]);
@@ -110,12 +147,18 @@ export const ServerVirtualGrid = (props) => {
     Number.isSafeInteger(virtualWindowSize) && virtualWindowSize >= 20 &&
     Number.isFinite(virtualViewportHeight) && virtualViewportHeight > 0;
 
-  const range = useMemo(() => valid ?
-    virtualRowWindow(scrollTop, virtualRowCount, virtualRowHeight,
-      virtualWindowSize, virtualViewportHeight) :
-    {start:0,end:0,first:0,visible:0,totalHeight:0},
-    [scrollTop, virtualRowCount, virtualRowHeight, virtualWindowSize,
-      virtualViewportHeight, valid]);
+  const range = useMemo(() => {
+    if (!valid) return {start:0,end:0,first:0,visible:0,totalHeight:0};
+    const targetTop=findMatch && virtualScrollTopForRow(findMatch.row,
+      virtualRowCount,virtualRowHeight,virtualViewportHeight);
+    // Only pin the search window while the viewport is at the requested
+    // position. Normal user scrolling must resume regular virtualization.
+    const priorityRow=findMatch && Math.abs(scrollTop-targetTop)<=1
+      ? findMatch.row : null;
+    return virtualRowWindow(scrollTop, virtualRowCount, virtualRowHeight,
+      virtualWindowSize, virtualViewportHeight, priorityRow);
+  }, [scrollTop, virtualRowCount, virtualRowHeight, virtualWindowSize,
+      virtualViewportHeight, valid, findMatch]);
 
   const key = viewportKey(virtualDatasetId, range.start, range.end);
   // In server mode the browser owns only a small window, so the durable
@@ -158,18 +201,20 @@ export const ServerVirtualGrid = (props) => {
         !Number.isSafeInteger(ack.revision) ||
         ack.revision <= lastAcknowledgedRevision.current) return;
     lastAcknowledgedRevision.current = ack.revision;
-    if (Number.isSafeInteger(ack.rowCount) && ack.rowCount >= 0) {
-      if (ack.rowCount !== rowCountRef.current) {
-        // Absolute indices are no longer meaningful after a structural
-        // operation. Drop the old selection rather than copying/deleting
-        // rows at positions shifted by the insert or removal.
-        globalRef.current = null;
-        anchor.current = null;
-        setGlobalSelection(null);
-        setCopyText(null);
-      }
+    // The host may reorder rows in an acknowledged transaction. Any saved
+    // absolute match or in-flight response can now refer to a different row.
+    findCursor.current=null;
+    findPending.current=null;
+    findFocusPending.current=null;
+    setFindMatch(null);
+    setFindBusy(false);
+    setFindStatus("");
+    const structureChanged=Number.isSafeInteger(ack.rowCount) &&
+      ack.rowCount >= 0 && ack.rowCount !== rowCountRef.current;
+    if (structureChanged || findSelection.current)
+      clearFindDestination(true);
+    if (Number.isSafeInteger(ack.rowCount) && ack.rowCount >= 0)
       setVirtualRowCount(ack.rowCount);
-    }
     currentRequest.current = null;
     setCache(new Map());
     setLoadError(null);
@@ -182,8 +227,15 @@ export const ServerVirtualGrid = (props) => {
     setLoadError(null);
     currentRequest.current = null;
     setScrollTop(0);
-    selection.current = [];
-    focused.current = null;
+    // The new dataset's row indices and even visible columns may be unrelated
+    // to the old dataset. Never carry a Find-derived edit target across it.
+    clearFindDestination(true);
+    findCursor.current = null;
+    findPending.current = null;
+    findFocusPending.current = null;
+    setFindMatch(null);
+    setFindBusy(false);
+    setFindStatus("");
     if (viewportRef.current) viewportRef.current.scrollTop = 0;
   }, [virtualDatasetId]);
 
@@ -244,23 +296,45 @@ export const ServerVirtualGrid = (props) => {
      (globalSelection.columnEnd - globalSelection.columnStart) > 1)
     ? globalSelection : null;
 
-  const rows = useMemo(() => valid && columns.length && virtualRowCount > 0 ?
-    buildVirtualRows({
+  const rows = useMemo(() => {
+    if (!valid || !columns.length || !virtualRowCount) return [];
+    const built = buildVirtualRows({
       columns, descriptors, allColumns, rowCount:virtualRowCount, range,
       page, rowHeight:virtualRowHeight, readOnly:editingBlocked, locked,
       styleHeader, openDropdown, selection:visualSelection,
-    }) : [],
-    [valid, columns, descriptors, allColumns, virtualRowCount,
+    });
+    // ReactGrid highlights can be lost when its virtual spacer layout
+    // remounts. Put the class directly on the fetched cell descriptor so
+    // the found cell stays visible after jumping to an unloaded viewport.
+    if (!findMatch || !page || findMatch.row < range.start ||
+        findMatch.row >= range.start + page.rowIds.length) return built;
+    const targetId = page.rowIds[findMatch.row - range.start];
+    const columnIndex = columns.findIndex((c) => c.columnId === findMatch.columnId);
+    if (columnIndex < 0) return built;
+    return built.map((row) => row.rowId !== targetId ? row : {
+      ...row,
+      cells: row.cells.map((cell,index) => index !== columnIndex ? cell : {
+        ...cell, className: (cell.className || "").trim() + " rg-find-match" +
+          (cell.type === "dropdown" ? " " : ""),
+      }),
+    });
+  }, [valid, columns, descriptors, allColumns, virtualRowCount,
       range.start, range.end, page, virtualRowHeight, editingBlocked, locked,
-      styleHeader, openDropdown, visualSelection]);
+      styleHeader, openDropdown, visualSelection, findMatch]);
 
   const visibleHighlights = useMemo(() => {
-    if (!highlights?.length || !page) return [];
+    if (!page) return [];
     const visible = new Set(page.rowIds);
     const visibleColumns = new Set(columns.map((col) => col.columnId));
-    return highlights.filter((mark) => visible.has(mark.rowId) &&
+    const supplied = (highlights || []).filter((mark) => visible.has(mark.rowId) &&
       visibleColumns.has(mark.columnId));
-  }, [highlights, page, columns]);
+    if (findMatch && visibleColumns.has(findMatch.columnId) &&
+        findMatch.row >= range.start &&
+        findMatch.row < range.start + page.rowIds.length)
+      supplied.push({rowId:page.rowIds[findMatch.row-range.start],
+        columnId:findMatch.columnId,className:"rg-find-match"});
+    return supplied;
+  }, [highlights, page, columns, range.start, findMatch]);
 
   const undoKey = useMemo(
     () => historyStorageKey(props.id, props.editDatasetId),
@@ -316,6 +390,7 @@ export const ServerVirtualGrid = (props) => {
 
   const selectGlobal = (candidate) => {
     if (!candidate) return;
+    findSelection.current=null;
     globalRef.current = candidate;
     setGlobalSelection(candidate);
     setFromInput(String(candidate.start + 1));
@@ -532,8 +607,165 @@ export const ServerVirtualGrid = (props) => {
     submitRepeated(sel,source,multiple ? sel.start+1 : sel.start,sel.end);
   };
 
+  const updateFindQuery = (value) => {
+    clearFindDestination();
+    setFindQuery(value);
+    findCursor.current = null;
+    findPending.current = null;
+    findFocusPending.current = null;
+    setFindMatch(null);
+    setFindBusy(false);
+    setFindStatus("");
+  };
+
+  const runFind = (direction) => {
+    // The ref closes the gap before React propagates the busy prop.
+    // Repeated Enter keys cannot launch duplicate full-dataset scans.
+    if (findPending.current) return;
+    const query = findQuery;
+    if (!query || !virtualRowCount || !columns.length) return;
+    if (query.length > 256) {
+      findPending.current=null;
+      setFindBusy(false);
+      setFindStatus("Search is limited to 256 characters");
+      return;
+    }
+    const fromFocused = focused.current
+      ? selectionAt(focused.current.rowId, focused.current.columnId) : null;
+    const start = resolveFindCursor(findCursor.current,columns) ||
+      fromFocused || {row:-1,col:-1};
+    const request = {
+      datasetId:virtualDatasetId, requestId:++findCounter.current,
+      query, afterRow:start.row, afterColumn:start.col,
+      direction:direction < 0 ? "backward" : "forward",
+      columnIds:columns.map((col) => col.columnId),
+    };
+    findPending.current = request;
+    setFindBusy(true);
+    setFindStatus("Searching…");
+    setPropsRef.current({virtualFindRequest:request});
+  };
+
+  useEffect(() => {
+    const request = findPending.current;
+    if (!matchesFindResponse(virtualFindData,request)) return;
+    findPending.current = null;
+    setFindBusy(false);
+    if (request.columnIds.length !== columns.length ||
+        request.columnIds.some((id,index) => id !== columns[index].columnId)) {
+      clearFindDestination();
+      setFindStatus("Visible columns changed; search again");
+      return;
+    }
+    if (virtualFindData.error) {
+      clearFindDestination();
+      setFindStatus("Search failed: " + String(virtualFindData.error));
+      return;
+    }
+    if (virtualFindData.rowIndex === null && virtualFindData.columnId === null) {
+      clearFindDestination();
+      setFindStatus("No matches");
+      setFindMatch(null);
+      return;
+    }
+    const row=virtualFindData.rowIndex;
+    const col=columns.findIndex((c) => c.columnId===virtualFindData.columnId);
+    if (!Number.isSafeInteger(row) || row < 0 || row >= virtualRowCount || col < 0) {
+      clearFindDestination();
+      setFindStatus("Invalid search response");
+      return;
+    }
+    const found={row,col,columnId:columns[col].columnId};
+    // Discard the previous selection, including an unloaded range. Editing,
+    // fill-down and Ctrl+Shift navigation now start at the found cell.
+    keyboardAnchor.current=found;
+    keyboardCursor.current=found;
+    selection.current=[];
+    // Find replaces any native selection. Keep the Dash public selection
+    // state aligned even though native selection callbacks are suppressed.
+    setPropsRef.current({selectedRange:[],selectedRowIds:[]});
+    suppressNativeSelection.current=true;
+    anchor.current=found;
+    const matchedRowId=page && row>=range.start &&
+      row<range.start+page.rowIds.length
+      ? page.rowIds[row-range.start] : null;
+    findSelection.current={...found,rowId:matchedRowId};
+    const foundSelection=boundedSelection(row,row+1,col,col+1,
+      virtualRowCount,columns.length);
+    selectGlobal(foundSelection);
+    findSelection.current={...found,rowId:matchedRowId};
+    findCursor.current=found;
+    findFocusPending.current=found;
+    setFindMatch(found);
+    setFindStatus("Row "+(row+1)+", "+(columns[col].title || found.columnId));
+    setKeyboardFocus({row,col});
+    const target=virtualScrollTopForRow(row,virtualRowCount,
+      virtualRowHeight,virtualViewportHeight);
+    if (viewportRef.current) viewportRef.current.scrollTop=target;
+    setScrollTop(target);
+  }, [virtualFindData,columns,virtualRowCount,virtualRowHeight,virtualViewportHeight]);
+
+  useEffect(() => {
+    const found=findSelection.current;
+    if (!found) return;
+    const col=columns.findIndex((column) => column.columnId===found.columnId);
+    if (col < 0) {
+      findSelection.current=null;
+      findCursor.current=null;
+      findFocusPending.current=null;
+      keyboardAnchor.current=null;
+      keyboardCursor.current=null;
+      anchor.current=null;
+      globalRef.current=null;
+      selection.current=[];
+      suppressNativeSelection.current=false;
+      setKeyboardFocus(null);
+      setGlobalSelection(null);
+      setCopyText(null);
+      setFindMatch(null);
+      setFindStatus("");
+      focused.current=null;
+      setPropsRef.current({selectedCell:null,selectedRange:[],selectedRowIds:[],
+        virtualSelection:null});
+      return;
+    }
+    const rebased={row:found.row,col,columnId:found.columnId};
+    findSelection.current=rebased;
+    findCursor.current=rebased;
+    keyboardAnchor.current=rebased;
+    keyboardCursor.current=rebased;
+    anchor.current=rebased;
+    setKeyboardFocus({row:rebased.row,col});
+    const next=boundedSelection(found.row,found.row+1,col,col+1,
+      virtualRowCount,columns.length);
+    if (next) {
+      selectGlobal(next);
+      findSelection.current=rebased;
+    }
+    setFindMatch((match) => match?.columnId===found.columnId
+      ? {...match,col} : match);
+  }, [columns,virtualRowCount]);
+
+  // Resolve an offscreen match exactly once when its row loads. Subsequent
+  // edits and cache refreshes must not steal focus back from the user.
+  useEffect(() => {
+    const pending=findFocusPending.current;
+    if (!pending || !page || !columns.some((col) => col.columnId === pending.columnId) ||
+        pending.row < range.start ||
+        pending.row >= range.start+page.rowIds.length) return;
+    findFocusPending.current=null;
+    const rowId=page.rowIds[pending.row-range.start];
+    if (findSelection.current?.row===pending.row &&
+        findSelection.current?.columnId===pending.columnId)
+      findSelection.current={...findSelection.current,rowId};
+    const location={rowId,columnId:pending.columnId};
+    focused.current=location;
+    setPropsRef.current({selectedCell:location});
+  }, [findMatch,page,range.start,columns]);
+
   const navigateToEdge = (key,shift) => {
     if (!virtualRowCount) return;
+    findSelection.current=null;
     const focusedPlace=focused.current
       ? selectionAt(focused.current.rowId,focused.current.columnId) : null;
     const current=keyboardCursor.current || focusedPlace ||
@@ -618,6 +850,7 @@ export const ServerVirtualGrid = (props) => {
     },
     selectionChanged: (ranges) => {
       if (suppressNativeSelection.current) return;
+      findSelection.current=null;
       selection.current = ranges;
       // ReactGrid's pointer and double-click handlers are sensitive to
       // rerendering their rows during selection. Keep ordinary selection
@@ -678,10 +911,33 @@ export const ServerVirtualGrid = (props) => {
 
   const handleCopy = (e) => {
     if (isCellEditorTarget(e.target)) return;
+    const current=globalRef.current;
+    const found=findSelection.current;
+    if (current && found && columns[current.columnStart]?.columnId===found.columnId &&
+        current.start===found.row &&
+        current.end===found.row+1 && current.columnStart>=0 &&
+        current.columnEnd===current.columnStart+1 && page &&
+        found.row>=range.start && found.row<range.start+page.rowIds.length) {
+      const rowId=page.rowIds[found.row-range.start];
+      const row=rows.find((candidate) => candidate.rowId===rowId);
+      const cell=row?.cells[current.columnStart];
+      if (cell) {
+        e.preventDefault();
+        e.stopPropagation();
+        const column=columns[current.columnStart];
+        const sourceIndex=allColumns.findIndex((c) => c.columnId===column.columnId);
+        const value=page.data[found.row-range.start]?.[sourceIndex];
+        // Date/time descriptors use date/time fields instead of text. Copy
+        // the original provider scalar to avoid losing its exact ISO value.
+        const copied=(column.type==="date" || column.type==="time")
+          ? (value == null ? "" : String(value)) : textOf(cell);
+        e.clipboardData.setData("text/plain",escapeTsvCell(copied));
+        return;
+      }
+    }
     // Native single-cell selection is copyable without any Dash request.
     // This also avoids stale, asynchronously prepared range clipboard data.
     const normal = selection.current;
-    const current=globalRef.current;
     const toolbarMatches=current && globalSelection &&
       current.start===globalSelection.start &&
       current.end===globalSelection.end &&
@@ -752,6 +1008,14 @@ export const ServerVirtualGrid = (props) => {
   };
 
   const handleKey = (e) => {
+    if (e.target.closest?.(".drg-find")) return;
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey &&
+        e.key.toLowerCase()==="f") {
+      e.preventDefault();e.stopPropagation();
+      setFindFocusToken((token) => token + 1);
+      setFindOpen(true);
+      return;
+    }
     if (isCellEditorTarget(e.target)) {
       if (e.key==="Enter" && e.shiftKey && !e.ctrlKey && !e.metaKey &&
           !e.altKey) multiCommit.current=true;
@@ -760,6 +1024,7 @@ export const ServerVirtualGrid = (props) => {
     const modified=(e.ctrlKey || e.metaKey) && !e.altKey;
     if (!modified && !e.shiftKey &&
         ["ArrowUp","ArrowDown","ArrowLeft","ArrowRight","Tab","Enter"].includes(e.key)) {
+      findSelection.current=null;
       keyboardAnchor.current=null;
       keyboardCursor.current=null;
       suppressNativeSelection.current=false;
@@ -845,6 +1110,17 @@ export const ServerVirtualGrid = (props) => {
   const selectedCount = globalSelection ? globalSelection.end - globalSelection.start : 0;
 
   return <div className="drg-virtual">
+    {findOpen && <FindBar query={findQuery} onQuery={updateFindQuery}
+      onFind={runFind} focusToken={findFocusToken}
+      onClose={() => {
+        findPending.current=null;
+        findFocusPending.current=null;
+        setFindBusy(false);
+        setFindOpen(false);
+        viewportRef.current?.querySelector("input.rg-hidden-element")
+          ?.focus({preventScroll:true});
+      }}
+      busy={findBusy} status={findStatus}/>}
     <div className="drg-virtual-toolbar" aria-label="Server grid actions">
       <label>From row <input type="number" min="1"
         max={Math.max(1,virtualRowCount)} value={fromInput}
@@ -890,6 +1166,8 @@ export const ServerVirtualGrid = (props) => {
       onCopy={handleCopy} onPasteCapture={handlePaste}
       onKeyDownCapture={handleKey}
       onPointerDownCapture={(e) => {
+        findFocusPending.current=null;
+        findSelection.current=null;
         shiftPointer.current=e.shiftKey;
         keyboardAnchor.current=null;
         keyboardCursor.current=null;

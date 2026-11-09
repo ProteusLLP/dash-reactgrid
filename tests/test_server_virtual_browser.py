@@ -7,6 +7,8 @@ import urllib.request
 from pathlib import Path
 
 from selenium import webdriver
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 
@@ -68,7 +70,52 @@ def run_test():
         wait.until(lambda _: "Row 0" in driver.find_element(By.ID,"grid").text)
         assert "Row 50000" not in driver.find_element(By.ID,"grid").text
 
-        print("Server virtualization browser test passed: 100k rows, native scroll, bounded fetch/render")
+        # Closing an untouched search must restore the grid keyboard target.
+        cells=driver.find_elements(By.CSS_SELECTOR,"#grid .rg-cell.rg-col-name")
+        cells[-1].click()
+        ActionChains(driver).key_down(Keys.CONTROL).send_keys("f").key_up(Keys.CONTROL).perform()
+        close_input=wait.until(lambda _:driver.find_element(
+            By.CSS_SELECTOR,'#grid .drg-find input[type="search"]'))
+        close_input.send_keys(Keys.ESCAPE)
+        wait.until(lambda _:not driver.find_elements(By.CSS_SELECTOR,"#grid .drg-find"))
+        assert "rg-hidden-element" in (driver.switch_to.active_element.get_attribute("class") or "")
+
+        # Ctrl+F must find cells not present in the currently loaded window.
+        cells=driver.find_elements(By.CSS_SELECTOR,"#grid .rg-cell.rg-col-name")
+        assert len(cells)>1
+        cells[-1].click()
+        # A global selection must not remain active after Find jumps to a
+        # single offscreen match; Ctrl+D would otherwise edit the old range.
+        ActionChains(driver).key_down(Keys.CONTROL).send_keys("a").key_up(Keys.CONTROL).perform()
+        wait.until(lambda _:"100,000 rows selected" in driver.find_element(
+            By.CSS_SELECTOR,"#grid .drg-selection-count").text)
+        ActionChains(driver).key_down(Keys.CONTROL).send_keys("f").key_up(Keys.CONTROL).perform()
+        field=wait.until(lambda _:driver.find_element(
+            By.CSS_SELECTOR,'#grid .drg-find input[type="search"]'))
+        field.send_keys("Row 99999")
+        field.send_keys(Keys.ENTER)
+        wait.until(lambda _:"Row 100000" in driver.find_element(
+            By.CSS_SELECTOR,"#grid .drg-find-status").text or
+            "Row 99999" in driver.find_element(By.ID,"grid").text)
+        wait.until(lambda _:"Row 99999" in driver.find_element(By.ID,"grid").text)
+        wait.until(lambda _:len(driver.find_elements(
+            By.CSS_SELECTOR,"#grid .rg-find-match"))>0)
+        wait.until(lambda _:"1 rows selected" in driver.find_element(
+            By.CSS_SELECTOR,"#grid .drg-selection-count").text)
+        assert driver.find_element(By.CSS_SELECTOR,
+            '#grid .drg-virtual-toolbar input[type="number"]').get_attribute("value")=="100000"
+        assert len(driver.find_elements(By.CSS_SELECTOR,"#grid .rg-cell"))<1000
+
+        # Changing the query must invalidate the cursor and jump back to top.
+        field.clear()
+        field.send_keys("Row 0")
+        field.send_keys(Keys.ENTER)
+        wait.until(lambda _:"Row 1, Name" in driver.find_element(
+            By.CSS_SELECTOR,"#grid .drg-find-status").text)
+        wait.until(lambda _:"Row 0" in driver.find_element(By.ID,"grid").text)
+        field.send_keys(Keys.ESCAPE)
+        wait.until(lambda _:not driver.find_elements(By.CSS_SELECTOR,"#grid .drg-find"))
+        print("Server virtualization browser test passed: 100k rows, native scroll, bounded fetch/render and offscreen Ctrl+F")
     except Exception:
         if driver:
             print("DOM for diagnosis:",driver.page_source[-12000:])

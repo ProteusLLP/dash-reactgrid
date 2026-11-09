@@ -74,12 +74,12 @@ _js_dist.extend(
     [
         {
             'relative_package_path': 'dash_reactgrid.min.js',
-    
+
             'namespace': package_name
         },
         {
             'relative_package_path': 'dash_reactgrid.min.js.map',
-    
+
             'namespace': package_name,
             'dynamic': True
         }

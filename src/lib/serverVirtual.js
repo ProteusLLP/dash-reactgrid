@@ -16,7 +16,7 @@ export const DEFAULT_VIRTUAL_ROW_HEIGHT = 25;
 export const MAX_BROWSER_SCROLL_PX = 20_000_000;
 
 export const virtualRowWindow = (scrollTop, total, rowHeight = DEFAULT_VIRTUAL_ROW_HEIGHT,
-  windowSize = DEFAULT_VIRTUAL_WINDOW_SIZE, viewportHeight = 400) => {
+  windowSize = DEFAULT_VIRTUAL_WINDOW_SIZE, viewportHeight = 400, priorityRow = null) => {
   if (!Number.isSafeInteger(total) || total < 0) throw new RangeError("virtualRowCount must be a nonnegative integer");
   if (!Number.isFinite(rowHeight) || rowHeight <= 0) throw new RangeError("virtualRowHeight must be positive");
   if (!Number.isSafeInteger(windowSize) || windowSize <= 0) throw new RangeError("virtualWindowSize must be a positive integer");
@@ -41,8 +41,25 @@ export const virtualRowWindow = (scrollTop, total, rowHeight = DEFAULT_VIRTUAL_R
   // Never allow the selected visual range to fall into a compressed spacer.
   start = Math.max(start, Math.max(0, first + visible - size));
   start = Math.min(start, Math.max(0, first));
+  // When very large tables compress millions of rows into a few pixels,
+  // the browser can round the scroll coordinate to an adjacent window.
+  // A Find jump supplies the actual absolute row: keep it in the bounded
+  // window even if the quantized scrollTop falls on the next row boundary.
+  if (Number.isSafeInteger(priorityRow) && priorityRow >= 0 && priorityRow < total)
+    start = Math.max(0, Math.min(maxStart,
+      Math.max(Math.min(start,priorityRow),priorityRow-size+1)));
   const end = Math.min(total, start + size);
   return { start, end, first, visible, size, totalHeight };
+};
+
+/** Map an absolute row to the compressed browser scrollbar coordinates. */
+export const virtualScrollTopForRow = (row, total, rowHeight = DEFAULT_VIRTUAL_ROW_HEIGHT,
+  viewportHeight = 400) => {
+  if (!total) return 0;
+  const visible = Math.ceil(Math.max(1, viewportHeight) / rowHeight) + 2;
+  const maximum = Math.max(0, Math.min(total * rowHeight, MAX_BROWSER_SCROLL_PX) - viewportHeight);
+  const fraction = Math.min(1, Math.max(0, row / Math.max(1, total - visible)));
+  return fraction * maximum;
 };
 
 export const viewportKey = (datasetId, start, end) =>

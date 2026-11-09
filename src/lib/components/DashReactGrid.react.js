@@ -7,6 +7,8 @@ import { numberParser } from '../CustomNumberCell';
 import { percentParser } from '../PercentCell';
 import { createCellTemplates } from '../cellTemplates';
 import { ServerVirtualGrid } from '../ServerVirtualGrid.react';
+import { FindBar } from '../FindBar.react';
+import { findNextCell, resolveFindCursor } from '../find';
 import { compileGridColumns, buildGridRows, pageBounds, canPasteOnPage, visibleGridColumns, resizeGridColumns, headerDepth } from '../gridRows';
 import { useReliableGrid } from '../useReliableGrid';
 import { decodeGridData } from '../numericData';
@@ -107,6 +109,17 @@ const ReactGridDataHandler = (props) => {
   const [jumpLocation, setJumpLocation] = useState(null)
   const keyboardHost = useRef(null)
   const [keyboardError, setKeyboardError] = useState(null)
+  const [findOpen, setFindOpen] = useState(false)
+  const [findFocusToken, setFindFocusToken] = useState(0)
+  const [findQuery, setFindQuery] = useState('')
+  const [findStatus, setFindStatus] = useState('')
+  const [findMatch, setFindMatch] = useState(null)
+  const findCursor = useRef(null)
+  // Only Find's own single-cell keyboard rectangle may be rebased after a reorder.
+  const findSelection = useRef(null)
+  // ReactGrid can restore its native focus when the search toolbar closes.
+  // Ignore that stale target until a real user selection or navigation occurs.
+  const findInvalidated = useRef(false)
   const multiCommit = useRef(false)
   const lastMultiSelection = useRef(null)
 
@@ -162,8 +175,29 @@ const ReactGridDataHandler = (props) => {
       ids.has(highlight.rowId) && visible.has(highlight.columnId))
     const selected = keyboardHighlights(shortcutHighlight, table.rowIds,
       columns, pageStart, pageEnd)
-    return [...supplied, ...selected]
-  }, [highlights, pageStart, pageEnd, rows, columns, shortcutHighlight, table.rowIds])
+    const match = findMatch && ids.has(findMatch.rowId) &&
+      visible.has(findMatch.columnId)
+      ? [{rowId:findMatch.rowId, columnId:findMatch.columnId,
+        className:'rg-find-match'}] : []
+    return [...supplied, ...selected, ...match]
+  }, [highlights, pageStart, pageEnd, rows, columns, shortcutHighlight, table.rowIds, findMatch])
+
+  // Keep search highlighting on the actual cell descriptor as well as
+  // ReactGrid highlights. Focused cells and same-page matches can otherwise
+  // lose the highlight during a native grid selection refresh.
+  const highlightedRows = useMemo(() => {
+    if (!findMatch || !columns.some((col) => col.columnId === findMatch.columnId) ||
+        !rows.some((row) => row.rowId === findMatch.rowId)) return rows
+    return rows.map((row) => row.rowId !== findMatch.rowId ? row : {
+      ...row,
+      cells: row.cells.map((cell,index) =>
+        columns[index]?.columnId !== findMatch.columnId ? cell : {
+          ...cell,
+          className: (cell.className || '').trim() + ' rg-find-match' +
+            (cell.type === 'dropdown' ? ' ' : ''),
+        }),
+    })
+  }, [rows,findMatch,columns])
 
   // ReactGrid fails when nothing is left to scroll, as when every column of
   // a one-column table is sticky, so at least one row and column scroll.
@@ -294,6 +328,11 @@ const ReactGridDataHandler = (props) => {
 
   const handlePaste = (e) => {
     if (isCellEditorTarget(e.target)) return
+    if (findInvalidated.current) {
+      e.preventDefault()
+      e.stopPropagation()
+      return
+    }
     e.stopPropagation()
     e.preventDefault()
     const ranges = selection.current
@@ -329,6 +368,11 @@ const ReactGridDataHandler = (props) => {
 
   const handleCopy = (e) => {
     if (isCellEditorTarget(e.target)) return
+    if (findInvalidated.current) {
+      e.preventDefault()
+      e.stopPropagation()
+      return
+    }
     const text = shortcutRange.current
       ? keyboardClipboardText(shortcutRange.current,table.data,allColumns,columns)
       : selectionText(rows, selection.current, textOf)
@@ -345,7 +389,8 @@ const ReactGridDataHandler = (props) => {
   }
 
   const handleSelectionChanged = (ranges) => {
-    if (suppressNativeSelection.current) return
+    if (suppressNativeSelection.current || findInvalidated.current) return
+    findSelection.current=null
     selection.current = ranges
     shortcutRange.current = null
     setShortcutHighlight(null)
@@ -366,7 +411,129 @@ const ReactGridDataHandler = (props) => {
     return {row,col}
   }
 
+  // Once the query is abandoned, its old edit destination must not
+  // survive subsequent column hiding or a search that finds no results.
+  const clearFindDestination = () => {
+    if (!findSelection.current) return
+    findInvalidated.current=true
+    findSelection.current=null
+    shortcutRange.current=null
+    shortcutAnchor.current=null
+    shortcutCursor.current=null
+    lastMultiSelection.current=null
+    selection.current=null
+    focused.current=null
+    suppressNativeSelection.current=false
+    setShortcutHighlight(null)
+    setJumpLocation(null)
+    setProps({selectedCell:null,selectedRange:[],selectedRowIds:[]})
+  }
+
+  const updateFindQuery = (value) => {
+    clearFindDestination()
+    setFindQuery(value)
+    findCursor.current = null
+    setFindMatch(null)
+    setFindStatus('')
+  }
+
+  const runFind = (direction) => {
+    const query = findQuery
+    if (!query) return
+    // Find uses stable row IDs, so reordering/deleting other rows does not
+    // leave an absolute cursor pointing at an unrelated record.
+    const previous=findCursor.current
+    const currentRow=previous?.rowId === undefined ? previous?.row :
+      rowIndexesOf(table.rowIds).get(previous.rowId)
+    const currentCursor=currentRow === undefined ? null : {...previous,row:currentRow}
+    const anchor = resolveFindCursor(currentCursor,columns) ||
+      focusedPosition() || {row:-1,col:-1}
+    const found = findNextCell(table.data,allColumns,columns,query,
+      anchor.row,anchor.col,direction)
+    if (!found) {
+      clearFindDestination()
+      findCursor.current=null
+      setFindMatch(null)
+      setFindStatus('No matches')
+      return
+    }
+    const location={rowId:table.rowIds[found.row],columnId:found.columnId}
+    const stableMatch={...found,rowId:location.rowId}
+    findCursor.current=stableMatch
+    findInvalidated.current=false
+    findSelection.current=location
+    setFindMatch(stableMatch)
+    setFindStatus('Row '+(found.row+1)+', '+(columns[found.col].title || found.columnId))
+    // A prior keyboard range must not receive Delete or paste after Find.
+    selection.current=null
+    // Keep a single-cell paste/clear destination after Find and Escape.
+    shortcutRange.current=keyboardRectangle(found,found)
+    shortcutAnchor.current=found
+    shortcutCursor.current=found
+    lastMultiSelection.current=null
+    setShortcutHighlight(null)
+    suppressNativeSelection.current=true
+    focused.current=location
+    setJumpLocation(location)
+    setProps({selectedCell:location,selectedRange:[],selectedRowIds:[]})
+    if (pageSize) {
+      const destination=Math.floor(found.row/pageSize)
+      if (destination!==page) {
+        setRequestedPage(destination)
+        setPageInput(String(destination+1))
+      }
+    }
+  }
+
+  useEffect(() => {
+    if (!findMatch) return
+    const row=rowIndexesOf(table.rowIds).get(findMatch.rowId)
+    if (row === undefined) {
+      findCursor.current=null
+      if (findSelection.current?.rowId === findMatch.rowId &&
+          findSelection.current?.columnId === findMatch.columnId) {
+        clearFindDestination()
+      }
+      setFindMatch(null)
+      setFindStatus('')
+    } else {
+      // Rebase the active Find-created edit/paste/copy destination, not an
+      // unrelated native selection the user made after searching.
+      if (findSelection.current?.rowId === findMatch.rowId &&
+          findSelection.current?.columnId === findMatch.columnId) {
+        const col=displayedColumnIndex.get(findMatch.columnId)
+        if (col === undefined) {
+          // Invalidate ReactGrid's native focus too: it can otherwise edit
+          // the column shifted into the now-hidden match's position.
+          clearFindDestination()
+        } else {
+          const cursor={row,col,columnId:findMatch.columnId}
+          shortcutRange.current=keyboardRectangle(cursor,cursor)
+          shortcutAnchor.current=cursor
+          shortcutCursor.current=cursor
+          findCursor.current={...findMatch,row,col}
+          if (pageSize) {
+            const destination=Math.floor(row/pageSize)
+            if (destination!==page) {
+              setRequestedPage(destination)
+              setPageInput(String(destination+1))
+            }
+          }
+        }
+      }
+      const col=displayedColumnIndex.get(findMatch.columnId)
+      if (row !== findMatch.row || (col !== undefined && col !== findMatch.col))
+        setFindMatch({...findMatch,row,...(col === undefined ? {} : {col})})
+      if (row !== findMatch.row) {
+        const column=columns.find((col) => col.columnId === findMatch.columnId)
+        setFindStatus('Row '+(row+1)+', '+(column?.title || findMatch.columnId))
+      }
+    }
+  }, [table.rowIds,findMatch,columns,displayedColumnIndex,page,pageSize])
+
   const navigateToEdge = (key,shift) => {
+    findInvalidated.current=false
+    findSelection.current=null
     const current = shortcutCursor.current || focusedPosition()
     const target = sheetEdge(key,current,table.data.length,columns.length)
     if (!target) return
@@ -446,6 +613,23 @@ const ReactGridDataHandler = (props) => {
   // Caught before ReactGrid, which swallows the keys it handles itself.
   // While a cell is being typed in, its own input undoes the typing.
   const handleKeyDown = (e) => {
+    if (e.target.closest?.('.drg-find')) return
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey &&
+        e.key.toLowerCase()==='f') {
+      e.preventDefault(); e.stopPropagation()
+      setFindFocusToken((token) => token + 1)
+      setFindOpen(true)
+      return
+    }
+    if (findInvalidated.current &&
+        (e.key==="Delete" || e.key==="Backspace" || e.key==="Enter" ||
+         (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.length===1))) {
+      // Prevent both our edit handler and ReactGrid's native typing/clear
+      // behaviour from targeting the old Find focus.
+      e.preventDefault()
+      e.stopPropagation()
+      return
+    }
     if (isCellEditorTarget(e.target)) {
       if (e.key === "Enter" && e.shiftKey && !e.ctrlKey && !e.metaKey &&
           !e.altKey) multiCommit.current = true
@@ -453,6 +637,8 @@ const ReactGridDataHandler = (props) => {
     }
     if (!e.ctrlKey && !e.metaKey && !e.altKey &&
         ["ArrowUp","ArrowDown","ArrowLeft","ArrowRight","Tab","Enter"].includes(e.key)) {
+      findInvalidated.current=false
+      findSelection.current=null
       suppressNativeSelection.current = false
       shortcutAnchor.current = null
       shortcutCursor.current = null
@@ -514,6 +700,16 @@ const ReactGridDataHandler = (props) => {
           return;
         case "a":
           if (!e.shiftKey && !e.altKey) {
+            // A Find-created keyboard rectangle must not intercept Ctrl+A.
+            findInvalidated.current=false
+            findSelection.current=null
+            shortcutRange.current=null
+            shortcutAnchor.current=null
+            shortcutCursor.current=null
+            lastMultiSelection.current=null
+            suppressNativeSelection.current=false
+            setShortcutHighlight(null)
+            setJumpLocation(null)
             // ReactGrid selects the entire matrix without notifying onSelectionChanged.
             // Keep our clipboard selection and Dash's selectedRange in sync.
             const ranges = selectAllRanges(selection.current, rows, columns, focused.current)
@@ -545,6 +741,7 @@ const ReactGridDataHandler = (props) => {
         setProps({columns: next})
     },
     handleFocus: (location) => {
+      if (findInvalidated.current) return
       focused.current = location
       setProps({ selectedCell: location })
     },
@@ -558,17 +755,17 @@ const ReactGridDataHandler = (props) => {
   // Switching pages remounts ReactGrid. focusLocation selects the target
   // logically, but browser keystrokes still need its hidden focus input.
   useEffect(() => {
-    if (!jumpLocation || !rows.some((row) => row.rowId === jumpLocation.rowId))
+    if (findOpen || !jumpLocation || !rows.some((row) => row.rowId === jumpLocation.rowId))
       return
     keyboardHost.current?.querySelector("input.rg-hidden-element")
       ?.focus({preventScroll:true})
-  }, [jumpLocation, page, rows])
+  }, [jumpLocation, page, rows, findOpen])
 
   const { enableFillHandle, enableRangeSelection, enableRowSelection, enableColumnSelection, disableVirtualScrolling, dropdownMenuPortal } = props
   const visibleJump = jumpLocation && rows.some((row) => row.rowId === jumpLocation.rowId)
     ? jumpLocation : undefined
   const grid = useMemo(() => (
-    <ReactGrid key={pageSize ? `page-${page}` : 'all'} rows={rows} columns={columns} onCellsChanged={onCellsChanged}
+    <ReactGrid key={pageSize ? `page-${page}` : 'all'} rows={highlightedRows} columns={columns} onCellsChanged={onCellsChanged}
       onFocusLocationChanged={onFocusLocationChanged}
       focusLocation={visibleJump}
       onColumnResized={onColumnResized}
@@ -585,7 +782,7 @@ const ReactGridDataHandler = (props) => {
       onSelectionChanged={onSelectionChanged}
       disableVirtualScrolling={disableVirtualScrolling}
     />
-  ), [rows, columns, editingBlocked, pageHighlights, sticky.left, sticky.right, sticky.top, sticky.bottom,
+  ), [highlightedRows, columns, editingBlocked, pageHighlights, sticky.left, sticky.right, sticky.top, sticky.bottom,
     enableFillHandle, enableRangeSelection, enableRowSelection, enableColumnSelection, disableVirtualScrolling,
     dropdownMenuPortal, cellTemplates, pageSize, page, visibleJump])
 
@@ -602,6 +799,8 @@ const ReactGridDataHandler = (props) => {
     shortcutRange.current = null
     shortcutAnchor.current = null
     shortcutCursor.current = null
+    findSelection.current=null
+    findInvalidated.current=false
     suppressNativeSelection.current = false
     setShortcutHighlight(null)
     setJumpLocation(null)
@@ -610,7 +809,10 @@ const ReactGridDataHandler = (props) => {
 
   return (
     <div ref={keyboardHost} onPasteCapture={handlePaste} onCopy={handleCopy}
-      onPointerDownCapture={() => {
+      onPointerDownCapture={(event) => {
+        if (event.target.closest?.('.drg-find')) return
+        findInvalidated.current=false
+        findSelection.current=null
         suppressNativeSelection.current=false
         shortcutRange.current=null
         shortcutAnchor.current=null
@@ -619,6 +821,14 @@ const ReactGridDataHandler = (props) => {
         setJumpLocation(null)
       }}
       onKeyDownCapture={handleKeyDown}>
+      {findOpen && <FindBar query={findQuery} onQuery={updateFindQuery}
+        onFind={runFind} focusToken={findFocusToken}
+        onClose={() => {
+          setFindOpen(false)
+          // Restore grid shortcuts when the find input unmounts.
+          keyboardHost.current?.querySelector('input.rg-hidden-element')
+            ?.focus({preventScroll:true})
+        }} status={findStatus}/>}
       {grid}
       {keyboardError && <div role="alert" className="drg-keyboard-error">{keyboardError}</div>}
       {transmitSparseEdits && (
@@ -678,6 +888,8 @@ DashReactGrid.defaultProps = {
   virtualData: null,
   virtualRangeRequest: null,
   virtualRangeData: null,
+  virtualFindRequest: null,
+  virtualFindData: null,
   virtualSelection: null,
   virtualExportUrl: null,
   transmitSparseEdits: false,
@@ -826,6 +1038,17 @@ DashReactGrid.propTypes = {
    * Clipboards are limited to a bounded range; large selections use export.
    */
   virtualRangeData: PropTypes.object,
+  /**
+   * Ctrl+F server search request: {datasetId, requestId, query,
+   * afterRow, afterColumn, direction, columnIds}. The start is exclusive;
+   * search wraps once across all rows, not just the loaded window.
+   */
+  virtualFindRequest: PropTypes.object,
+  /**
+   * Search response {datasetId,requestId,query,rowIndex,columnId}, with
+   * null indices when no match, or {datasetId,requestId,query,error}.
+   */
+  virtualFindData: PropTypes.object,
   /** Compact absolute-index selection, not an array of every selected row. */
   virtualSelection: PropTypes.object,
   /** Application-provided URL for authenticated streamed CSV exports. */

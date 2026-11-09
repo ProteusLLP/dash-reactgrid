@@ -5,6 +5,9 @@ These run in Python without a browser or an application database:
 """
 import csv
 import io
+import inspect
+import re
+from pathlib import Path
 import json
 import unittest
 
@@ -88,7 +91,12 @@ class ComponentPublicAPI(unittest.TestCase):
              "rowIds": ["r0"]},
             {"virtualRowCount": 100_000, "virtualDatasetId": DATASET,
              "virtualWindowSize": 120, "virtualViewportHeight": 420,
-             "transmitSparseEdits": True, "editDatasetId": DATASET},
+             "transmitSparseEdits": True, "editDatasetId": DATASET,
+             "virtualFindRequest": {"datasetId": DATASET, "requestId": 3,
+                 "query": "Tail", "afterRow": -1, "afterColumn": -1,
+                 "direction": "forward", "columnIds": ["text"]},
+             "virtualFindData": {"datasetId": DATASET, "requestId": 3,
+                 "query": "Tail", "rowIndex": 2, "columnId": "text"}},
         ]:
             with self.subTest(config=config):
                 grid = DashReactGrid(
@@ -98,6 +106,34 @@ class ComponentPublicAPI(unittest.TestCase):
                 props = grid.to_plotly_json()["props"]
                 for key, value in config.items():
                     self.assertEqual(props[key], value)
+
+    def test_legacy_python_and_r_positional_arguments_remain_stable(self):
+        # New properties are appended after the legacy signatures.
+        expected_python=["id","columns","data","rowIds","rowPageSize",
+                         "virtualRowCount","virtualDatasetId",
+                         "virtualRowHeight","virtualWindowSize"]
+        params=list(inspect.signature(DashReactGrid.__init__).parameters)
+        self.assertEqual(params[1:1+len(expected_python)],expected_python)
+        self.assertEqual(params[-3:-1],["virtualFindRequest","virtualFindData"])
+        existing=DashReactGrid("test",COLUMNS,ROWS,["r0","r1","r2"],2)
+        self.assertEqual(existing.to_plotly_json()["props"]["rowPageSize"],2)
+        r_file=Path(__file__).resolve().parents[1]/"R"/"dashReactGrid.R"
+        r_source=r_file.read_text(encoding="utf-8")
+        match=re.search(r"dashReactGrid <- function[(](.*?)[)] [{]",r_source)
+        self.assertIsNotNone(match)
+        r_args=[item.split("=",1)[0] for item in match.group(1).split(", ")]
+        self.assertEqual(r_args[:9],["id","className","columns","data",
+            "disableVirtualScrolling","dropdownMenuPortal","edits",
+            "editAck","editDatasetId"])
+        self.assertEqual(r_args[-2:],["virtualFindRequest","virtualFindData"])
+        rd_file=Path(__file__).resolve().parents[1]/"man"/"dashReactGrid.Rd"
+        rd_source=rd_file.read_text(encoding="utf-8")
+        usage=rd_source.split(r"\usage{",1)[1].split("}",1)[0]
+        usage_arguments=usage.split("dashReactGrid(",1)[1].rsplit(")",1)[0]
+        rd_args=[item.strip().split("=",1)[0] for item in
+                 usage_arguments.replace("\n"," ").split(", ")]
+        self.assertEqual(rd_args,r_args)
+
 
     def test_required_properties(self):
         with self.assertRaises(TypeError):

@@ -134,6 +134,123 @@ def clipboard_response(request, *, dataset_id, row_count, columns, fetch_rows,
     return {**response, "text": buffer.getvalue().rstrip("\n")}
 
 
+
+def _find_string(value):
+    """Render JSON scalars like JavaScript String(value) for grid searching.
+
+    JavaScript chooses fixed notation for 1e-6 <= abs(x) < 1e21 and
+    scientific notation outside that range, without leading exponent zeros.
+    Decimal based on Python's shortest roundtrip representation retains
+    digits without expanding unboundedly for large exponents.
+    """
+    from decimal import Decimal
+
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        # JSON numbers are parsed as IEEE-754 doubles in the browser.
+        # Convert Python integers via float before formatting, including
+        # values beyond 2**53 where JavaScript rounds the displayed cell.
+        # Both provider values and dropdown option values use this path.
+        try:
+            js_value = float(value)
+        except OverflowError:
+            return ""
+        number = Decimal(str(js_value))
+        if not number.is_finite():
+            return ""
+        if not number:
+            return "0"
+        magnitude = number.copy_abs().adjusted()
+        if -6 <= magnitude < 21:
+            fixed = format(number, "f")
+            return fixed.rstrip("0").rstrip(".") if "." in fixed else fixed
+        sign = "-" if number.is_signed() else ""
+        normalized = number.copy_abs().normalize()
+        digits = "".join(str(digit) for digit in normalized.as_tuple().digits)
+        mantissa = digits[0] + ("." + digits[1:] if len(digits) > 1 else "")
+        exponent = normalized.adjusted()
+        return sign + mantissa + "e" + ("+" if exponent >= 0 else "") + str(exponent)
+    return str(value)
+
+
+def find_response(request, *, dataset_id, row_count, columns, fetch_rows,
+                  chunk_size=250):
+    """Find the next cell across *all* rows, including unloaded windows.
+
+    The stateless request contains a query, direction (forward/backward),
+    afterRow and afterColumn (zero-based, exclusive), and visible columnIds.
+    Returns the first match, wrapping once, or null rowIndex/columnId.
+
+    The default implementation scans bounded windows. Applications with a
+    database search index may implement the same response contract directly.
+    """
+    request = _dataset(request, dataset_id)
+    count = _bounded_int(row_count, "row_count", 0, 2**53 - 1)
+    query = request.get("query")
+    if not isinstance(query, str) or not 0 < len(query) <= 256:
+        raise ValueError("Search query must contain 1 to 256 characters")
+    direction = request.get("direction")
+    if direction not in ("forward", "backward"):
+        raise ValueError("Search direction must be forward or backward")
+    if isinstance(chunk_size, bool) or not isinstance(chunk_size, int) or not (
+            1 <= chunk_size <= DEFAULT_MAX_WINDOW_ROWS):
+        raise ValueError("chunk_size must be between 1 and 1000")
+    names = [col["columnId"] if isinstance(col, dict) else str(col)
+             for col in columns]
+    visible = request.get("columnIds")
+    if (not isinstance(visible, list) or not visible or
+            any(not isinstance(v, str) for v in visible) or
+            len(visible) != len(set(visible)) or
+            len(names) != len(set(names)) or
+            any(v not in names for v in visible)):
+        raise ValueError("Search columnIds must identify unique visible columns")
+    after_row, after_col = request.get("afterRow"), request.get("afterColumn")
+    if after_row == -1 and after_col == -1 and not isinstance(after_row, bool):
+        start = -1 if direction == "forward" else 0
+    else:
+        _bounded_int(after_row, "afterRow", 0, max(0, count - 1))
+        _bounded_int(after_col, "afterColumn", 0, len(visible) - 1)
+        start = after_row * len(visible) + after_col
+    columns_by_id = {name: index for index, name in enumerate(names)}
+    indices = [columns_by_id[name] for name in visible]
+    matching = query.lower()
+    total = count * len(visible)
+    step = 1 if direction == "forward" else -1
+    cached_start = -1
+    cached_rows = None
+
+    for offset in range(1, total + 1):
+        flat = (start + step * offset) % total
+        row_index, column_index = divmod(flat, len(visible))
+        window_start = (row_index // chunk_size) * chunk_size
+        if window_start != cached_start:
+            stop = min(count, window_start + chunk_size)
+            cached_rows = _valid_rows(fetch_rows(window_start, stop),
+                                      stop-window_start, len(columns))["data"]
+            cached_start = window_start
+        value = cached_rows[row_index - cached_start][indices[column_index]]
+        if value is None:
+            continue
+        descriptor = columns[indices[column_index]]
+        candidate = _find_string(value)
+        if isinstance(descriptor, dict) and descriptor.get("type") == "dropdown":
+            for option in descriptor.get("values", []):
+                option_value = option.get("value") if isinstance(option, dict) else option
+                if _find_string(option_value) == candidate and isinstance(option, dict):
+                    label = option.get("label")
+                    if label is None:
+                        label = option_value if option_value is not None else value
+                    candidate = _find_string(label) + "\n" + candidate
+                    break
+        if matching in candidate.lower():
+            return {"datasetId": dataset_id, "requestId": request.get("requestId"),
+                    "query": query, "rowIndex": row_index,
+                    "columnId": visible[column_index]}
+    return {"datasetId": dataset_id, "requestId": request.get("requestId"),
+            "query": query, "rowIndex": None, "columnId": None}
+
+
 def csv_chunks(*, start, end, column_start, column_end, row_count, columns,
                fetch_rows, chunk_size=250, column_ids=None):
     """Generate CSV chunks with bounded memory, independent of the source."""

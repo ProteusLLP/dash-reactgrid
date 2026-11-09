@@ -281,6 +281,377 @@ class FeatureMatrixChromeTests(unittest.TestCase):
         self.assertEqual(self.state("grouped-paged")["data"][3][0], 10)
         self.assertEqual(self.state("grouped-paged")["data"][1][0], 4)
 
+    def test_ctrl_f_finds_offscreen_paged_row(self):
+        self.press("f", grid="paged", column="label")
+        field=self.waiter.until(lambda _:self.driver.find_element(
+            By.CSS_SELECTOR,'#paged .drg-find input[type="search"]'))
+        field.send_keys("Page row 10")
+        field.send_keys(Keys.ENTER)
+        self.waiter.until(lambda _:"Rows 9-11" in
+            self.driver.find_element(By.ID,"paged").text)
+        self.waiter.until(lambda _:"Page row 10" in
+            self.driver.find_element(By.ID,"paged").text)
+        self.assertGreater(len(self.driver.find_elements(
+            By.CSS_SELECTOR,"#paged .rg-find-match")),0)
+        # Both ends of the search can wrap without loading the entire
+        # ReactGrid matrix or entering cell-editing mode.
+        field.send_keys(Keys.SHIFT,Keys.ENTER)
+        self.waiter.until(lambda _:"Row 11" in self.driver.find_element(
+            By.CSS_SELECTOR,"#paged .drg-find-status").text)
+        field.send_keys(Keys.ESCAPE)
+        self.waiter.until(lambda _:not self.driver.find_elements(
+            By.CSS_SELECTOR,"#paged .drg-find"))
+
+    def test_ctrl_f_resets_keyboard_range_and_restores_focus(self):
+        self.cell("target","label",0).click()
+        self.chord(Keys.CONTROL,Keys.SHIFT,Keys.ARROW_DOWN)
+        self.waiter.until(lambda _:self.state("target").get("selectedRowIds") ==
+                          ["target-1","target-2"])
+        self.chord(Keys.CONTROL,"f")
+        field=self.waiter.until(lambda _:self.driver.find_element(
+            By.CSS_SELECTOR,'#target .drg-find input[type="search"]'))
+        field.send_keys("Target 2",Keys.ENTER)
+        self.expect_focus("target","target-2","label")
+        field.send_keys(Keys.ESCAPE)
+        self.waiter.until(lambda _:not self.driver.find_elements(
+            By.CSS_SELECTOR,"#target .drg-find"))
+        self.assertIn("rg-hidden-element",
+            self.driver.switch_to.active_element.get_attribute("class") or "")
+        # Delete must clear the match, never the previously selected range.
+        ActionChains(self.driver).send_keys(Keys.DELETE).perform()
+        self.waiter.until(lambda _:self.state("target")["data"][1][0]=="")
+        self.assertEqual(self.state("target")["data"][0][0],"Target 1")
+
+    def test_find_highlight_tracks_row_id_after_reordering(self):
+        self.press("f",grid="find-reorder",column="label",index=2)
+        field=self.waiter.until(lambda _:self.driver.find_element(
+            By.CSS_SELECTOR,'#find-reorder .drg-find input[type="search"]'))
+        field.send_keys("Third",Keys.ENTER)
+        self.waiter.until(lambda _:"Third" in self.driver.find_element(
+            By.CSS_SELECTOR,"#find-reorder .rg-find-match").get_attribute("textContent"))
+        self.driver.find_element(By.ID,"reverse-find-rows").click()
+        self.waiter.until(lambda _:self.driver.execute_script("""
+            return document.querySelector(
+              '#find-reorder .rg-find-match')?.textContent === 'Third';
+        """))
+        self.waiter.until(lambda _:"Row 1" in self.driver.find_element(
+            By.CSS_SELECTOR,"#find-reorder .drg-find-status").text)
+        # The highlight and the edit destination must move together.
+        field.send_keys(Keys.ESCAPE)
+        self.waiter.until(lambda _:not self.driver.find_elements(
+            By.CSS_SELECTOR,"#find-reorder .drg-find"))
+        ActionChains(self.driver).send_keys(Keys.DELETE).perform()
+        self.waiter.until(lambda _:self.state("find-reorder")["data"][0][0]=="")
+        self.assertEqual(self.state("find-reorder")["data"][2][0],"First")
+
+    def test_find_then_select_all_replaces_single_cell_keyboard_range(self):
+        self.press("f",grid="target",column="label")
+        field=self.waiter.until(lambda _:self.driver.find_element(
+            By.CSS_SELECTOR,'#target .drg-find input[type="search"]'))
+        field.send_keys("Target 2",Keys.ENTER,Keys.ESCAPE)
+        self.waiter.until(lambda _:not self.driver.find_elements(
+            By.CSS_SELECTOR,"#target .drg-find"))
+        self.chord(Keys.CONTROL,"a")
+        self.waiter.until(lambda _:self.state("target").get("selectedRowIds") ==
+                          ["target-1","target-2"])
+        copied=self.copy("target","label")
+        self.assertIn("Target 1",copied["plain"])
+        self.assertIn("Target 2",copied["plain"])
+
+    def test_find_escape_without_search_restores_keyboard_focus(self):
+        self.press("f",grid="target",column="label")
+        field=self.waiter.until(lambda _:self.driver.find_element(
+            By.CSS_SELECTOR,'#target .drg-find input[type="search"]'))
+        field.send_keys(Keys.ESCAPE)
+        self.waiter.until(lambda _:not self.driver.find_elements(
+            By.CSS_SELECTOR,"#target .drg-find"))
+        self.assertIn("rg-hidden-element",
+            self.driver.switch_to.active_element.get_attribute("class") or "")
+        self.chord(Keys.CONTROL,"f")
+        self.waiter.until(lambda _:self.driver.find_elements(
+            By.CSS_SELECTOR,'#target .drg-find input[type="search"]'))
+
+    def test_find_result_remains_clipboard_paste_destination(self):
+        self.press("f",grid="target",column="label")
+        field=self.waiter.until(lambda _:self.driver.find_element(
+            By.CSS_SELECTOR,'#target .drg-find input[type="search"]'))
+        field.send_keys("Target 2",Keys.ENTER,Keys.ESCAPE)
+        self.waiter.until(lambda _:not self.driver.find_elements(
+            By.CSS_SELECTOR,"#target .drg-find"))
+        paste_result=self.paste("target","Replaced after find",column="label",index=2)
+        self.assertTrue(paste_result["prevented"])
+        self.waiter.until(lambda _:self.state("target")["data"][1][0] ==
+                          "Replaced after find")
+        self.assertEqual(self.state("target")["data"][0][0],"Target 1")
+
+    def test_find_owned_selection_rebases_when_a_column_is_hidden(self):
+        self.press("f",grid="find-column-rebase",column="value")
+        field=self.waiter.until(lambda _:self.driver.find_element(
+            By.CSS_SELECTOR,'#find-column-rebase .drg-find input[type="search"]'))
+        field.send_keys("B match",Keys.ENTER)
+        self.waiter.until(lambda _:"Row 1" in self.driver.find_element(
+            By.CSS_SELECTOR,"#find-column-rebase .drg-find-status").text)
+        self.driver.find_element(By.ID,"hide-find-label").click()
+        self.waiter.until(lambda _:len(self.cells("find-column-rebase","value")) == 1)
+        field=self.driver.find_element(
+            By.CSS_SELECTOR,'#find-column-rebase .drg-find input[type="search"]')
+        field.send_keys(Keys.ESCAPE)
+        self.waiter.until(lambda _:not self.driver.find_elements(
+            By.CSS_SELECTOR,"#find-column-rebase .drg-find"))
+        ActionChains(self.driver).send_keys(Keys.DELETE).perform()
+        self.waiter.until(lambda _:self.state("find-column-rebase").get("data") ==
+                          [["A","","C"]])
+
+    def test_hiding_matched_column_invalidates_native_find_target(self):
+        self.press("f", grid="find-column-rebase", column="value")
+        field = self.waiter.until(lambda _: self.driver.find_element(
+            By.CSS_SELECTOR,
+            '#find-column-rebase .drg-find input[type="search"]'))
+        field.send_keys("B match", Keys.ENTER)
+        self.waiter.until(lambda _: "Row 1" in self.driver.find_element(
+            By.CSS_SELECTOR, "#find-column-rebase .drg-find-status").text)
+        self.driver.find_element(By.ID, "hide-find-match-column").click()
+        self.waiter.until(lambda _: not self.cells("find-column-rebase", "value"))
+        field = self.driver.find_element(
+            By.CSS_SELECTOR,
+            '#find-column-rebase .drg-find input[type="search"]')
+        field.send_keys(Keys.ESCAPE)
+        self.waiter.until(lambda _: not self.driver.find_elements(
+            By.CSS_SELECTOR, "#find-column-rebase .drg-find"))
+        ActionChains(self.driver).send_keys(Keys.DELETE, "x").perform()
+        self.assertEqual(self.state("find-column-rebase")["data"],
+                         [["A", "B match", "C"]])
+        self.assertIsNone(self.state("find-column-rebase").get("selectedCell"))
+        # A fresh click restores ordinary editing.
+        self.cell("find-column-rebase", "third").click()
+        self.expect_focus("find-column-rebase", "column-rebase-row", "third")
+        ActionChains(self.driver).send_keys(Keys.DELETE).perform()
+        self.waiter.until(lambda _: self.state("find-column-rebase")["data"]
+                          == [["A", "B match", ""]])
+
+    def test_find_reorder_into_another_page_moves_edit_destination(self):
+        self.press("f", grid="find-reorder-paged", column="label")
+        field = self.waiter.until(lambda _: self.driver.find_element(
+            By.CSS_SELECTOR,
+            '#find-reorder-paged .drg-find input[type="search"]'))
+        field.send_keys("Third", Keys.ENTER)
+        self.waiter.until(lambda _: "Rows 3-4" in
+                          self.driver.find_element(
+                              By.ID, "find-reorder-paged").text)
+        self.driver.find_element(By.ID, "reverse-find-paged-rows").click()
+        self.waiter.until(lambda _: "Rows 1-2" in
+                          self.driver.find_element(
+                              By.ID, "find-reorder-paged").text)
+        self.waiter.until(lambda _: self.driver.execute_script("""
+            return document.querySelector(
+              '#find-reorder-paged .rg-find-match')?.textContent === 'Third';
+        """))
+        self.waiter.until(lambda _: self.state("find-reorder-paged").get(
+            "selectedCell") == {"rowId": "third", "columnId": "label"})
+        field = self.driver.find_element(
+            By.CSS_SELECTOR,
+            '#find-reorder-paged .drg-find input[type="search"]')
+        field.send_keys(Keys.ESCAPE)
+        self.waiter.until(lambda _: not self.driver.find_elements(
+            By.CSS_SELECTOR, "#find-reorder-paged .drg-find"))
+        result = self.paste("find-reorder-paged", "Edited", column="label", index=1)
+        self.assertTrue(result["prevented"])
+        self.waiter.until(lambda _: self.state("find-reorder-paged")["data"]
+                          == [["Fourth", 4], ["Edited", 3],
+                              ["Second", 2], ["First", 1]])
+
+    def test_virtual_find_enter_does_not_issue_duplicate_pending_requests(self):
+        self.press("f", grid="review-virtual", column="label")
+        field = self.waiter.until(lambda _: self.driver.find_element(
+            By.CSS_SELECTOR,
+            '#review-virtual .drg-find input[type="search"]'))
+        field.send_keys("Existing", Keys.ENTER, Keys.ENTER, Keys.ENTER)
+        request = self.waiter.until(lambda _: json.loads(
+            self.driver.find_element(
+                By.ID, "review-virtual-find-request").text or "{}")
+            if self.driver.find_element(
+                By.ID, "review-virtual-find-request").text.strip() else None)
+        self.assertEqual(request["query"], "Existing")
+        self.assertEqual(request["requestId"], 1)
+        self.waiter.until(lambda _: "Row 1" in self.driver.find_element(
+            By.CSS_SELECTOR, "#review-virtual .drg-find-status").text)
+        # The search has completed and a later Enter must work as usual.
+        field.send_keys(Keys.ENTER)
+        self.waiter.until(lambda _: json.loads(self.driver.find_element(
+            By.ID, "review-virtual-find-request").text)["requestId"] == 2)
+
+    def test_virtual_find_selection_rebases_and_copies_loaded_cell(self):
+        self.press("f",grid="review-virtual",column="day")
+        field=self.waiter.until(lambda _:self.driver.find_element(
+            By.CSS_SELECTOR,'#review-virtual .drg-find input[type="search"]'))
+        field.send_keys("2026-11-02",Keys.ENTER)
+        self.waiter.until(lambda _:"Row 2" in self.driver.find_element(
+            By.CSS_SELECTOR,"#review-virtual .drg-find-status").text)
+        self.driver.find_element(By.ID,"hide-virtual-label").click()
+        self.waiter.until(lambda _:len(self.cells("review-virtual","day")) >= 1)
+        field=self.driver.find_element(
+            By.CSS_SELECTOR,'#review-virtual .drg-find input[type="search"]')
+        field.send_keys(Keys.ESCAPE)
+        self.waiter.until(lambda _:not self.driver.find_elements(
+            By.CSS_SELECTOR,"#review-virtual .drg-find"))
+        ActionChains(self.driver).send_keys(Keys.DELETE).perform()
+        def emitted():
+            try:
+                edits=json.loads(self.driver.find_element(
+                    By.ID,"review-virtual-edits").text)["edits"]
+                return edits == [{
+                    "kind":"paste","start":1,"columnIds":["day"],"rows":[[None]],
+                }]
+            except (ValueError, KeyError, TypeError):
+                return False
+        self.waiter.until(lambda _:emitted())
+
+    def test_virtual_find_cell_copies_without_preparing_a_range(self):
+        self.press("f",grid="review-virtual",column="label")
+        field=self.waiter.until(lambda _:self.driver.find_element(
+            By.CSS_SELECTOR,'#review-virtual .drg-find input[type="search"]'))
+        field.send_keys("Second",Keys.ENTER)
+        self.waiter.until(lambda _:"Row 2" in self.driver.find_element(
+            By.CSS_SELECTOR,"#review-virtual .drg-find-status").text)
+        field.send_keys(Keys.ESCAPE)
+        self.waiter.until(lambda _:not self.driver.find_elements(
+            By.CSS_SELECTOR,"#review-virtual .drg-find"))
+        copied=self.copy("review-virtual","label",1)
+        self.assertTrue(copied["prevented"])
+        self.assertEqual(copied["plain"],"Second")
+
+    def test_find_no_match_invalidates_keyboard_destination_after_hiding_column(self):
+        self.press("f",grid="find-column-rebase",column="value")
+        field=self.waiter.until(lambda _:self.driver.find_element(
+            By.CSS_SELECTOR,'#find-column-rebase .drg-find input[type="search"]'))
+        field.send_keys("B match",Keys.ENTER)
+        self.waiter.until(lambda _:"Row 1" in self.driver.find_element(
+            By.CSS_SELECTOR,"#find-column-rebase .drg-find-status").text)
+        field.clear()
+        field.send_keys("not present",Keys.ENTER)
+        self.waiter.until(lambda _:"No matches" in self.driver.find_element(
+            By.CSS_SELECTOR,"#find-column-rebase .drg-find-status").text)
+        self.driver.find_element(By.ID,"hide-find-label").click()
+        self.waiter.until(lambda _:len(self.cells("find-column-rebase","label"))==0)
+        field.send_keys(Keys.ESCAPE)
+        self.waiter.until(lambda _:not self.driver.find_elements(
+            By.CSS_SELECTOR,"#find-column-rebase .drg-find"))
+        ActionChains(self.driver).send_keys(Keys.DELETE).perform()
+        self.assertEqual(self.state("find-column-rebase")["data"],
+                         [["A","B match","C"]])
+
+    def test_virtual_find_clears_public_native_selection(self):
+        self.cell("review-virtual","label",0).click()
+        self.waiter.until(lambda _:"vr-0" in json.loads(self.driver.find_element(
+            By.ID,"review-virtual-selection").text).get("selectedRowIds",[]))
+        self.chord(Keys.CONTROL,"f")
+        field=self.waiter.until(lambda _:self.driver.find_element(
+            By.CSS_SELECTOR,'#review-virtual .drg-find input[type="search"]'))
+        field.send_keys("Second",Keys.ENTER)
+        self.waiter.until(lambda _:"Row 2" in self.driver.find_element(
+            By.CSS_SELECTOR,"#review-virtual .drg-find-status").text)
+        def cleared():
+            state=json.loads(self.driver.find_element(
+                By.ID,"review-virtual-selection").text)
+            return state["selectedRange"]==[] and state["selectedRowIds"]==[]
+        self.waiter.until(lambda _:cleared())
+
+    def test_virtual_find_date_and_time_copies_provider_values(self):
+        for column,query,expected in [
+            ("day","2026-11-02","2026-11-02"),
+            ("clock","2026-11-02T14:30:00Z","2026-11-02T14:30:00Z"),
+        ]:
+            with self.subTest(column=column):
+                self.press("f",grid="review-virtual",column=column)
+                field=self.waiter.until(lambda _:self.driver.find_element(
+                    By.CSS_SELECTOR,'#review-virtual .drg-find input[type="search"]'))
+                field.send_keys(query,Keys.ENTER)
+                self.waiter.until(lambda _:"Row 2" in self.driver.find_element(
+                    By.CSS_SELECTOR,"#review-virtual .drg-find-status").text)
+                field.send_keys(Keys.ESCAPE)
+                self.waiter.until(lambda _:not self.driver.find_elements(
+                    By.CSS_SELECTOR,"#review-virtual .drg-find"))
+                copied=self.copy("review-virtual",column,1)
+                self.assertTrue(copied["prevented"])
+                self.assertEqual(copied["plain"],expected)
+
+    def _virtual_find_ack_state(self):
+        return json.loads(self.driver.find_element(By.ID,"ack-find-state").text)
+
+    def _virtual_find_ack_delete(self):
+        return self.driver.execute_script("""
+            const grid=document.querySelector('#ack-find-virtual .drg-virtual-viewport');
+            const event=new KeyboardEvent('keydown', {
+              key:'Delete',bubbles:true,cancelable:true
+            });
+            grid.dispatchEvent(event);
+            return event.defaultPrevented;
+        """)
+
+    def _virtual_ack_grid_second_cell_is(self, expected):
+        # An ACK or dataset switch remounts ReactGrid. Read the current DOM
+        # in one browser script instead of holding a potentially stale element.
+        return self.driver.execute_script("""
+            const cells=document.querySelectorAll(
+              '#ack-find-virtual .rg-cell.rg-col-label');
+            return (cells[1]?.textContent || '').includes(arguments[0]);
+        """, expected)
+
+    def test_virtual_find_structural_ack_clears_old_edit_destination(self):
+        self.press("f",grid="ack-find-virtual",column="label",index=1)
+        field=self.waiter.until(lambda _:self.driver.find_element(
+            By.CSS_SELECTOR,'#ack-find-virtual .drg-find input[type="search"]'))
+        field.send_keys("B match",Keys.ENTER)
+        self.waiter.until(lambda _:"Row 2" in self.driver.find_element(
+            By.CSS_SELECTOR,"#ack-find-virtual .drg-find-status").text)
+        self.driver.find_element(By.ID,"ack-delete-find-row").click()
+        self.waiter.until(lambda _:self._virtual_ack_grid_second_cell_is("C"))
+        self.waiter.until(lambda _:self._virtual_find_ack_state()["virtualSelection"] is None
+                          and self._virtual_find_ack_state()["selectedCell"] is None)
+        self.assertTrue(self._virtual_find_ack_delete())
+        self.assertFalse(self._virtual_find_ack_state()["edits"])
+
+    def test_virtual_find_dataset_replacement_clears_old_edit_destination(self):
+        self.press("f",grid="ack-find-virtual",column="label",index=1)
+        field=self.waiter.until(lambda _:self.driver.find_element(
+            By.CSS_SELECTOR,'#ack-find-virtual .drg-find input[type="search"]'))
+        field.send_keys("B match",Keys.ENTER)
+        self.waiter.until(lambda _:"Row 2" in self.driver.find_element(
+            By.CSS_SELECTOR,"#ack-find-virtual .drg-find-status").text)
+        self.driver.find_element(By.ID,"replace-find-dataset").click()
+        self.waiter.until(lambda _:self._virtual_ack_grid_second_cell_is("Y"))
+        self.waiter.until(lambda _:self._virtual_find_ack_state()["virtualSelection"] is None
+                          and self._virtual_find_ack_state()["selectedCell"] is None)
+        self.assertTrue(self._virtual_find_ack_delete())
+        self.assertFalse(self._virtual_find_ack_state()["edits"])
+
+    def test_ctrl_f_reopens_input_and_preserves_button_enter(self):
+        self.press("f",grid="target",column="label")
+        field=self.waiter.until(lambda _:self.driver.find_element(
+            By.CSS_SELECTOR,'#target .drg-find input[type="search"]'))
+        field.send_keys("Target",Keys.ENTER)
+        self.waiter.until(lambda _:"Row 2" in self.driver.find_element(
+            By.CSS_SELECTOR,"#target .drg-find-status").text)
+        back=self.driver.find_element(By.CSS_SELECTOR,
+            '#target .drg-find button[aria-label="Find previous"]')
+        back.send_keys(Keys.ENTER)
+        self.waiter.until(lambda _:"Row 1" in self.driver.find_element(
+            By.CSS_SELECTOR,"#target .drg-find-status").text)
+        # Escape must close a refocused or newly opened Find bar on the
+        # first keypress, not just clear the native search input. After close,
+        # the grid's hidden focus input is active; use Ctrl+F from there
+        # instead of clicking the selected cell's still-mounted editor.
+        self.cell("target", "label", 1).click()
+        for _ in range(3):
+            self.chord(Keys.CONTROL, "f")
+            self.waiter.until(lambda _: self.driver.switch_to.active_element
+                              .get_attribute("aria-label") == "Find text in grid")
+            ActionChains(self.driver).send_keys(Keys.ESCAPE).perform()
+            self.waiter.until(lambda _: not self.driver.find_elements(
+                By.CSS_SELECTOR, "#target .drg-find"))
+            self.assertIn("rg-hidden-element",
+                self.driver.switch_to.active_element.get_attribute("class") or "")
+
     def test_ctrl_arrows_select_and_fill_down_with_undo(self):
         self.cell("target", "label", 0).click()
         self.chord(Keys.CONTROL, Keys.ARROW_DOWN)

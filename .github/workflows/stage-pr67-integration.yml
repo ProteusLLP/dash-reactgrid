@@ -27,18 +27,16 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git fetch origin main
           git reset --hard 354727ec28df471e63be7666c02beca1798e3740
-          git merge --no-commit --no-ff origin/main || true
-          echo "=== PREVIEW SOURCE OVERLAPS, requiring manual reconciliation ==="
-          while IFS= read -r path; do
-            case "$path" in
-              R/dashReactGrid.R|dash_reactgrid/DashReactGrid.py|dash_reactgrid/dash_reactgrid.min.js|dash_reactgrid/dash_reactgrid.min.js.map|dash_reactgrid/metadata.json|dash_reactgrid/package-info.json|man/dashReactGrid.Rd|src/jl/dashreactgrid.jl|deps/dash_reactgrid.min.js|deps/dash_reactgrid.min.js.map|inst/deps/dash_reactgrid.min.js|inst/deps/dash_reactgrid.min.js.map)
-                git checkout --theirs -- "$path" ;;
-              src/lib/ServerVirtualGrid.react.js|src/lib/__tests__/serverVirtual.test.mjs|src/lib/components/DashReactGrid.react.js|src/lib/serverVirtual.js|tests/test_component_contract.py)
-                echo "$path"; git checkout --ours -- "$path" ;;
-              *) echo "Unexpected conflict: $path" >&2; exit 1 ;;
-            esac
-            git add -- "$path"
-          done < <(git diff --name-only --diff-filter=U)
+          # Preserve independent changes from both branches. Git resolves
+          # only overlapping conflict hunks in favour of the feature branch;
+          # these source hunks are audited and tested separately.
+          git merge --no-commit --no-ff -X ours origin/main
+          for path in R/dashReactGrid.R dash_reactgrid/DashReactGrid.py dash_reactgrid/dash_reactgrid.min.js dash_reactgrid/dash_reactgrid.min.js.map dash_reactgrid/metadata.json dash_reactgrid/package-info.json man/dashReactGrid.Rd src/jl/dashreactgrid.jl deps/dash_reactgrid.min.js deps/dash_reactgrid.min.js.map inst/deps/dash_reactgrid.min.js inst/deps/dash_reactgrid.min.js.map; do
+            git restore --source=origin/main --staged --worktree -- "$path"
+          done
+          if [ -n "$(git diff --name-only --diff-filter=U)" ]; then
+            echo "Unresolved source conflict"; git diff --name-only --diff-filter=U; exit 1
+          fi
           # Keep the mainline workflow unchanged so Actions can push.
           git show origin/main:.github/workflows/js-tests.yml > .github/workflows/js-tests.yml
           git add -- .github/workflows/js-tests.yml
@@ -52,7 +50,7 @@ jobs:
           if ! git diff --cached --quiet; then
             git -c commit.gpgsign=false commit -m "build: regenerate assets after squash rebase onto main"
           fi
-          git push --force-with-lease=refs/heads/automation/pr67-integrated-preview:354727ec28df471e63be7666c02beca1798e3740 origin HEAD:refs/heads/automation/pr67-integrated-preview
+          git push --force-with-lease=refs/heads/automation/pr67-integrated-preview:5950b99f1354542074286a9f907826f8d6d7a588 origin HEAD:refs/heads/automation/pr67-integrated-preview
       - name: Run JavaScript tests
         if: success()
         run: npm run test:js

@@ -25,6 +25,17 @@ export const escapeTsvCell = (value) => {
   return /[\t\n\r"]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
 };
 
+/** For date/time and other raw-value cells, copy the authoritative
+ * value from the locally overlaid page. Match columns by ID because hidden
+ * columns are still present in page.data but absent from the visible grid.
+ */
+export const virtualRawCellCopyText = (page, rowOffset, columnId, allColumns) => {
+  const index=allColumns.findIndex(col=>col.columnId===columnId);
+  const row=page?.data?.[rowOffset];
+  if (index<0 || !Array.isArray(row) || index>=row.length) return null;
+  return escapeTsvCell(row[index] == null ? "" : row[index]);
+};
+
 /** RFC4180-style TSV including quoted tabs, newlines and escaped double quotes. */
 export const parseClipboardTsv = (text) => {
   const output=[];

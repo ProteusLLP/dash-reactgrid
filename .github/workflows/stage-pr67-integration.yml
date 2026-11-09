@@ -1,0 +1,58 @@
+name: Stage PR67 integrated preview
+on:
+  push:
+    branches:
+      - automation/pr67-rebase-20261109
+permissions:
+  contents: write
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: automation/pr67-rebase-20261109
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - name: Build isolated combined-source preview
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git reset --hard 354727ec28df471e63be7666c02beca1798e3740
+          git merge --no-commit --no-ff origin/main || true
+          echo "=== PREVIEW SOURCE OVERLAPS, requiring manual reconciliation ==="
+          while IFS= read -r path; do
+            case "$path" in
+              R/dashReactGrid.R|dash_reactgrid/DashReactGrid.py|dash_reactgrid/dash_reactgrid.min.js|dash_reactgrid/dash_reactgrid.min.js.map|dash_reactgrid/metadata.json|dash_reactgrid/package-info.json|man/dashReactGrid.Rd|src/jl/dashreactgrid.jl|deps/dash_reactgrid.min.js|deps/dash_reactgrid.min.js.map|inst/deps/dash_reactgrid.min.js|inst/deps/dash_reactgrid.min.js.map)
+                git checkout --theirs -- "$path" ;;
+              src/lib/ServerVirtualGrid.react.js|src/lib/__tests__/serverVirtual.test.mjs|src/lib/components/DashReactGrid.react.js|src/lib/serverVirtual.js|tests/test_component_contract.py)
+                echo "$path"; git checkout --ours -- "$path" ;;
+              *) echo "Unexpected conflict: $path" >&2; exit 1 ;;
+            esac
+            git add -- "$path"
+          done < <(git diff --name-only --diff-filter=U)
+          git -c commit.gpgsign=false commit -m "TEMP: integrate main prior to squash rebase"
+          git reset --soft origin/main
+          git -c commit.gpgsign=false commit -m "feat: combine virtual whole-column editing and mainline features"
+          python -m pip install --quiet "dash>=3,<5" "numpy>=1.23,<3"
+          npm ci --legacy-peer-deps
+          npm run build
+          git add -- R/dashReactGrid.R dash_reactgrid/DashReactGrid.py dash_reactgrid/dash_reactgrid.min.js dash_reactgrid/dash_reactgrid.min.js.map dash_reactgrid/metadata.json dash_reactgrid/package-info.json man/dashReactGrid.Rd src/jl/dashreactgrid.jl deps/dash_reactgrid.min.js deps/dash_reactgrid.min.js.map inst/deps/dash_reactgrid.min.js inst/deps/dash_reactgrid.min.js.map
+          if ! git diff --cached --quiet; then
+            git -c commit.gpgsign=false commit -m "build: regenerate assets after squash rebase onto main"
+          fi
+          git push --force-with-lease=refs/heads/automation/pr67-integrated-preview:354727ec28df471e63be7666c02beca1798e3740 origin HEAD:refs/heads/automation/pr67-integrated-preview
+      - name: Run JavaScript tests
+        if: success()
+        run: npm run test:js
+      - name: Run Python contract tests
+        if: success()
+        run: python -m unittest tests.test_component_contract tests.test_stateless_virtual_callbacks tests.test_virtual_grid_store -v

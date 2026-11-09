@@ -34,6 +34,8 @@ jobs:
           test "$(git rev-parse origin/feat/virtual-whole-column-fill)" = "$EXPECTED"
           git checkout -B pr67-verified-rebase origin/main
           git merge --squash -X theirs origin/feat/virtual-whole-column-fill
+          # Preserve the PR's existing CI workflow unchanged; this token lacks workflow permission.
+          git checkout origin/feat/virtual-whole-column-fill -- .github/workflows/js-tests.yml
           test -z "$(git ls-files --unmerged)"
           git diff --check
           python3 - <<'PY'

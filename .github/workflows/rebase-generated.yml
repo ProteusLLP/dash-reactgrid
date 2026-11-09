@@ -18,6 +18,7 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
+          persist-credentials: false
       - name: Validate branch and retain trusted rebase helper
         run: |
           set -euo pipefail
@@ -56,8 +57,14 @@ jobs:
       - name: Chrome large in-memory
         run: python tests/test_large_in_memory_browser.py
       - name: Back up original head and push successful rebase with lease
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           backup="refs/heads/backup/generated-rebase-${TARGET_BRANCH//\//-}-${OLD_SHA:0:8}"
-          git push origin "$OLD_SHA:$backup"
-          git push --force-with-lease="refs/heads/$TARGET_BRANCH:$OLD_SHA" origin "HEAD:refs/heads/$TARGET_BRANCH"
+          # Expose the write token only during the final, tested push.
+          auth="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" \
+            push origin "$OLD_SHA:$backup"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" \
+            push --force-with-lease="refs/heads/$TARGET_BRANCH:$OLD_SHA" origin "HEAD:refs/heads/$TARGET_BRANCH"

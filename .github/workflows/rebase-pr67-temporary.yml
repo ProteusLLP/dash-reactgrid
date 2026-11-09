@@ -1,0 +1,75 @@
+name: Temporary PR 67 integration verification
+
+on:
+  push:
+    branches:
+      - automation/rebase-pr67-20261109
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - name: Prepare combined commit against main
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED=a4fdd4a73cc03b55d34e6c8a25ee293f0fdb8b07
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main feat/virtual-whole-column-fill
+          test "$(git rev-parse origin/main)" = "82d926cbc721021976bd1e0428833b85ccb275e1"
+          test "$(git rev-parse origin/feat/virtual-whole-column-fill)" = "$EXPECTED"
+          git checkout -B pr67-verified-rebase origin/main
+          git merge --squash -X theirs origin/feat/virtual-whole-column-fill
+          test -z "$(git ls-files --unmerged)"
+          git diff --check
+          # Refuse to discard either branch's key functionality.
+          grep -q 'FindBar' src/lib/ServerVirtualGrid.react.js
+          grep -q 'virtualFindRequest' src/lib/ServerVirtualGrid.react.js
+          grep -q 'virtualClipboardUrl' src/lib/ServerVirtualGrid.react.js
+          grep -q 'virtualClipboard' src/lib/ServerVirtualGrid.react.js
+          grep -q 'virtualSpacerHeights' src/lib/serverVirtual.js
+          grep -q 'scrollTopForVirtualRow' src/lib/serverVirtual.js
+          echo "Integrated source and primary invariants checked."
+      - name: Install dependencies
+        run: |
+          npm ci --legacy-peer-deps
+          python3 -m pip install "dash>=3,<5" "selenium>=4,<5" "numpy>=1.23,<3" "pandas>=2,<3"
+      - name: Regenerate frontend and backend assets
+        run: npm run build
+      - name: Check generated assets and JavaScript tests
+        run: |
+          git diff --check
+          npm run test:js
+      - name: Run Python contract and stateless backend tests
+        run: |
+          python3 -m unittest tests.test_component_contract tests.test_stateless_virtual_callbacks tests.test_virtual_grid_store tests.test_dataframe -v
+      - name: Run browser regression suites
+        run: |
+          python3 tests/test_feature_matrix_browser.py
+          python3 tests/test_server_virtual_browser.py
+          python3 tests/test_virtual_operations_browser.py
+          python3 tests/test_large_in_memory_browser.py
+          python3 tests/test_large_virtual_clipboard_browser.py
+      - name: Commit and update PR 67 only after all checks pass
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED=a4fdd4a73cc03b55d34e6c8a25ee293f0fdb8b07
+          git add -A
+          git diff --cached --check
+          git commit -m "feat: scalable virtual grid editing and clipboard streaming (rebased onto main)"
+          git push origin HEAD:refs/heads/feat/virtual-whole-column-fill --force-with-lease=refs/heads/feat/virtual-whole-column-fill:$EXPECTED

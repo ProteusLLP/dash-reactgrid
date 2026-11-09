@@ -259,7 +259,9 @@ class VirtualGridStore(SparseGridStore):
                     if not internal and self._cell_edit_rejection(
                             decoded_id,col,original) is not None:
                         continue
-                    if data[index]==value:
+                    # JSON distinguishes booleans from numbers: Python's
+                    # True == 1 would otherwise suppress a required write.
+                    if canonical(data[index])==canonical(value):
                         continue
                     row_ids[col].append(decoded_id)
                     previous[col].append([data[index]])
@@ -323,12 +325,14 @@ class VirtualGridStore(SparseGridStore):
             # of this sequence is saved as a new receipt.
             actions=[]
             for child in inverse:
-                actions.insert(0,self._operation(db,child,stream,current_seq,internal=True))
+                actions.append(self._operation(db,child,stream,current_seq,internal=True))
+            actions.reverse()
             return {"kind":"sequence","edits":actions}
         if kind=="sequence":
             actions=[]
             for child in op["edits"]:
-                actions.insert(0,self._operation(db,child,stream,current_seq,internal=internal))
+                actions.append(self._operation(db,child,stream,current_seq,internal=internal))
+            actions.reverse()
             return {"kind":"sequence","edits":actions}
         raise ValueError("Unsupported edit kind: "+str(kind))
 

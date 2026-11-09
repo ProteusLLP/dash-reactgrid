@@ -26,7 +26,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          EXPECTED=a4fdd4a73cc03b55d34e6c8a25ee293f0fdb8b07
+          EXPECTED=47606206a36bc4352104e47249a1561fd0096983
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git fetch origin main feat/virtual-whole-column-fill
@@ -46,6 +46,13 @@ jobs:
           # The main branch has a standalone import and PR 67 adds the same
           # symbol to the grouped virtualOperations import.
           s = s.replace('import { escapeTsvCell } from "./virtualOperations";\n', '')
+          # The merged rows/Find code uses three main-branch helpers.
+          s = s.replace(
+              'import { compileGridColumns, visibleGridColumns, resizeGridColumns } from "./gridRows";',
+              'import { compileGridColumns, visibleGridColumns, resizeGridColumns, headerDepth } from "./gridRows";')
+          s = s.replace(
+              'virtualRowWindow, scrollTopForVirtualRow, viewportKey, VIRTUAL_LOADING_PREFIX,',
+              'virtualRowWindow, scrollTopForVirtualRow, virtualScrollTopForRow, virtualScrollTopForRenderedRow, viewportKey, VIRTUAL_LOADING_PREFIX,')
           main_grid = subprocess.check_output(
               ["git", "show", "origin/main:src/lib/ServerVirtualGrid.react.js"], text=True)
           # Preserve FindBar's highlighting and PR 67's viewport sizing.
@@ -133,7 +140,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          EXPECTED=a4fdd4a73cc03b55d34e6c8a25ee293f0fdb8b07
+          EXPECTED=47606206a36bc4352104e47249a1561fd0096983
           git add -A
           git diff --cached --check
           git commit -m "feat: scalable virtual grid editing and clipboard streaming (rebased onto main)"

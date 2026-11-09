@@ -415,7 +415,15 @@ server-virtualised grid, because it would defeat virtualization.
 The SQLite files under `tests/fixtures/` are **test-only adapters** used
 to exercise lost acknowledgements, idempotency, inverse operations, and
 cross-window editing. They are not installed dependencies, required runtime
-components, or the recommended application architecture.
+components, or the recommended application architecture. The fixture applies
+bulk fills in 250-row windows, decoding and encoding each JSON row within a
+single SQLite write transaction. Although the command protocol imposes no
+fixed row-count limit, very large fixture fills (for example 100,000+ rows)
+can hold SQLite's writer lock for a long time. Production providers should
+validate request sizes, use efficient set-based or batched updates suited to
+their backing store, and preserve atomic edit acknowledgement and undo
+semantics. Benchmark and set application-specific resource/time limits rather
+than using this test fixture as a high-volume production storage engine.
 
 ## Editing with stable row ids
 

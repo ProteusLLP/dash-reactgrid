@@ -45,6 +45,22 @@ export const virtualRowWindow = (scrollTop, total, rowHeight = DEFAULT_VIRTUAL_R
   return { start, end, first, visible, size, totalHeight };
 };
 
+/** Scroll position that brings a logical row into the virtual viewport.
+ * The mapping mirrors virtualRowWindow's compressed physical scrollbar.
+ */
+export const scrollTopForVirtualRow = (row, total, rowHeight, viewportHeight, alignToTop=false) => {
+  if (total <= 0 || row < 0 || row >= total) return 0;
+  const visible = Math.ceil(Math.max(1, viewportHeight) / rowHeight) + 2;
+  const pageRows = Math.max(1, Math.floor((viewportHeight-rowHeight) / rowHeight));
+  const first = alignToTop ? row : Math.max(0, row-pageRows+1);
+  const maxFirst = Math.max(0, total-visible);
+  const maxScroll = Math.max(0, Math.min(total*rowHeight,
+    MAX_BROWSER_SCROLL_PX)-viewportHeight);
+  // Round up to avoid floor() leaving the endpoint just beyond the view.
+  return maxFirst ? Math.min(maxScroll,
+    Math.ceil(Math.min(first,maxFirst) / maxFirst * maxScroll)) : 0;
+};
+
 export const viewportKey = (datasetId, start, end) =>
   JSON.stringify([datasetId, start, end]);
 

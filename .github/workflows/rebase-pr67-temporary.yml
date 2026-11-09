@@ -91,6 +91,13 @@ jobs:
           s = p.read_text()
           if "virtualScrollTopForRow," not in s:
               s = s.replace("scrollTopForVirtualRow,", "scrollTopForVirtualRow, virtualScrollTopForRow, virtualScrollTopForRenderedRow, virtualSpacerHeights,")
+          p = Path("tests/test_component_contract.py")
+          s = p.read_text()
+          s = s.replace('params[-3:-1],["virtualFindRequest","virtualFindData"]',
+                        'params[-4:-1],["virtualFindRequest","virtualFindData","virtualClipboardUrl"]')
+          s = s.replace('r_args[-2:],["virtualFindRequest","virtualFindData"]',
+                        'r_args[-3:],["virtualFindRequest","virtualFindData","virtualClipboardUrl"]')
+          p.write_text(s)
           p.write_text(s)
           PY
           # Refuse to discard either branch's key functionality.

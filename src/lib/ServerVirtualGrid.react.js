@@ -9,7 +9,9 @@ import { compileGridColumns, visibleGridColumns, resizeGridColumns, headerDepth 
 import { decodeGridData, isPackedNumericData } from "./numericData";
 import {
   addViewportCache, buildVirtualRows, loadedRow, validViewportResponse,
-  virtualRowWindow, scrollTopForVirtualRow, virtualScrollTopForRow, virtualScrollTopForRenderedRow, viewportKey, VIRTUAL_LOADING_PREFIX,
+  virtualRowWindow, scrollTopForVirtualRow, virtualScrollTopForRow,
+  virtualScrollTopForRenderedRow, virtualSpacerHeights, viewportKey,
+  VIRTUAL_LOADING_PREFIX,
   VIRTUAL_SPACER_TOP, VIRTUAL_SPACER_BOTTOM,
 } from "./serverVirtual";
 import {
@@ -1120,6 +1122,17 @@ export const ServerVirtualGrid = (props) => {
   };
 
   const handleKey = (e) => {
+    // Handle Find before ReactGrid's editor shortcut handling. FindBar is
+    // outside the scroll viewport, so its own text input remains independent.
+    if (e.target.closest?.(".drg-find")) return;
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey &&
+        e.key.toLowerCase() === "f") {
+      e.preventDefault();
+      e.stopPropagation();
+      setFindFocusToken((token) => token + 1);
+      setFindOpen(true);
+      return;
+    }
     // The click marker belongs only to its pointer interaction. Clear it
     // before ReactGrid's native keyboard navigation fires selectionChanged,
     // otherwise Shift+Arrow can be mistaken for the earlier single click.
@@ -1264,6 +1277,17 @@ export const ServerVirtualGrid = (props) => {
   const selectedCount = globalSelection ? globalSelection.end - globalSelection.start : 0;
 
   return <div className="drg-virtual">
+    {findOpen && <FindBar query={findQuery} onQuery={updateFindQuery}
+      onFind={runFind} focusToken={findFocusToken}
+      onClose={() => {
+        findPending.current = null;
+        findFocusPending.current = null;
+        setFindBusy(false);
+        setFindOpen(false);
+        viewportRef.current?.querySelector("input.rg-hidden-element")
+          ?.focus({preventScroll:true});
+      }}
+      busy={findBusy} status={findStatus}/>}
     <div className="drg-virtual-selection-status" role="status" aria-live="polite">
       <span className="drg-selection-count">
         {globalSelection ? selectedCount.toLocaleString() + " rows selected" :
@@ -1278,10 +1302,24 @@ export const ServerVirtualGrid = (props) => {
       </div>}
     <div className="drg-virtual-viewport" ref={viewportRef}
       tabIndex={0}
-      onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+      onScroll={(e) => {
+        const top = e.currentTarget.scrollTop;
+        if (findWindowPin) {
+          const {topHeight} = virtualSpacerHeights(virtualRowCount,
+            virtualRowHeight, findWindowPin.range);
+          const end = topHeight +
+            (findWindowPin.range.end - findWindowPin.range.start)*virtualRowHeight;
+          // Preserve the loaded Find result while it remains in the viewport.
+          if (top + virtualViewportHeight <= topHeight + 1 || top >= end - 1)
+            setFindWindowPin(null);
+        }
+        setScrollTop(top);
+      }}
       onCopy={handleCopy} onPasteCapture={handlePaste}
       onKeyDownCapture={handleKey}
       onPointerDownCapture={(e) => {
+        findFocusPending.current = null;
+        findSelection.current = null;
         columnHeaderPointer.current=Boolean(props.enableColumnSelection !== false &&
           e.target.closest?.(".rg-header-cell"));
         pointerGesture.current=(!e.shiftKey && !columnHeaderPointer.current &&

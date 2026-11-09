@@ -89,15 +89,23 @@ jobs:
           p.write_text(s)
           p = Path("src/lib/__tests__/serverVirtual.test.mjs")
           s = p.read_text()
-          if "virtualScrollTopForRow," not in s:
-              s = s.replace("scrollTopForVirtualRow,", "scrollTopForVirtualRow, virtualScrollTopForRow, virtualScrollTopForRenderedRow, virtualSpacerHeights,")
+          main_tests = subprocess.check_output(
+              ["git", "show", "origin/main:src/lib/__tests__/serverVirtual.test.mjs"], text=True)
+          start = main_tests.index("import {\\n")
+          stop = main_tests.index('} from "../serverVirtual.js";', start) + len('} from "../serverVirtual.js";')
+          combined_import = main_tests[start:stop].replace(
+              "virtualRowWindow, virtualScrollTopForRow",
+              "virtualRowWindow, scrollTopForVirtualRow, virtualScrollTopForRow")
+          start = s.index("import {\\n")
+          stop = s.index('} from "../serverVirtual.js";', start) + len('} from "../serverVirtual.js";')
+          s = s[:start] + combined_import + s[stop:]
+          p.write_text(s)
           p = Path("tests/test_component_contract.py")
           s = p.read_text()
           s = s.replace('params[-3:-1],["virtualFindRequest","virtualFindData"]',
                         'params[-4:-1],["virtualFindRequest","virtualFindData","virtualClipboardUrl"]')
           s = s.replace('r_args[-2:],["virtualFindRequest","virtualFindData"]',
                         'r_args[-3:],["virtualFindRequest","virtualFindData","virtualClipboardUrl"]')
-          p.write_text(s)
           p.write_text(s)
           PY
           # Refuse to discard either branch's key functionality.

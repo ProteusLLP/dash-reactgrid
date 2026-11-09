@@ -36,6 +36,42 @@ jobs:
           git merge --squash -X theirs origin/feat/virtual-whole-column-fill
           test -z "$(git ls-files --unmerged)"
           git diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          p = Path("src/lib/ServerVirtualGrid.react.js")
+          s = p.read_text()
+          # The main branch has a standalone import and PR 67 adds the same
+          # symbol to the grouped virtualOperations import.
+          s = s.replace('import { escapeTsvCell } from "./virtualOperations";\n', '')
+          p.write_text(s)
+          p = Path("src/lib/serverVirtual.js")
+          s = p.read_text()
+          original = subprocess.check_output(
+              ["git", "show", "origin/main:src/lib/serverVirtual.js"], text=True)
+          begin = original.index("/** Map an absolute row to the compressed browser")
+          end = original.index("export const viewportKey", begin)
+          if "export const virtualSpacerHeights" not in s:
+              s = s.replace("export const viewportKey", original[begin:end] + "export const viewportKey", 1)
+          if "headerDepth" not in s.split(";", 2)[1]:
+              s = s.replace('import { buildGridRows } from "./gridRows.js";',
+                            'import { buildGridRows, headerDepth } from "./gridRows.js";')
+          if "const rows = [built.rows[0]];" in s:
+              s = s.replace("const rows = [built.rows[0]];",
+                            "const headerCount = headerDepth(columns);\n  const rows = built.rows.slice(0, headerCount);")
+              s = s.replace("const rendered = built.rows[i+1];",
+                            "const rendered = built.rows[i+headerCount];")
+          # Preserve the find cursor's pinned priority row in the PR's
+          # compressed-scroll window calculation.
+          if "priorityRow = null" not in s:
+              s = s.replace("windowSize = DEFAULT_VIRTUAL_WINDOW_SIZE, viewportHeight = 400) => {",
+                            "windowSize = DEFAULT_VIRTUAL_WINDOW_SIZE, viewportHeight = 400, priorityRow = null) => {")
+              needle = "  const end = Math.min(total, start + size);"
+              insert = "  if (Number.isSafeInteger(priorityRow) && priorityRow >= 0 && priorityRow < total)\n    start = Math.max(0, Math.min(maxStart,\n      Math.max(Math.min(start, priorityRow), priorityRow-size+1)));\n"
+              assert needle in s
+              s = s.replace(needle, insert + needle, 1)
+          p.write_text(s)
+          PY
           # Refuse to discard either branch's key functionality.
           for item in 'FindBar|src/lib/ServerVirtualGrid.react.js' 'virtualFindRequest|src/lib/ServerVirtualGrid.react.js' 'virtualClipboardUrl|src/lib/ServerVirtualGrid.react.js' 'virtualClipboard|src/lib/ServerVirtualGrid.react.js' 'virtualSpacerHeights|src/lib/serverVirtual.js' 'scrollTopForVirtualRow|src/lib/serverVirtual.js'; do
             pat="${item%%|*}"; file="${item#*|}"

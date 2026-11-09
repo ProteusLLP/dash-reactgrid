@@ -1190,7 +1190,7 @@ export const ServerVirtualGrid = (props) => {
             setFindWindowPin(null);
         }
         setScrollTop(top);
-      }
+      }}
       onCopy={handleCopy} onPasteCapture={handlePaste}
       onKeyDownCapture={handleKey}
       onPointerDownCapture={(e) => {

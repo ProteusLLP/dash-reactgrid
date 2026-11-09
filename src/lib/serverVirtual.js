@@ -116,12 +116,10 @@ export const buildVirtualRows = ({
   });
   // Keep loaded rows at full, readable height. Only the offscreen spacer
   // distances are compressed when the logical table exceeds browser limits.
-  // Mapping the window start over the available physical spacer distance
-  // also ensures the final rows line up with the bottom of the scrollbar.
+  // Align the logical visible row with the physical scroll position.
   const windowHeight = rangeSize * rowHeight;
   const physicalHeight = Math.min(rowCount * rowHeight, MAX_BROWSER_SCROLL_PX);
   const spacerHeight = Math.max(0, physicalHeight - windowHeight);
-  const maxStart = Math.max(0, rowCount - rangeSize);
   // The physical scrollbar can be compressed, while loaded cells remain
   // rowHeight tall. Align the row denoted by range.first with its scroll
   // position; scaling the top spacer by range.start alone makes intermediate

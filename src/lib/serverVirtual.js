@@ -40,6 +40,11 @@ export const virtualRowWindow = (scrollTop, total, rowHeight = DEFAULT_VIRTUAL_R
     : Math.min(maxStart, Math.floor(idealStart / step) * step);
   // Never allow the selected visual range to fall into a compressed spacer.
   start = Math.max(start, Math.max(0, first + visible - size));
+  // On compressed scrollbars a coarse snapped window can put the first
+  // logical row below the viewport even when the top spacer reaches zero.
+  // Shift its start forward just enough to fit the full-height loaded rows.
+  start = Math.max(start, Math.min(maxStart,
+    Math.max(0, first - Math.floor(position / rowHeight))));
   start = Math.min(start, Math.max(0, first));
   const end = Math.min(total, start + size);
   return { start, end, first, visible, size, totalHeight };
@@ -91,7 +96,7 @@ export const addViewportCache = (cache, key, response, limit = 4) => {
 
 export const buildVirtualRows = ({
   columns, descriptors, allColumns, rowCount, range, page, rowHeight,
-  readOnly, locked, styleHeader, openDropdown, selection,
+  viewportHeight = 400, readOnly, locked, styleHeader, openDropdown, selection,
 }) => {
   const spacer = (id, height) => ({
     rowId: id,
@@ -117,9 +122,16 @@ export const buildVirtualRows = ({
   const physicalHeight = Math.min(rowCount * rowHeight, MAX_BROWSER_SCROLL_PX);
   const spacerHeight = Math.max(0, physicalHeight - windowHeight);
   const maxStart = Math.max(0, rowCount - rangeSize);
-  const topHeight = maxStart
-    ? Math.min(spacerHeight, Math.max(0, range.start / maxStart * spacerHeight))
-    : 0;
+  // The physical scrollbar can be compressed, while loaded cells remain
+  // rowHeight tall. Align the row denoted by range.first with its scroll
+  // position; scaling the top spacer by range.start alone makes intermediate
+  // rows (e.g. row 1000 of 2m) unreachable in the visible viewport.
+  const maxFirst=Math.max(0,rowCount-range.visible);
+  const maxScroll=Math.max(0,physicalHeight-viewportHeight);
+  const scrollAtFirst=maxFirst ? range.first/maxFirst*maxScroll : 0;
+  const firstOffset=(range.first-range.start)*rowHeight;
+  const topHeight=Math.max(0,Math.min(spacerHeight,
+    scrollAtFirst-firstOffset));
   const rows = [built.rows[0]];
   if (topHeight > 0) rows.push(spacer(VIRTUAL_SPACER_TOP, topHeight));
   for (let i=0;i<rangeSize;i++) {

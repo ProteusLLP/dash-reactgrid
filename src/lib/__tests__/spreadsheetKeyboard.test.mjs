@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   sheetEdge, keyboardRectangle, keyboardArea, nativeRectangle,
   publicKeyboardRange, keyboardHighlights, fillDownChanges,
-  multiEditChanges, keyboardClipboardText, MAX_KEYBOARD_EDIT_CELLS,
+  multiEditChanges, keyboardClipboardText, MAX_KEYBOARD_COPY_CELLS,
 } from "../spreadsheetKeyboard.js";
 
 const cols=[
@@ -64,9 +64,6 @@ test("Ctrl+D copies top row per column, skipping protected destinations",()=>{
   assert.deepEqual(fillDownChanges(only,data,ids,cols,cols,allow),
     [{rowId:"b",columnId:"label",value:"A"}]);
   assert.deepEqual(fillDownChanges({...only,start:0,end:1},data,ids,cols,cols,allow),[]);
-  assert.throws(()=>fillDownChanges(
-    {start:0,end:50000,columnStart:0,columnEnd:2},
-    data,ids,cols,cols,allow),/20,000 cells/);
 });
 
 test("Shift+Enter broadcasts edited values with target type and locked cell checks",()=>{
@@ -89,12 +86,38 @@ test("Shift+Enter broadcasts edited values with target type and locked cell chec
     cols,allow,{number:{parse:Number}}),null);
 });
 
+
+test("Ctrl+D edits more than 20,000 in-memory cells, preserving locks",()=>{
+  const size=25050;
+  const largeIds=Array.from({length:size},(_,i)=>"large-"+i);
+  const largeData=Array.from({length:size},(_,i)=>["source"+i,i]);
+  const rect={start:0,end:size,columnStart:0,columnEnd:2};
+  const edits=fillDownChanges(rect,largeData,largeIds,cols,cols,
+    (rowId,col)=>!(rowId==="large-25049" && col.columnId==="count"));
+  assert.equal(edits.length,2*(size-1)-1);
+  assert.deepEqual(edits[0],{rowId:"large-1",columnId:"label",value:"source0"});
+  assert.deepEqual(edits.at(-1),{rowId:"large-25049",columnId:"label",value:"source0"});
+});
+
+test("Shift+Enter applies more than 20,000 cells with type conversion",()=>{
+  const size=24050;
+  const largeCols=cols.slice(0,2);
+  const rect={start:0,end:size,columnStart:0,columnEnd:2};
+  const edits=multiEditChanges(rect,{newCell:{type:"text",text:"12.5"}},cols[0],
+    i=>({rowId:"r"+i,values:["source"+i,i]}),
+    largeCols,()=>true,
+    {number:{parse:Number},percent:{parse:Number}});
+  assert.equal(edits.length,size*2);
+  assert.deepEqual(edits[0],{rowId:"r0",columnId:"label",value:"12.5"});
+  assert.deepEqual(edits.at(-1),{rowId:"r24049",columnId:"count",value:12.5});
+});
+
 test("clipboard of Ctrl+Shift range uses original data and Excel TSV",()=>{
   assert.equal(keyboardClipboardText(
     {start:0,end:2,columnStart:0,columnEnd:2},
     [["A\tB",10],["C",20]],cols,cols),"\"A\tB\"\t10\nC\t20");
   assert.equal(keyboardClipboardText(
-    {start:0,end:MAX_KEYBOARD_EDIT_CELLS+1,columnStart:0,columnEnd:1},
+    {start:0,end:MAX_KEYBOARD_COPY_CELLS+1,columnStart:0,columnEnd:1},
     data,cols,cols),null);
   const huge=publicKeyboardRange(
     {start:0,end:50000,columnStart:0,columnEnd:1},

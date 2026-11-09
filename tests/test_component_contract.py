@@ -91,12 +91,8 @@ class ComponentPublicAPI(unittest.TestCase):
              "rowIds": ["r0"]},
             {"virtualRowCount": 100_000, "virtualDatasetId": DATASET,
              "virtualWindowSize": 120, "virtualViewportHeight": 420,
-             "transmitSparseEdits": True, "editDatasetId": DATASET,
-             "virtualFindRequest": {"datasetId": DATASET, "requestId": 3,
-                 "query": "Tail", "afterRow": -1, "afterColumn": -1,
-                 "direction": "forward", "columnIds": ["text"]},
-             "virtualFindData": {"datasetId": DATASET, "requestId": 3,
-                 "query": "Tail", "rowIndex": 2, "columnId": "text"}},
+             "virtualClipboardUrl": "/clipboard.tsv",
+             "transmitSparseEdits": True, "editDatasetId": DATASET},
         ]:
             with self.subTest(config=config):
                 grid = DashReactGrid(

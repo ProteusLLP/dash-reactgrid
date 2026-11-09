@@ -258,12 +258,26 @@ the loaded viewport is insufficient.
 
 **Global selection:** Use Shift-click while scrolling to extend a selection
 or the From row / To row inputs to select a range by absolute row index.
-Ctrl+A selects all rows. The browser holds only the four boundary indices,
-never an array of every selected row. `virtualSelection` publishes these
-indices to Dash. Small ranges are prepared with `virtualRangeRequest`
-and `virtualRangeData` and can be copied in TSV form. For selections
-larger than 1,000 rows or 1 MB, provide `virtualExportUrl` so users can
-download a streamed CSV export. Clipboard pastes of up to 1,000 rows and
+Ctrl+A selects all rows and visible columns, including unloaded rows. The browser
+holds only four boundary indices, never an array of every selected row.
+`virtualSelection` publishes these indices to Dash.
+
+For Excel-compatible **Ctrl+A then Ctrl+C** on large server-virtualized
+grids, provide `virtualClipboardUrl` pointing to an authenticated same-origin
+endpoint that streams headerless TSV. Pressing Ctrl+C or clicking Copy selection
+starts the browser clipboard write during the user gesture, and its
+`ClipboardItem` resolves the response asynchronously. The browser does not
+load grid rows into ReactGrid or send the selection through Dash. There is no
+arbitrary row/cell-count cap, but actual clipboard capacity depends on the
+browser, operating system and available memory. A separate `virtualExportUrl`
+can offer a CSV download if clipboard permissions or capacity prevent copying.
+Applications must authorise access to the entire requested range.
+Chromium-based browsers with Async Clipboard API and promised ClipboardItem
+support provide the streaming path; on unsupported browsers use CSV export.
+
+When no `virtualClipboardUrl` is configured, small ranges can still be copied
+using `virtualRangeRequest`/`virtualRangeData`, with the existing
+1,000-row/1 MB preparation limits. Clipboard **pastes** of up to 1,000 rows and
 20,000 cells are applied by the server, including cells in unloaded rows.
 Insertion and deletion operate at absolute positions, and undo/redo use
 transactional inverse receipts rather than loading the whole table.
@@ -382,6 +396,44 @@ For large selections, provide `virtualExportUrl` pointing to your own
 authenticated CSV endpoint. `csv_chunks()` is a pure chunk generator that
 can be passed to a streaming HTTP response. No full export is materialised.
 
+To enable direct Ctrl+A Ctrl+C for large selections, also supply
+`virtualClipboardUrl="/clipboard.tsv"` on the grid and expose a GET endpoint
+using the same row provider:
+
+```python
+from itertools import chain
+from flask import Response, abort, request, stream_with_context
+from dash_reactgrid.stateless_virtual import tsv_chunks
+
+@app.server.route("/clipboard.tsv")
+def clipboard_tsv():
+    # Authenticate the caller and authorise access to this dataset.
+    if not authorised_for_dataset(request, DATASET):
+        abort(403)
+    if request.args.get("datasetId") != DATASET:
+        abort(403)
+    try:
+        stream = tsv_chunks(
+            start=int(request.args["start"]), end=int(request.args["end"]),
+            column_start=int(request.args["columnStart"]),
+            column_end=int(request.args["columnEnd"]),
+            column_ids=json.loads(request.args["columnIds"]),
+            row_count=count_rows(), columns=columns, fetch_rows=read_rows,
+        )
+        first = next(stream)   # reject invalid requests before HTTP 200
+        return Response(stream_with_context(chain([first], stream)),
+                        mimetype="text/plain",
+                        headers={"Cache-Control":"no-store"})
+    except (ValueError, KeyError, StopIteration):
+        abort(400)
+```
+
+Here `authorised_for_dataset` is an application-defined authorisation
+function and `json` is the standard Python module. The helper fetches
+small row windows and outputs tab-separated text with correct quoting of
+embedded tabs, line breaks and quotation marks; it omits the column headers
+for direct pasting into Excel. The response should not be cached.
+
 Clipboard and export requests include `columnIds` in the current visible
 column order. Resolve these against the original `columns` array to avoid
 including hidden columns or shifting values. Pass the decoded
@@ -460,7 +512,15 @@ server-virtualised grid, because it would defeat virtualization.
 The SQLite files under `tests/fixtures/` are **test-only adapters** used
 to exercise lost acknowledgements, idempotency, inverse operations, and
 cross-window editing. They are not installed dependencies, required runtime
-components, or the recommended application architecture.
+components, or the recommended application architecture. The fixture applies
+bulk fills in 250-row windows, decoding and encoding each JSON row within a
+single SQLite write transaction. Although the command protocol imposes no
+fixed row-count limit, very large fixture fills (for example 100,000+ rows)
+can hold SQLite's writer lock for a long time. Production providers should
+validate request sizes, use efficient set-based or batched updates suited to
+their backing store, and preserve atomic edit acknowledgement and undo
+semantics. Benchmark and set application-specific resource/time limits rather
+than using this test fixture as a high-volume production storage engine.
 
 ## Editing with stable row ids
 
@@ -509,11 +569,27 @@ Other properties:
 - To enter one value into several selected cells, select the cells, type in the
   active cell and press Shift+Enter. Target columns use their own value types;
   a single-cell Shift+Enter retains ordinary upward navigation.
-- Keyboard fill and multi-cell edits are limited to 20,000 cells per operation;
-  server-virtualized operations also have a 1,000-row limit. When the source
-  row of an offscreen server-virtualized fill is not loaded, prepare the
-  selection for copying before using Ctrl+D. Host applications must enforce
-  row-level edit permissions when accepting sparse commands.
+- Ordinary in-memory grids allow Ctrl+D, Shift+Enter, and Delete/Backspace
+  across any selected range, including more than 20,000 cells. Clipboard copy
+  retains a separate size safeguard. In server-virtualized mode, Ctrl+D and Shift+Enter
+  use compact, unbounded row-range commands, so an entire selected column can
+  be filled without fetching offscreen rows or sending the values to Dash.
+  Select a column header or use Ctrl+Space from a focused cell to select the
+  full logical column, including unloaded rows. Other clipboard/edit limits
+  still apply.
+- Virtual Shift+Enter submits `{"kind":"fillRange","start":0,"end":100000,
+  "columnIds":["rate"],"values":[0.045]}`. Virtual Ctrl+D submits
+  `{"kind":"fillDown","sourceRow":0,"start":1,"end":100000,
+  "columnIds":["rate"]}`, with the source row resolved by the server.
+  These commands use absolute zero-based row boundaries, with an exclusive
+  `end`. They are delivered through the existing durable `edits`/`editAck`
+  protocol and can be undone as one logical operation.
+- The Dash application must implement these range commands on its underlying
+  dataset, validate dataset identity and edit permissions per destination,
+  handle the operation atomically, and return an ACK only after persistence.
+  Locked and conditionally non-editable destinations should be preserved.
+  The optional SQLite test fixture implements this contract; the grid does
+  not require SQLite or any server-side database.
 - Ctrl+Z and Ctrl+Y undo and redo cell edits.
 
 The data model (`src/lib/model.js`) has no React in it; test it with

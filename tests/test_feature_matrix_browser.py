@@ -714,6 +714,64 @@ class FeatureMatrixChromeTests(unittest.TestCase):
             By.CSS_SELECTOR, "#review-virtual .rg-virtual-selected"
         )) >= 2)
 
+    def test_server_virtual_shift_arrow_after_click_keeps_full_selection(self):
+        # ReactGrid generates the native range after our keydown handler.
+        # A finished pointer click must no longer collapse that selection.
+        self.cell("review-virtual", "label", 0).click()
+        self.chord(Keys.SHIFT, Keys.ARROW_DOWN)
+        self.chord(Keys.CONTROL, "d")
+
+        def emitted():
+            try:
+                batch=json.loads(self.driver.find_element(
+                    By.ID, "review-virtual-edits").text)
+                return batch.get("edits")==[{
+                    "kind":"fillDown","sourceRow":0,"start":1,"end":2,
+                    "columnIds":["label"],
+                }]
+            except (ValueError,AttributeError):
+                return False
+
+        try:
+            self.waiter.until(lambda _:emitted())
+        except Exception:
+            print("Shift+Arrow Ctrl+D emitted:",
+                  self.driver.find_element(By.ID,"review-virtual-edits").text)
+            print("Native selected:",
+                  len(self.driver.find_elements(
+                    By.CSS_SELECTOR,"#review-virtual .rg-selected")))
+            print("Virtual highlighted:",
+                  len(self.driver.find_elements(
+                    By.CSS_SELECTOR,"#review-virtual .rg-virtual-selected")))
+            print("Focused:",
+                  self.driver.execute_script("""
+                    const e=document.activeElement;
+                    return [e?.tagName,e?.className,e?.value];
+                  """))
+            print("Toolbar:",self.driver.find_element(
+                By.CSS_SELECTOR,"#review-virtual .drg-virtual-toolbar").text)
+            print("Grid alerts:",[e.text for e in self.driver.find_elements(
+                By.CSS_SELECTOR,"#review-virtual [role=alert]")])
+            raise
+
+    def test_virtual_ctrl_right_then_ctrl_space_targets_new_focused_column(self):
+        self.cell("review-virtual", "label", 0).click()
+        self.chord(Keys.CONTROL,Keys.ARROW_RIGHT)
+        self.chord(Keys.CONTROL,Keys.SPACE)
+        self.chord(Keys.CONTROL,"d")
+
+        def emitted():
+            try:
+                batch=json.loads(self.driver.find_element(
+                    By.ID,"review-virtual-edits").text)
+                return batch.get("edits")==[{
+                    "kind":"fillDown","sourceRow":0,"start":1,"end":2,
+                    "columnIds":["clock"],
+                }]
+            except (ValueError,AttributeError):
+                return False
+        self.waiter.until(lambda _:emitted())
+
     def test_server_virtual_fill_down_uses_sparse_range_command(self):
         self.cell("review-virtual", "label", 0).click()
         self.chord(Keys.CONTROL, Keys.SHIFT, Keys.ARROW_DOWN)
@@ -724,16 +782,69 @@ class FeatureMatrixChromeTests(unittest.TestCase):
                 batch = json.loads(self.driver.find_element(
                     By.ID, "review-virtual-edits").text)
                 return batch.get("edits") == [{
-                    "kind": "paste", "start": 1,
+                    "kind": "fillDown", "sourceRow": 0, "start": 1, "end": 2,
                     "columnIds": ["label"],
-                    "rows": [["Existing"]],
                 }]
             except (ValueError, AttributeError):
                 return False
 
         self.waiter.until(lambda _: emitted())
 
-    def test_server_virtual_shift_enter_submits_multi_cell_paste(self):
+    def test_server_virtual_fill_down_uses_current_cell_after_range_selection(self):
+        self.cell("review-virtual", "label", 0).click()
+        self.chord(Keys.CONTROL, Keys.SHIFT, Keys.ARROW_DOWN)
+        # A subsequent ordinary click must take precedence over the old
+        # two-row label selection when Ctrl+D is pressed.
+        self.cell("review-virtual", "day", 1).click()
+        self.chord(Keys.CONTROL, "d")
+
+        def emitted():
+            try:
+                batch=json.loads(self.driver.find_element(
+                    By.ID, "review-virtual-edits").text)
+                return batch.get("edits")==[{
+                    "kind":"fillDown","sourceRow":0,"start":1,"end":2,
+                    "columnIds":["day"],
+                }]
+            except (ValueError,AttributeError):
+                return False
+
+        self.waiter.until(lambda _:emitted())
+
+    def test_server_virtual_shift_enter_uses_focused_cell_after_range_selection(self):
+        self.cell("review-virtual", "label", 0).click()
+        self.chord(Keys.CONTROL, Keys.SHIFT, Keys.ARROW_DOWN)
+        self.cell("review-virtual", "label", 1).click()
+        self.type_in_focused("Only")
+        self.chord(Keys.SHIFT, Keys.ENTER)
+
+        def emitted():
+            try:
+                batch=json.loads(self.driver.find_element(
+                    By.ID, "review-virtual-edits").text)
+                return batch.get("edits")==[{
+                    "kind":"cell","rowId":"vr-1",
+                    "columnId":"label","value":"Only",
+                }]
+            except (ValueError,AttributeError):
+                return False
+
+        try:
+            self.waiter.until(lambda _:emitted())
+        except Exception:
+            print("Focused-cell Shift+Enter emitted:",
+                  self.driver.find_element(By.ID,"review-virtual-edits").text)
+            print("Focused-cell Shift+Enter active element:",
+                  self.driver.execute_script("""
+                    const e=document.activeElement;
+                    return [e?.tagName,e?.className,e?.value];
+                  """))
+            print("Focused-cell Shift+Enter visible selection:",
+                  self.driver.find_element(By.CSS_SELECTOR,
+                      "#review-virtual .drg-selection-count").text)
+            raise
+
+    def test_server_virtual_shift_enter_submits_multi_cell_fill(self):
         self.cell("review-virtual", "label", 0).click()
         self.chord(Keys.CONTROL, Keys.SHIFT, Keys.ARROW_DOWN)
         self.type_in_focused("Shared")
@@ -744,9 +855,8 @@ class FeatureMatrixChromeTests(unittest.TestCase):
                 batch = json.loads(self.driver.find_element(
                     By.ID, "review-virtual-edits").text)
                 return batch.get("edits") == [{
-                    "kind": "paste", "start": 0,
-                    "columnIds": ["label"],
-                    "rows": [["Shared"], ["Shared"]],
+                    "kind": "fillRange", "start": 0, "end": 2,
+                    "columnIds": ["label"], "values": ["Shared"],
                 }]
             except (ValueError, AttributeError):
                 return False

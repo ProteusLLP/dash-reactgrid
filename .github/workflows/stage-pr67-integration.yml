@@ -42,7 +42,7 @@ jobs:
           git -c commit.gpgsign=false commit -m "TEMP: integrate main prior to squash rebase"
           git reset --soft origin/main
           git -c commit.gpgsign=false commit -m "feat: combine virtual whole-column editing and mainline features"
-          python -m pip install --quiet "dash>=3,<5" "numpy>=1.23,<3"
+          python -m pip install --quiet "dash>=3,<5" "numpy>=1.23,<3" "pyyaml>=6,<7"
           npm ci --legacy-peer-deps
           npm run build
           git add -- R/dashReactGrid.R dash_reactgrid/DashReactGrid.py dash_reactgrid/dash_reactgrid.min.js dash_reactgrid/dash_reactgrid.min.js.map dash_reactgrid/metadata.json dash_reactgrid/package-info.json man/dashReactGrid.Rd src/jl/dashreactgrid.jl deps/dash_reactgrid.min.js deps/dash_reactgrid.min.js.map inst/deps/dash_reactgrid.min.js inst/deps/dash_reactgrid.min.js.map

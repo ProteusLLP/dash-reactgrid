@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import {
   DEFAULT_VIRTUAL_ROW_HEIGHT, MAX_BROWSER_SCROLL_PX,
   VIRTUAL_SPACER_TOP, VIRTUAL_SPACER_BOTTOM, VIRTUAL_LOADING_PREFIX,
-  virtualRowWindow, viewportKey, validViewportResponse, addViewportCache,
+  virtualRowWindow, virtualScrollTopForRow, virtualScrollTopForRenderedRow,
+  virtualSpacerHeights, viewportKey, validViewportResponse, addViewportCache,
   buildVirtualRows,
 } from "../serverVirtual.js";
 import { compileGridColumns } from "../gridRows.js";
@@ -122,6 +123,45 @@ test("capped scrollbar compresses spacers, never the height of loaded rows",()=>
   }
   const end=virtualRowWindow(MAX_BROWSER_SCROLL_PX,total,25,120,400);
   assert.equal(end.end,total);
+});
+
+test("Find scroll position places compressed-window matches inside the actual viewport",()=>{
+  const height=25, viewport=400, header=25;
+  for (const total of [10_000_000, 102_000_000]) {
+    const targets=[0,1,59,60,61,100,505,99_999,599_999,
+                   Math.floor(total/2),total-120,total-2,total-1];
+    for (const target of targets) {
+      const logicalTop=virtualScrollTopForRow(target,total,height,viewport);
+      const range=virtualRowWindow(logicalTop,total,height,120,viewport,target);
+      const scrollTop=virtualScrollTopForRenderedRow(target,total,height,
+        range,viewport,header);
+      assert.ok(range.start<=target && target<range.end);
+      assert.equal(range.end-range.start,120);
+      const geometry=virtualSpacerHeights(total,height,range);
+      const loadedTop=header+geometry.topHeight+
+        (target-range.start)*height;
+      // Browser scrollTop may round to a neighbouring pixel.
+      for (const actualTop of [scrollTop,Math.floor(scrollTop),
+                              Math.ceil(scrollTop),Math.round(scrollTop)]) {
+        const visibleTop=loadedTop-actualTop;
+        assert.ok(visibleTop>=-1 && visibleTop+height<=viewport+1,
+          `row ${target} of ${total} is at ${visibleTop}px, viewport ${viewport}px`);
+      }
+      assert.ok(scrollTop>=0 && scrollTop<=geometry.physicalHeight+
+        header-viewport+1);
+    }
+  }
+  // The old logical-only jump loads row 505 but leaves its visible cell
+  // about 600px down inside a 400px viewport. This is the PR regression.
+  const total=10_000_000, row=505;
+  const logical=virtualScrollTopForRow(row,total,25,400);
+  const range=virtualRowWindow(logical,total,25,120,400,row);
+  const {topHeight}=virtualSpacerHeights(total,25,range);
+  assert.ok(25+topHeight+(row-range.start)*25-logical>400);
+  const rendered=virtualScrollTopForRenderedRow(row,total,25,range,400,25);
+  assert.ok(25+topHeight+(row-range.start)*25-rendered+25<=400);
+  assert.throws(()=>virtualScrollTopForRenderedRow(range.end,total,25,range),
+    RangeError);
 });
 
 test("small LRU cache is bounded and dataset-aware",()=>{

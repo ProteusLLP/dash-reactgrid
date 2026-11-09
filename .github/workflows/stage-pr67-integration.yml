@@ -43,6 +43,9 @@ jobs:
           git -c commit.gpgsign=false commit -m "TEMP: integrate main prior to squash rebase"
           git reset --soft origin/main
           git -c commit.gpgsign=false commit -m "feat: combine virtual whole-column editing and mainline features"
+          # Keep this result on a disposable branch even if the build fails.
+          git push --force-with-lease=refs/heads/automation/pr67-integrated-preview:5950b99f1354542074286a9f907826f8d6d7a588 origin HEAD:refs/heads/automation/pr67-integrated-preview
+          preview_base="$(git rev-parse HEAD)"
           python -m pip install --quiet "dash>=3,<5" "numpy>=1.23,<3" "pyyaml>=6,<7"
           npm ci --legacy-peer-deps
           npm run build
@@ -50,7 +53,7 @@ jobs:
           if ! git diff --cached --quiet; then
             git -c commit.gpgsign=false commit -m "build: regenerate assets after squash rebase onto main"
           fi
-          git push --force-with-lease=refs/heads/automation/pr67-integrated-preview:5950b99f1354542074286a9f907826f8d6d7a588 origin HEAD:refs/heads/automation/pr67-integrated-preview
+          git push --force-with-lease=refs/heads/automation/pr67-integrated-preview:$preview_base origin HEAD:refs/heads/automation/pr67-integrated-preview
       - name: Run JavaScript tests
         if: success()
         run: npm run test:js

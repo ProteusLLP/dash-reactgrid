@@ -554,14 +554,27 @@ export const ServerVirtualGrid = (props) => {
   const fillDown = () => {
     if (editingBlocked) return;
     const sel=globalRef.current || globalSelection;
-    if (!sel) return;
+    if (!sel) {
+      setCommandError("Select cells to fill down");
+      return;
+    }
     const multiple=sel.end-sel.start>1;
     const sourceRow=multiple ? sel.start : sel.start-1;
-    if (sourceRow<0) return;
+    if (sourceRow<0) {
+      setCommandError("Fill down needs a source row above the destination");
+      return;
+    }
     const target=editableFillColumns(
       columns.slice(sel.columnStart,sel.columnEnd));
+    if (!target.columnIds.length) {
+      setCommandError("The selected columns are all non-editable");
+      return;
+    }
     const start=multiple ? sel.start+1 : sel.start;
-    if (start>=sel.end || !target.columnIds.length) return;
+    if (start>=sel.end) {
+      setCommandError("Select at least one destination row to fill down");
+      return;
+    }
     // Resolve the source on the server, even if it is outside the viewport.
     submitOperation([{kind:"fillDown",sourceRow,start,end:sel.end,...target}]);
   };

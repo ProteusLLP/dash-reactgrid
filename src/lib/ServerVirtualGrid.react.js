@@ -461,7 +461,9 @@ export const ServerVirtualGrid = (props) => {
       });
     } catch(error) {
       setStreamingCopy(false);
-      setCopyError(error.message || "Clipboard streaming unavailable");
+      const reason=error.message || "Clipboard streaming unavailable";
+      setCopyError(reason + (props.virtualExportUrl
+        ? ". You can use Download selected CSV instead." : ""));
     }
   };
 

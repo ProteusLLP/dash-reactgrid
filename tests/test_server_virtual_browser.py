@@ -10,6 +10,7 @@ from selenium import webdriver
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
+from selenium.common.exceptions import StaleElementReferenceException
 from selenium.webdriver.support.ui import WebDriverWait
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -70,9 +71,20 @@ def run_test():
         wait.until(lambda _: "Row 0" in driver.find_element(By.ID,"grid").text)
         assert "Row 50000" not in driver.find_element(By.ID,"grid").text
 
+        # Virtual scrolling can replace rendered cells between lookup and
+        # click. Reacquire the element until the viewport has settled.
+        def click_last_name_cell():
+            try:
+                cells=driver.find_elements(By.CSS_SELECTOR,"#grid .rg-cell.rg-col-name")
+                if not cells:
+                    return False
+                cells[-1].click()
+                return True
+            except StaleElementReferenceException:
+                return False
+
         # Closing an untouched search must restore the grid keyboard target.
-        cells=driver.find_elements(By.CSS_SELECTOR,"#grid .rg-cell.rg-col-name")
-        cells[-1].click()
+        wait.until(lambda _:click_last_name_cell())
         ActionChains(driver).key_down(Keys.CONTROL).send_keys("f").key_up(Keys.CONTROL).perform()
         close_input=wait.until(lambda _:driver.find_element(
             By.CSS_SELECTOR,'#grid .drg-find input[type="search"]'))
@@ -81,9 +93,9 @@ def run_test():
         assert "rg-hidden-element" in (driver.switch_to.active_element.get_attribute("class") or "")
 
         # Ctrl+F must find cells not present in the currently loaded window.
-        cells=driver.find_elements(By.CSS_SELECTOR,"#grid .rg-cell.rg-col-name")
-        assert len(cells)>1
-        cells[-1].click()
+        wait.until(lambda _:len(driver.find_elements(
+            By.CSS_SELECTOR,"#grid .rg-cell.rg-col-name"))>1)
+        wait.until(lambda _:click_last_name_cell())
         # A global selection must not remain active after Find jumps to a
         # single offscreen match; Ctrl+D would otherwise edit the old range.
         ActionChains(driver).key_down(Keys.CONTROL).send_keys("a").key_up(Keys.CONTROL).perform()

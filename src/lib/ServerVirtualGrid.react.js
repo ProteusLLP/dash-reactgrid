@@ -8,7 +8,8 @@ import { compileGridColumns, visibleGridColumns, resizeGridColumns, headerDepth 
 import { decodeGridData, isPackedNumericData } from "./numericData";
 import {
   addViewportCache, buildVirtualRows, loadedRow, validViewportResponse,
-  virtualRowWindow, virtualScrollTopForRow, viewportKey, VIRTUAL_LOADING_PREFIX,
+  virtualRowWindow, virtualScrollTopForRow, virtualScrollTopForRenderedRow,
+  virtualSpacerHeights, viewportKey, VIRTUAL_LOADING_PREFIX,
   VIRTUAL_SPACER_TOP, VIRTUAL_SPACER_BOTTOM,
 } from "./serverVirtual";
 import {
@@ -99,6 +100,9 @@ export const ServerVirtualGrid = (props) => {
   const [findStatus, setFindStatus] = useState("");
   const [findBusy, setFindBusy] = useState(false);
   const [findMatch, setFindMatch] = useState(null);
+  // Keep the bounded window used by Find mounted while scrolling its
+  // full-height result into view. Release it once scrolling leaves the window.
+  const [findWindowPin, setFindWindowPin] = useState(null);
   const findCursor = useRef(null);
   const findSelection = useRef(null);
   const findPending = useRef(null);
@@ -149,16 +153,13 @@ export const ServerVirtualGrid = (props) => {
 
   const range = useMemo(() => {
     if (!valid) return {start:0,end:0,first:0,visible:0,totalHeight:0};
-    const targetTop=findMatch && virtualScrollTopForRow(findMatch.row,
-      virtualRowCount,virtualRowHeight,virtualViewportHeight);
-    // Only pin the search window while the viewport is at the requested
-    // position. Normal user scrolling must resume regular virtualization.
-    const priorityRow=findMatch && Math.abs(scrollTop-targetTop)<=1
-      ? findMatch.row : null;
+    if (findWindowPin?.datasetId === virtualDatasetId &&
+        findWindowPin.range.end <= virtualRowCount)
+      return findWindowPin.range;
     return virtualRowWindow(scrollTop, virtualRowCount, virtualRowHeight,
-      virtualWindowSize, virtualViewportHeight, priorityRow);
+      virtualWindowSize, virtualViewportHeight);
   }, [scrollTop, virtualRowCount, virtualRowHeight, virtualWindowSize,
-      virtualViewportHeight, valid, findMatch]);
+      virtualViewportHeight, virtualDatasetId, valid, findWindowPin]);
 
   const key = viewportKey(virtualDatasetId, range.start, range.end);
   // In server mode the browser owns only a small window, so the durable
@@ -189,6 +190,7 @@ export const ServerVirtualGrid = (props) => {
 
   useEffect(() => {
     setVirtualRowCount(suppliedRowCount);
+    setFindWindowPin(null);
     lastAcknowledgedRevision.current = -1;
   }, [suppliedRowCount, virtualDatasetId]);
 
@@ -201,6 +203,7 @@ export const ServerVirtualGrid = (props) => {
         !Number.isSafeInteger(ack.revision) ||
         ack.revision <= lastAcknowledgedRevision.current) return;
     lastAcknowledgedRevision.current = ack.revision;
+    setFindWindowPin(null);
     // The host may reorder rows in an acknowledged transaction. Any saved
     // absolute match or in-flight response can now refer to a different row.
     findCursor.current=null;
@@ -227,6 +230,7 @@ export const ServerVirtualGrid = (props) => {
     setLoadError(null);
     currentRequest.current = null;
     setScrollTop(0);
+    setFindWindowPin(null);
     // The new dataset's row indices and even visible columns may be unrelated
     // to the old dataset. Never carry a Find-derived edit target across it.
     clearFindDestination(true);
@@ -699,11 +703,21 @@ export const ServerVirtualGrid = (props) => {
     setFindMatch(found);
     setFindStatus("Row "+(row+1)+", "+(columns[col].title || found.columnId));
     setKeyboardFocus({row,col});
-    const target=virtualScrollTopForRow(row,virtualRowCount,
+    // Choose a bounded window from the compressed logical scrollbar,
+    // then locate the actual matched cell in its *rendered* spacer geometry.
+    // These offsets can differ by hundreds of pixels for 10m+ rows.
+    const logicalTop=virtualScrollTopForRow(row,virtualRowCount,
       virtualRowHeight,virtualViewportHeight);
+    const jumpRange=virtualRowWindow(logicalTop,virtualRowCount,
+      virtualRowHeight,virtualWindowSize,virtualViewportHeight,row);
+    const target=virtualScrollTopForRenderedRow(row,virtualRowCount,
+      virtualRowHeight,jumpRange,virtualViewportHeight,
+      headerDepth(columns)*virtualRowHeight);
+    setFindWindowPin({datasetId:virtualDatasetId,range:jumpRange});
     if (viewportRef.current) viewportRef.current.scrollTop=target;
     setScrollTop(target);
-  }, [virtualFindData,columns,virtualRowCount,virtualRowHeight,virtualViewportHeight]);
+  }, [virtualFindData,columns,virtualRowCount,virtualRowHeight,
+      virtualWindowSize,virtualViewportHeight,virtualDatasetId]);
 
   useEffect(() => {
     const found=findSelection.current;
@@ -1162,7 +1176,21 @@ export const ServerVirtualGrid = (props) => {
         {[commandError,copyError,historyError].filter(Boolean).join(" ")}
       </div>}
     <div className="drg-virtual-viewport" ref={viewportRef}
-      onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+      onScroll={(e) => {
+        const top=e.currentTarget.scrollTop;
+        if (findWindowPin) {
+          const {topHeight}=virtualSpacerHeights(virtualRowCount,
+            virtualRowHeight,findWindowPin.range);
+          const end=topHeight+
+            (findWindowPin.range.end-findWindowPin.range.start)*virtualRowHeight;
+          // Keep these loaded rows while the user scrolls within them.
+          // Normal virtualization resumes when the viewport leaves the
+          // bounded window.
+          if (top+virtualViewportHeight <= topHeight+1 || top >= end-1)
+            setFindWindowPin(null);
+        }
+        setScrollTop(top);
+      }
       onCopy={handleCopy} onPasteCapture={handlePaste}
       onKeyDownCapture={handleKey}
       onPointerDownCapture={(e) => {

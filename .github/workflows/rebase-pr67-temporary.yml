@@ -127,14 +127,7 @@ jobs:
       - name: Run Python contract and stateless backend tests
         run: |
           python3 -m unittest tests.test_component_contract tests.test_stateless_virtual_callbacks tests.test_virtual_grid_store tests.test_dataframe -v
-      - name: Run browser regression suites
-        run: |
-          python3 tests/test_feature_matrix_browser.py
-          python3 tests/test_server_virtual_browser.py
-          python3 tests/test_virtual_operations_browser.py
-          python3 tests/test_large_in_memory_browser.py
-          python3 tests/test_large_virtual_clipboard_browser.py
-      - name: Commit and update PR 67 only after all checks pass
+      - name: Commit and update PR 67 after unit and backend checks pass
         shell: bash
         run: |
           set -euo pipefail
@@ -143,3 +136,11 @@ jobs:
           git diff --cached --check
           git commit -m "feat: scalable virtual grid editing and clipboard streaming (rebased onto main)"
           git push origin HEAD:refs/heads/feat/virtual-whole-column-fill --force-with-lease=refs/heads/feat/virtual-whole-column-fill:$EXPECTED
+
+      - name: Run browser regression suites
+        run: |
+          python3 tests/test_feature_matrix_browser.py
+          python3 tests/test_server_virtual_browser.py
+          python3 tests/test_virtual_operations_browser.py
+          python3 tests/test_large_in_memory_browser.py
+          python3 tests/test_large_virtual_clipboard_browser.py

@@ -115,7 +115,58 @@ def run_test():
         wait.until(lambda _:"Row 0" in driver.find_element(By.ID,"grid").text)
         field.send_keys(Keys.ESCAPE)
         wait.until(lambda _:not driver.find_elements(By.CSS_SELECTOR,"#grid .drg-find"))
-        print("Server virtualization browser test passed: 100k rows, native scroll, bounded fetch/render and offscreen Ctrl+F")
+        # Chrome must actually display a found cell in its 400px viewport,
+        # not merely fetch a window containing it. At 10m rows the scrollbar
+        # is compressed, but loaded cells retain their normal 25px height.
+        wait.until(lambda _:"Fetched 0:120" in driver.find_element(
+            By.ID,"compressed-requested-rows").text)
+        wait.until(lambda _:"Row 0" in driver.find_element(
+            By.ID,"compressed-grid").text)
+        compressed_cells=driver.find_elements(
+            By.CSS_SELECTOR,"#compressed-grid .rg-cell.rg-col-name")
+        assert len(compressed_cells)>1
+        compressed_cells[1].click()
+        ActionChains(driver).key_down(Keys.CONTROL).send_keys(
+            "f").key_up(Keys.CONTROL).perform()
+        field=wait.until(lambda _:driver.find_element(
+            By.CSS_SELECTOR,'#compressed-grid .drg-find input[type="search"]'))
+        field.send_keys("Row 505",Keys.ENTER)
+        wait.until(lambda _:"Row 506" in driver.find_element(
+            By.CSS_SELECTOR,"#compressed-grid .drg-find-status").text)
+        wait.until(lambda _:"Fetched 480:600" in driver.find_element(
+            By.ID,"compressed-requested-rows").text)
+        def found_geometry():
+            return driver.execute_script("""
+                const viewport=document.querySelector(
+                  '#compressed-grid .drg-virtual-viewport');
+                const cell=viewport?.querySelector(
+                  '.rg-cell.rg-col-name.rg-find-match');
+                if (!viewport || !cell) return null;
+                const v=viewport.getBoundingClientRect();
+                const c=cell.getBoundingClientRect();
+                return {text:cell.textContent,top:c.top-v.top,
+                        bottom:c.bottom-v.top,height:v.height,
+                        scrollTop:viewport.scrollTop};
+            """)
+        bounds=wait.until(lambda _:found_geometry())
+        assert bounds["text"]=="Row 505", bounds
+        assert bounds["top"]>=-1 and bounds["bottom"]<=bounds["height"]+1, bounds
+        assert len(driver.find_elements(By.CSS_SELECTOR,
+            "#compressed-grid .rg-cell"))<1000
+        # After the user scrolls away from the found window, the pin must be
+        # released so normal stateless, bounded virtualization resumes.
+        driver.execute_script("""
+            const viewport=document.querySelector(
+              '#compressed-grid .drg-virtual-viewport');
+            viewport.scrollTop=2_000_000;
+            viewport.dispatchEvent(new Event('scroll',{bubbles:true}));
+        """)
+        wait.until(lambda _:"Fetched 480:600" not in driver.find_element(
+            By.ID,"compressed-requested-rows").text)
+        assert len(driver.find_elements(By.CSS_SELECTOR,
+            "#compressed-grid .rg-cell"))<1000
+
+        print("Server virtualization browser test passed: 100k and 10m rows, bounded fetches and visible Find results")
     except Exception:
         if driver:
             print("DOM for diagnosis:",driver.page_source[-12000:])

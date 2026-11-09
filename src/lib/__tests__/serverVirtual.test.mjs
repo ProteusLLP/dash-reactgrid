@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import {
   DEFAULT_VIRTUAL_ROW_HEIGHT, MAX_BROWSER_SCROLL_PX,
   VIRTUAL_SPACER_TOP, VIRTUAL_SPACER_BOTTOM, VIRTUAL_LOADING_PREFIX,
-  virtualRowWindow, scrollTopForVirtualRow, viewportKey, validViewportResponse, addViewportCache,
+  virtualRowWindow, scrollTopForVirtualRow, virtualScrollTopForRow,
+  virtualScrollTopForRenderedRow, virtualSpacerHeights, viewportKey,\n  validViewportResponse, addViewportCache,
   buildVirtualRows,
 } from "../serverVirtual.js";
 import { compileGridColumns } from "../gridRows.js";

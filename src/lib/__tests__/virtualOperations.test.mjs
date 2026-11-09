@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   boundedSelection,extendSelection,parseClipboardTsv,makeRangePaste,
   copyRequestFor,matchesCopyResponse,initialHistory,historyStorageKey,
-  loadHistory,saveHistory,nextHistory,editableFillColumns,
+  loadHistory,saveHistory,nextHistory,editableFillColumns,virtualRawCellCopyText,
 } from "../virtualOperations.js";
 const cols=[{columnId:"name",type:"text"},{columnId:"amount",type:"number"}];
 const selected={start:500,end:800,columnStart:0,columnEnd:2};
@@ -17,6 +17,22 @@ test("global selection spans arbitrarily distant unloaded rows without listing t
   assert.equal(boundedSelection(-1,100,0,2,1000,2),null);
   assert.equal(boundedSelection(0,1001,0,2,1000,2),null);
 });
+test("loaded date and time cells copy overlaid raw data with hidden columns",()=>{
+  const cols=[{columnId:"hidden",type:"text"},
+    {columnId:"start",type:"date"},{columnId:"at",type:"time"}];
+  const page={data:[["secret","2026-11-09","2026-11-09T14:30:00Z"]]};
+  assert.equal(virtualRawCellCopyText(page,0,"start",cols),"2026-11-09");
+  assert.equal(virtualRawCellCopyText(page,0,"at",cols),"2026-11-09T14:30:00Z");
+  const overlaid={data:[["secret","2026-11-10","2026-11-10T09:30:00Z"]]};
+  assert.equal(virtualRawCellCopyText(overlaid,0,"start",cols),"2026-11-10");
+  assert.equal(virtualRawCellCopyText(overlaid,0,"at",cols),"2026-11-10T09:30:00Z");
+  assert.equal(virtualRawCellCopyText({data:[["secret",'a"b',null]]},0,"start",cols),
+    '"a""b"');
+  assert.equal(virtualRawCellCopyText({data:[["secret",null,null]]},0,"start",cols),"");
+  assert.equal(virtualRawCellCopyText(overlaid,5,"start",cols),null);
+  assert.equal(virtualRawCellCopyText(overlaid,0,"missing",cols),null);
+});
+
 test("TSV parser preserves escaped quotes, tabs and embedded linebreaks",()=>{
   assert.deepEqual(parseClipboardTsv('one\t"two\tinside"\n"line\nnext"\t"say ""hello"""\n'),[
     ["one","two\tinside"],["line\nnext",'say "hello"'],

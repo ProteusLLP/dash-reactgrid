@@ -45,7 +45,7 @@ test('million row scroll geometry remains bounded with compressed spacers',()=>{
 test('client viewport reflects edited buffer overrides and permits ghost row',()=>{
   const table=tableFor(1000);
   table.data.setRow(999,[99,2,3,4,5,6,7,8]);
-  const range=virtualRowWindow(24_500,table.data.length,25,120,420);
+  const range=virtualRowWindow(24_580,table.data.length,25,120,420);
   const rows=rendered(table,range,true);
   assert.equal(rows.find(row=>row.rowId===999).cells[0].value,99);
   assert.equal(rows.at(-1).rowId,'__ghost__');

@@ -93,6 +93,8 @@ class ComponentPublicAPI(unittest.TestCase):
              "virtualWindowSize": 120, "virtualViewportHeight": 420,
              "virtualClipboardUrl": "/clipboard.tsv",
              "transmitSparseEdits": True, "editDatasetId": DATASET},
+            {"virtualizationMode": "client", "rowIds": ["r0"],
+             "virtualWindowSize": 120, "virtualViewportHeight": 420},
         ]:
             with self.subTest(config=config):
                 grid = DashReactGrid(
@@ -110,7 +112,9 @@ class ComponentPublicAPI(unittest.TestCase):
                          "virtualRowHeight","virtualWindowSize"]
         params=list(inspect.signature(DashReactGrid.__init__).parameters)
         self.assertEqual(params[1:1+len(expected_python)],expected_python)
-        self.assertEqual(params[-4:-1],["virtualFindRequest","virtualFindData","virtualClipboardUrl"])
+        prior_tail=["virtualFindRequest","virtualFindData","virtualClipboardUrl"]
+        self.assertEqual([name for name in params if name in prior_tail],prior_tail)
+        self.assertIn("virtualizationMode",params)
         existing=DashReactGrid("test",COLUMNS,ROWS,["r0","r1","r2"],2)
         self.assertEqual(existing.to_plotly_json()["props"]["rowPageSize"],2)
         r_file=Path(__file__).resolve().parents[1]/"R"/"dashReactGrid.R"
@@ -121,7 +125,8 @@ class ComponentPublicAPI(unittest.TestCase):
         self.assertEqual(r_args[:9],["id","className","columns","data",
             "disableVirtualScrolling","dropdownMenuPortal","edits",
             "editAck","editDatasetId"])
-        self.assertEqual(r_args[-3:],["virtualFindRequest","virtualFindData","virtualClipboardUrl"])
+        self.assertEqual([name for name in r_args if name in prior_tail],prior_tail)
+        self.assertIn("virtualizationMode",r_args)
         rd_file=Path(__file__).resolve().parents[1]/"man"/"dashReactGrid.Rd"
         rd_source=rd_file.read_text(encoding="utf-8")
         usage=rd_source.split(r"\usage{",1)[1].split("}",1)[0]

@@ -658,14 +658,17 @@ const ReactGridDataHandler = (props) => {
         !['ArrowUp', 'ArrowDown', 'Enter', 'Tab'].includes(event.key)) return false
     const current = shortcutCursor.current || focusedPosition()
     if (!current) return false
-    const step = event.key === 'ArrowUp' ? -1 : 1
+    const nextCol = event.key === 'Tab' && current.col === columns.length-1
+      ? 0 : current.col
+    const step = event.key === 'ArrowUp' ? -1 :
+      event.key === 'Tab' && current.col < columns.length-1 ? 0 : 1
     const nextRow = current.row + step
     if (nextRow < 0 || nextRow >= table.data.length ||
         (nextRow >= clientRange.start && nextRow < clientRange.end)) return false
     event.preventDefault()
     event.stopPropagation()
     const location = {rowId:table.rowIds[nextRow],
-      columnId:columns[current.col].columnId}
+      columnId:columns[nextCol].columnId}
     focused.current=location
     setJumpLocation(location)
     setProps({selectedCell:location,selectedRange:[],selectedRowIds:[]})

@@ -7,6 +7,8 @@ import { numberParser } from '../CustomNumberCell';
 import { percentParser } from '../PercentCell';
 import { createCellTemplates } from '../cellTemplates';
 import { ServerVirtualGrid } from '../ServerVirtualGrid.react';
+import { buildClientVirtualRows, clientClipboardText } from '../clientVirtual';
+import { virtualRowWindow, scrollTopForVirtualRow } from '../serverVirtual';
 import { FindBar } from '../FindBar.react';
 import { findNextCell, resolveFindCursor } from '../find';
 import { compileGridColumns, buildGridRows, pageBounds, canPasteOnPage, visibleGridColumns, resizeGridColumns, headerDepth } from '../gridRows';
@@ -47,7 +49,8 @@ const DashReactGrid = props => {
   // ReactGrid ignores a class name, so it goes on the container.
   return (
     <div id={typeof id === 'object' ? JSON.stringify(id) : id} style={style} className={className || undefined}>
-      {Number.isSafeInteger(props.virtualRowCount) && props.virtualRowCount >= 0
+      {(props.virtualizationMode === 'server' ||
+        (!props.virtualizationMode && Number.isSafeInteger(props.virtualRowCount) && props.virtualRowCount >= 0))
         ? <ServerVirtualGrid {...props} />
         : <ReactGridDataHandler {...props} />}
     </div>
@@ -57,6 +60,10 @@ const DashReactGrid = props => {
 const ReactGridDataHandler = (props) => {
   const { columns: allColumns, data: sourceData, rowIds, newRow, lockedCells, readOnly, hiddenColumns, styleHeader, isExtendable, highlights, setProps } = props;
   const data = useMemo(() => decodeGridData(sourceData), [sourceData]);
+  const clientVirtual = props.virtualizationMode === 'client';
+  const virtualRowHeight = props.virtualRowHeight || 25;
+  const virtualWindowSize = props.virtualWindowSize || 120;
+  const virtualViewportHeight = props.virtualViewportHeight || 420;
   const cellTemplates = useMemo(() => createCellTemplates(Boolean(props.dropdownMenuPortal)), [props.dropdownMenuPortal]);
 
   // Hidden columns keep their place in `data`; the grid sees only the rest.
@@ -84,9 +91,26 @@ const ReactGridDataHandler = (props) => {
   )
   const [requestedPage, setRequestedPage] = useState(0)
   const [pageInput, setPageInput] = useState("1")
-  const pageSize = Number.isInteger(props.rowPageSize) && props.rowPageSize > 0 ? props.rowPageSize : null
+  const [jumpLocation, setJumpLocation] = useState(null)
+  const [clientScrollTop, setClientScrollTop] = useState(0)
+  const clientViewport = useRef(null)
+  const clientScrollIntent = useRef(null)
+  const clientHeaderSelection = useRef(false)
+  const virtualPriorityRow = clientVirtual && jumpLocation
+    ? rowIndexesOf(table.rowIds).get(jumpLocation.rowId) : null
+  const clientRange = useMemo(() => clientVirtual
+    ? virtualRowWindow(clientScrollTop, table.data.length, virtualRowHeight,
+      virtualWindowSize, virtualViewportHeight, virtualPriorityRow)
+    : null, [clientVirtual, clientScrollTop, table.data.length, virtualRowHeight,
+      virtualWindowSize, virtualViewportHeight, virtualPriorityRow])
+  const pageSize = !clientVirtual && Number.isInteger(props.rowPageSize) &&
+    props.rowPageSize > 0 ? props.rowPageSize : null
   const bounds = pageBounds(table.data.length, pageSize, requestedPage)
-  const { page, count: pageCount, start: pageStart, end: pageEnd } = bounds
+  const { page, count: pageCount } = bounds
+  const pageStart = clientRange ? clientRange.start : bounds.start
+  const pageEnd = clientRange ? clientRange.end : bounds.end
+  // ReactGrid indexes its top spacer; keyboard offsets count real data only.
+  const nativePageStart = pageStart - (clientVirtual && pageStart > 0 ? 1 : 0)
   useEffect(() => {
     if (requestedPage !== page) {
       setRequestedPage(page)
@@ -107,7 +131,6 @@ const ReactGridDataHandler = (props) => {
   const shortcutCursor = useRef(null)
   const suppressNativeSelection = useRef(false)
   const [shortcutHighlight, setShortcutHighlight] = useState(null)
-  const [jumpLocation, setJumpLocation] = useState(null)
   const keyboardHost = useRef(null)
   const [keyboardError, setKeyboardError] = useState(null)
   const [findOpen, setFindOpen] = useState(false)
@@ -153,20 +176,28 @@ const ReactGridDataHandler = (props) => {
       rowCache.current.readOnly === editingBlocked &&
       rowCache.current.newRow === newRow &&
       rowCache.current.styleHeader === styleHeader;
-    const built = buildGridRows({
+    const args = {
       columns, descriptors: renderColumns, allColumns,
-      data: table.data.slice(pageStart, pageEnd),
-      rowIds: table.rowIds.slice(pageStart, pageEnd),
       newRow, readOnly: editingBlocked, locked, styleHeader, showGhost, openDropdown,
-      previous: validCache ? rowCache.current.cache : null,
-    });
+    };
+    const built = clientVirtual
+      ? {rows: buildClientVirtualRows({
+        ...args, table, range: clientRange, rowHeight: virtualRowHeight,
+        viewportHeight: virtualViewportHeight,
+      }), cache: null}
+      : buildGridRows({
+        ...args, data: table.data.slice(pageStart, pageEnd),
+        rowIds: table.rowIds.slice(pageStart, pageEnd),
+        previous: validCache ? rowCache.current.cache : null,
+      });
     rowCache.current = {
       descriptors: renderColumns, locked, readOnly: editingBlocked, newRow, styleHeader,
       cache: built.cache,
     };
     return built.rows;
   }, [columns, renderColumns, allColumns, table, pageStart, pageEnd,
-    newRow, locked, editingBlocked, styleHeader, showGhost, openDropdown]);
+    newRow, locked, editingBlocked, styleHeader, showGhost, openDropdown,
+    clientVirtual, clientRange, virtualRowHeight, virtualViewportHeight]);
 
   // Highlights may reference rows on other pages. Passing them directly
   // makes ReactGrid reject them as inconsistent with its current cell matrix.
@@ -266,7 +297,7 @@ const ReactGridDataHandler = (props) => {
       const rect = retainedKeyboardRange.current ||
         pendingMultiSelection.current || shortcutRange.current ||
         lastMultiSelection.current ||
-        nativeRectangle(selection.current, pageStart, table.data.length,
+        nativeRectangle(selection.current, nativePageStart, table.data.length,
           columns.length)
       pendingMultiSelection.current = null
       if (source && rect && sourceRow >= rect.start && sourceRow < rect.end &&
@@ -347,7 +378,7 @@ const ReactGridDataHandler = (props) => {
     const changes = []
     clipboardCells(e.clipboardData).forEach((cells, ri) => {
       const position = (keyRange ? keyRange.start :
-        pageStart + pasteStartRow(ranges[0], headerCount)) + ri // headers are not data rows
+        nativePageStart + pasteStartRow(ranges[0], headerCount)) + ri // headers are not data rows
       // Do not silently modify data on a page the user cannot see.
       if (!canPasteOnPage(position, bounds, pageSize)) return
       let rowId
@@ -379,13 +410,17 @@ const ReactGridDataHandler = (props) => {
       return
     }
     const text = shortcutRange.current
-      ? keyboardClipboardText(shortcutRange.current,table.data,allColumns,columns)
+      ? (clientVirtual
+        ? clientClipboardText(shortcutRange.current,table.data,allColumns,columns)
+        : keyboardClipboardText(shortcutRange.current,table.data,allColumns,columns))
       : selectionText(rows, selection.current, textOf)
     if (text === null) {
       if (shortcutRange.current) {
         e.preventDefault()
         e.stopPropagation()
-        setKeyboardError("Copy is limited to 20,000 cells; use a smaller range or server export")
+        setKeyboardError(clientVirtual
+          ? "Selection exceeds the 64 MB browser clipboard safety limit"
+          : "Copy is limited to 20,000 cells; use a smaller range or server export")
       }
       return
     }
@@ -398,12 +433,24 @@ const ReactGridDataHandler = (props) => {
     selection.current = ranges
     shortcutRange.current = null
     setShortcutHighlight(null)
-    const rect = nativeRectangle(ranges,pageStart,table.data.length,
+    const native = nativeRectangle(ranges,nativePageStart,table.data.length,
       columns.length,null,headerCount)
+    // Selecting a column header covers every logical row, not only the
+    // currently mounted window. Keep a compact absolute selection for edits.
+    const wholeColumn = Boolean(clientVirtual && clientHeaderSelection.current && native)
+    const rect = wholeColumn ? {...native,start:0,end:table.data.length} : native
+    if (wholeColumn) {
+      shortcutRange.current=rect
+      retainedKeyboardRange.current=rect
+      suppressNativeSelection.current=true
+      setShortcutHighlight(rect)
+    }
     lastMultiSelection.current = keyboardArea(rect)>1 ? rect : null
     const visibleIds = new Set(table.rowIds.slice(pageStart,pageEnd))
-    setProps({ selectedRange: ranges,
-      selectedRowIds: tracked ? rowsInRanges(ranges,visibleIds) : [] })
+    setProps({ selectedRange: clientVirtual && rect
+        ? [publicKeyboardRange(rect,table.rowIds,columns,headerCount,0)] : ranges,
+      selectedRowIds: wholeColumn ? [] :
+        tracked ? rowsInRanges(ranges,visibleIds) : [] })
   }
 
   const focusedPosition = () => {
@@ -582,7 +629,7 @@ const ReactGridDataHandler = (props) => {
   }
 
   const activeRectangle = () =>
-    retainedKeyboardRange.current || shortcutRange.current || nativeRectangle(selection.current,pageStart,
+    retainedKeyboardRange.current || shortcutRange.current || nativeRectangle(selection.current,nativePageStart,
       table.data.length,columns.length,focusedPosition())
 
   const fillDown = () => {
@@ -598,7 +645,8 @@ const ReactGridDataHandler = (props) => {
   }
 
   const handleContextMenu = (selectedRowIds, selectedColIds, selectionMode, menuOptions, selectedRanges) => {
-    if (!tracked || editingBlocked) return menuOptions
+    if (!tracked || editingBlocked ||
+        (clientVirtual && clientHeaderSelection.current)) return menuOptions
     const removing = []
     const visibleIds = new Set(table.rowIds.slice(pageStart,pageEnd))
     ;(selectedRanges || []).forEach((range) => range.forEach(({ rowId }) => {
@@ -615,6 +663,29 @@ const ReactGridDataHandler = (props) => {
         },
       },
     ]
+  }
+
+  const navigateAcrossClientWindow = (event) => {
+    if (!clientVirtual || !clientRange || event.shiftKey || event.altKey ||
+        event.ctrlKey || event.metaKey ||
+        !['ArrowUp', 'ArrowDown', 'Enter', 'Tab'].includes(event.key)) return false
+    const current = shortcutCursor.current || focusedPosition()
+    if (!current) return false
+    const nextCol = event.key === 'Tab' && current.col === columns.length-1
+      ? 0 : current.col
+    const step = event.key === 'ArrowUp' ? -1 :
+      event.key === 'Tab' && current.col < columns.length-1 ? 0 : 1
+    const nextRow = current.row + step
+    if (nextRow < 0 || nextRow >= table.data.length ||
+        (nextRow >= clientRange.start && nextRow < clientRange.end)) return false
+    event.preventDefault()
+    event.stopPropagation()
+    const location = {rowId:table.rowIds[nextRow],
+      columnId:columns[nextCol].columnId}
+    focused.current=location
+    setJumpLocation(location)
+    setProps({selectedCell:location,selectedRange:[],selectedRowIds:[]})
+    return true
   }
 
   // Caught before ReactGrid, which swallows the keys it handles itself.
@@ -645,11 +716,12 @@ const ReactGridDataHandler = (props) => {
         // Snapshot the large absolute range before it can be collapsed.
         pendingMultiSelection.current = retainedKeyboardRange.current ||
           shortcutRange.current || lastMultiSelection.current ||
-          nativeRectangle(selection.current,pageStart,
+          nativeRectangle(selection.current,nativePageStart,
             table.data.length,columns.length)
       }
       return
     }
+    if (navigateAcrossClientWindow(e)) return
     if (!e.ctrlKey && !e.metaKey && !e.altKey &&
         ["ArrowUp","ArrowDown","ArrowLeft","ArrowRight","Tab","Enter"].includes(e.key)) {
       findInvalidated.current=false
@@ -712,6 +784,26 @@ const ReactGridDataHandler = (props) => {
           return;
         case "a":
           if (!e.shiftKey && !e.altKey) {
+            if (clientVirtual && table.data.length && columns.length) {
+              e.preventDefault()
+              e.stopPropagation()
+              findInvalidated.current=false
+              findSelection.current=null
+              selection.current=null
+              const rect={start:0,end:table.data.length,
+                columnStart:0,columnEnd:columns.length}
+              shortcutRange.current=rect
+              retainedKeyboardRange.current=rect
+              lastMultiSelection.current=rect
+              shortcutAnchor.current={row:0,col:0}
+              shortcutCursor.current={row:table.data.length-1,col:columns.length-1}
+              suppressNativeSelection.current=true
+              setShortcutHighlight(rect)
+              setProps({selectedRange:[
+                publicKeyboardRange(rect,table.rowIds,columns,headerCount,0)
+              ],selectedRowIds:[]})
+              return
+            }
             // A Find-created keyboard rectangle must not intercept Ctrl+A.
             findInvalidated.current=false
             findSelection.current=null
@@ -754,7 +846,8 @@ const ReactGridDataHandler = (props) => {
         setProps({columns: next})
     },
     handleFocus: (location) => {
-      if (findInvalidated.current) return
+      if (findInvalidated.current || (clientVirtual &&
+          !rowIndexesOf(table.rowIds).has(location?.rowId))) return
       focused.current = location
       setProps({ selectedCell: location })
     },
@@ -764,6 +857,21 @@ const ReactGridDataHandler = (props) => {
   const onSelectionChanged = useCallback((ranges) => latest.current.handleSelectionChanged(ranges), [])
   const onColumnResized = useCallback((...args) => latest.current.resizeColumn(...args), [])
   const onFocusLocationChanged = useCallback((location) => latest.current.handleFocus(location), [])
+
+  // Find and Ctrl+End navigate across the in-browser dataset without a Dash request.
+  useEffect(() => {
+    if (!clientVirtual || !jumpLocation || !clientViewport.current) return
+    const row = rowIndexesOf(table.rowIds).get(jumpLocation.rowId)
+    if (row === undefined) return
+    const target = scrollTopForVirtualRow(row,table.data.length,
+      virtualRowHeight,virtualViewportHeight,true)
+    if (Math.abs(clientViewport.current.scrollTop-target) > 1) {
+      clientScrollIntent.current=target
+      clientViewport.current.scrollTop=target
+      setClientScrollTop(target)
+    }
+  }, [clientVirtual,jumpLocation,table.rowIds,table.data.length,
+    virtualRowHeight,virtualViewportHeight])
 
   // Switching pages remounts ReactGrid. focusLocation selects the target
   // logically, but browser keystrokes still need its hidden focus input.
@@ -778,7 +886,8 @@ const ReactGridDataHandler = (props) => {
   const visibleJump = jumpLocation && rows.some((row) => row.rowId === jumpLocation.rowId)
     ? jumpLocation : undefined
   const grid = useMemo(() => (
-    <ReactGrid key={pageSize ? `page-${page}` : 'all'} rows={highlightedRows} columns={columns} onCellsChanged={onCellsChanged}
+    <ReactGrid key={clientVirtual ? `client-${pageStart}-${pageEnd}` :
+      pageSize ? `page-${page}` : 'all'} rows={highlightedRows} columns={columns} onCellsChanged={onCellsChanged}
       onFocusLocationChanged={onFocusLocationChanged}
       focusLocation={visibleJump}
       onColumnResized={onColumnResized}
@@ -793,11 +902,12 @@ const ReactGridDataHandler = (props) => {
       stickyBottomRows={sticky.bottom}
       customCellTemplates={cellTemplates}
       onSelectionChanged={onSelectionChanged}
-      disableVirtualScrolling={disableVirtualScrolling}
+      disableVirtualScrolling={clientVirtual ? false : disableVirtualScrolling}
     />
   ), [highlightedRows, columns, editingBlocked, pageHighlights, sticky.left, sticky.right, sticky.top, sticky.bottom,
     enableFillHandle, enableRangeSelection, enableRowSelection, enableColumnSelection, disableVirtualScrolling,
-    dropdownMenuPortal, cellTemplates, pageSize, page, visibleJump])
+    dropdownMenuPortal, cellTemplates, pageSize, page, pageStart, pageEnd,
+    clientVirtual, visibleJump])
 
   const goToPage = (requested) => {
     if (!Number.isFinite(requested)) {
@@ -825,6 +935,8 @@ const ReactGridDataHandler = (props) => {
     <div ref={keyboardHost} onPasteCapture={handlePaste} onCopy={handleCopy}
       onPointerDownCapture={(event) => {
         if (event.target.closest?.('.drg-find')) return
+        clientHeaderSelection.current=clientVirtual &&
+          Boolean(event.target.closest?.('.rg-header-cell'))
         findInvalidated.current=false
         findSelection.current=null
         suppressNativeSelection.current=false
@@ -845,7 +957,18 @@ const ReactGridDataHandler = (props) => {
           keyboardHost.current?.querySelector('input.rg-hidden-element')
             ?.focus({preventScroll:true})
         }} status={findStatus}/>}
-      {grid}
+      {clientVirtual ? (
+        <div className="drg-virtual-viewport" ref={clientViewport} tabIndex={0}
+          style={{height:virtualViewportHeight,overflowY:'auto',overflowX:'auto'}}
+          onScroll={(event) => {
+            const top=event.currentTarget.scrollTop
+            const expected=clientScrollIntent.current
+            clientScrollIntent.current=null
+            if (expected === null || Math.abs(expected-top) > 2)
+              setJumpLocation(null)
+            setClientScrollTop(top)
+          }}>{grid}</div>
+      ) : grid}
       {keyboardError && <div role="alert" className="drg-keyboard-error">{keyboardError}</div>}
       {transmitSparseEdits && (
         <div className="drg-sync-status" role="status" aria-live="polite">
@@ -895,6 +1018,7 @@ DashReactGrid.defaultProps = {
   className: null,
   disableVirtualScrolling: true,
   rowPageSize: null,
+  virtualizationMode: null,
   virtualRowCount: null,
   virtualDatasetId: null,
   virtualRowHeight: 25,
@@ -1017,6 +1141,12 @@ DashReactGrid.propTypes = {
    * The whole data array is still transferred to Dash on edits.
    */
   rowPageSize: PropTypes.number,
+  /**
+   * 'client' keeps all values in browser memory while mounting bounded rows.
+   * 'server' requests windows from Dash. Omitted preserves legacy selection:
+   * server with virtualRowCount, otherwise the conventional in-memory grid.
+   */
+  virtualizationMode: PropTypes.oneOf(['none','client','server']),
   /**
    * Server-backed continuous virtualization: provide the total number of
    * logical rows; set data=[] and omit rowIds. The client requests bounded

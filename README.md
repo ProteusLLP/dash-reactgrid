@@ -157,6 +157,50 @@ Use `decode_numpy_data(response["data"])` to recover a read-only
 NumPy view of a binary payload. Clipboard and CSV helpers continue to
 work with list-backed or NumPy-backed provider windows.
 
+## Client-side windowed rendering (full dataset in browser memory)
+
+For in-memory tables that fit in browser RAM, set `virtualizationMode="client"`
+to render a bounded viewport without loading rows from Dash during scrolling.
+This uses the existing typed-array NumPy transport for homogeneous numeric
+matrices, plus its copy-on-write overrides for edited rows. Mixed-type tables
+remain supported using normal JavaScript row arrays. ReactGrid receives only a
+visible window and a small overscan buffer, with scroll spacers for the other
+rows. There are no paging buttons.
+
+```python
+import numpy as np
+from dash_reactgrid import DashReactGrid
+
+values = np.random.default_rng(42).normal(size=(100_000, 20))
+columns = [{"columnId": str(j), "title": str(j), "type": "number"}
+           for j in range(values.shape[1])]
+
+grid = DashReactGrid(
+    id="grid", columns=columns, data=values,
+    virtualizationMode="client", virtualWindowSize=120,
+    virtualRowHeight=25, virtualViewportHeight=420,
+    rowIds=[f"r{i}" for i in range(len(values))],
+    transmitSparseEdits=True, editDatasetId="numeric-v1",
+)
+```
+
+Client mode uses the full data for Ctrl+F, Ctrl+End, Ctrl+D, Shift+Enter,
+and absolute selections, including rows not currently mounted. Ctrl+A selects
+the entire logical dataset and Ctrl+C reads the underlying data rather than
+constructing offscreen ReactGrid cells. Browser clipboard output has a 64 MiB
+character safety cap, so especially large exports should use a separate
+backend export. In sparse-edit mode applications must implement the existing
+durable edit acknowledgements, and should provide stable row IDs for
+structural editing.
+
+The dataset is transferred **once** on initialisation. It still consumes
+browser memory, and decoding the base64 NumPy transport creates temporary
+allocations. Use server virtualisation if the dataset is too large to transfer
+or retain in the browser. Omit `virtualizationMode` to preserve legacy
+behaviour: `virtualRowCount` selects server mode; otherwise the normal
+in-memory grid is used. `virtualizationMode="none"` forces the normal
+in-memory rendering mode.
+
 ## Large tables: continuous server-side virtualization
 
 **Recommended for hundreds of thousands of rows or millions of cells:**

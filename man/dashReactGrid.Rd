@@ -25,7 +25,8 @@ dashReactGrid(id=NULL, className=NULL, columns=NULL, data=NULL,
   selectedRange=NULL, selectedRowIds=NULL, stickyBottomRows=NULL,
   stickyLeftColumns=NULL, stickyRightColumns=NULL, stickyTopRows=NULL,
   style=NULL, styleHeader=NULL, virtualFindRequest=NULL,
-  virtualFindData=NULL, virtualClipboardUrl=NULL)
+  virtualFindData=NULL, virtualClipboardUrl=NULL,
+  virtualizationMode=NULL)
 }
 
 \arguments{
@@ -168,6 +169,10 @@ Supplying a nonnegative integer enables virtual mode instead of paging.}
 \item{virtualViewportHeight}{Numeric. Height in pixels of the scrollable viewport, default 420.}
 
 \item{virtualWindowSize}{Numeric. Approximate number of rows fetched per request, default 120.}
+
+\item{virtualizationMode}{A value equal to: 'none', 'client', 'server'. 'client' keeps all values in browser memory while mounting bounded rows.
+'server' requests windows from Dash. Omitted preserves legacy selection:
+server with virtualRowCount, otherwise the conventional in-memory grid.}
 }
 
 \value{named list of JSON elements corresponding to React.js properties and their values}

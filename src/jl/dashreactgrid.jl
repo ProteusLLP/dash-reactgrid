@@ -100,9 +100,12 @@ Supplying a nonnegative integer enables virtual mode instead of paging.
 - `virtualSelection` (Dict; optional): Compact absolute-index selection, not an array of every selected row.
 - `virtualViewportHeight` (Real; optional): Height in pixels of the scrollable viewport, default 420.
 - `virtualWindowSize` (Real; optional): Approximate number of rows fetched per request, default 120.
+- `virtualizationMode` (a value equal to: 'none', 'client', 'server'; optional): 'client' keeps all values in browser memory while mounting bounded rows.
+'server' requests windows from Dash. Omitted preserves legacy selection:
+server with virtualRowCount, otherwise the conventional in-memory grid.
 """
 function dashreactgrid(; kwargs...)
-        available_props = Symbol[:id, :className, :columns, :data, :disableVirtualScrolling, :dropdownMenuPortal, :editAck, :editDatasetId, :edits, :enableColumnSelection, :enableFillHandle, :enableRangeSelection, :enableRowSelection, :hiddenColumns, :highlights, :isExtendable, :lockedCells, :newRow, :persisted_props, :persistence, :persistence_type, :readOnly, :rowIds, :rowPageSize, :selectedCell, :selectedRange, :selectedRowIds, :stickyBottomRows, :stickyLeftColumns, :stickyRightColumns, :stickyTopRows, :style, :styleHeader, :transmitSparseEdits, :virtualClipboardUrl, :virtualData, :virtualDatasetId, :virtualExportUrl, :virtualFindData, :virtualFindRequest, :virtualRangeData, :virtualRangeRequest, :virtualRequest, :virtualRowCount, :virtualRowHeight, :virtualSelection, :virtualViewportHeight, :virtualWindowSize]
+        available_props = Symbol[:id, :className, :columns, :data, :disableVirtualScrolling, :dropdownMenuPortal, :editAck, :editDatasetId, :edits, :enableColumnSelection, :enableFillHandle, :enableRangeSelection, :enableRowSelection, :hiddenColumns, :highlights, :isExtendable, :lockedCells, :newRow, :persisted_props, :persistence, :persistence_type, :readOnly, :rowIds, :rowPageSize, :selectedCell, :selectedRange, :selectedRowIds, :stickyBottomRows, :stickyLeftColumns, :stickyRightColumns, :stickyTopRows, :style, :styleHeader, :transmitSparseEdits, :virtualClipboardUrl, :virtualData, :virtualDatasetId, :virtualExportUrl, :virtualFindData, :virtualFindRequest, :virtualRangeData, :virtualRangeRequest, :virtualRequest, :virtualRowCount, :virtualRowHeight, :virtualSelection, :virtualViewportHeight, :virtualWindowSize, :virtualizationMode]
         wild_props = Symbol[]
         return Component("dashreactgrid", "DashReactGrid", "dash_reactgrid", available_props, wild_props; kwargs...)
 end

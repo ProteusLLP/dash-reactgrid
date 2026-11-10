@@ -95,6 +95,7 @@ const ReactGridDataHandler = (props) => {
   const [clientScrollTop, setClientScrollTop] = useState(0)
   const clientViewport = useRef(null)
   const clientScrollIntent = useRef(null)
+  const clientHeaderSelection = useRef(false)
   const virtualPriorityRow = clientVirtual && jumpLocation
     ? rowIndexesOf(table.rowIds).get(jumpLocation.rowId) : null
   const clientRange = useMemo(() => clientVirtual
@@ -432,13 +433,24 @@ const ReactGridDataHandler = (props) => {
     selection.current = ranges
     shortcutRange.current = null
     setShortcutHighlight(null)
-    const rect = nativeRectangle(ranges,nativePageStart,table.data.length,
+    const native = nativeRectangle(ranges,nativePageStart,table.data.length,
       columns.length,null,headerCount)
+    // Selecting a column header covers every logical row, not only the
+    // currently mounted window. Keep a compact absolute selection for edits.
+    const wholeColumn = Boolean(clientVirtual && clientHeaderSelection.current && native)
+    const rect = wholeColumn ? {...native,start:0,end:table.data.length} : native
+    if (wholeColumn) {
+      shortcutRange.current=rect
+      retainedKeyboardRange.current=rect
+      suppressNativeSelection.current=true
+      setShortcutHighlight(rect)
+    }
     lastMultiSelection.current = keyboardArea(rect)>1 ? rect : null
     const visibleIds = new Set(table.rowIds.slice(pageStart,pageEnd))
     setProps({ selectedRange: clientVirtual && rect
         ? [publicKeyboardRange(rect,table.rowIds,columns,headerCount,0)] : ranges,
-      selectedRowIds: tracked ? rowsInRanges(ranges,visibleIds) : [] })
+      selectedRowIds: wholeColumn ? [] :
+        tracked ? rowsInRanges(ranges,visibleIds) : [] })
   }
 
   const focusedPosition = () => {
@@ -633,7 +645,8 @@ const ReactGridDataHandler = (props) => {
   }
 
   const handleContextMenu = (selectedRowIds, selectedColIds, selectionMode, menuOptions, selectedRanges) => {
-    if (!tracked || editingBlocked) return menuOptions
+    if (!tracked || editingBlocked ||
+        (clientVirtual && clientHeaderSelection.current)) return menuOptions
     const removing = []
     const visibleIds = new Set(table.rowIds.slice(pageStart,pageEnd))
     ;(selectedRanges || []).forEach((range) => range.forEach(({ rowId }) => {
@@ -922,6 +935,8 @@ const ReactGridDataHandler = (props) => {
     <div ref={keyboardHost} onPasteCapture={handlePaste} onCopy={handleCopy}
       onPointerDownCapture={(event) => {
         if (event.target.closest?.('.drg-find')) return
+        clientHeaderSelection.current=clientVirtual &&
+          Boolean(event.target.closest?.('.rg-header-cell'))
         findInvalidated.current=false
         findSelection.current=null
         suppressNativeSelection.current=false

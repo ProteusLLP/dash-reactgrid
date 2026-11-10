@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   boundedSelection,extendSelection,parseClipboardTsv,makeRangePaste,
   copyRequestFor,matchesCopyResponse,initialHistory,historyStorageKey,
-  loadHistory,saveHistory,nextHistory,
+  loadHistory,saveHistory,nextHistory,editableFillColumns,virtualRawCellCopyText,
 } from "../virtualOperations.js";
 const cols=[{columnId:"name",type:"text"},{columnId:"amount",type:"number"}];
 const selected={start:500,end:800,columnStart:0,columnEnd:2};
@@ -17,6 +17,26 @@ test("global selection spans arbitrarily distant unloaded rows without listing t
   assert.equal(boundedSelection(-1,100,0,2,1000,2),null);
   assert.equal(boundedSelection(0,1001,0,2,1000,2),null);
 });
+test("loaded date and time cells copy overlaid raw data with hidden columns",()=>{
+  const cols=[{columnId:"hidden",type:"text"},
+    {columnId:"start",type:"date"},{columnId:"at",type:"time"}];
+  const page={data:[["secret","2026-11-09","2026-11-09T14:30:00Z"]]};
+  assert.equal(virtualRawCellCopyText(page,0,"start",cols),"2026-11-09");
+  assert.equal(virtualRawCellCopyText(page,0,"at",cols),"2026-11-09T14:30:00Z");
+  const overlaid={data:[["secret","2026-11-10","2026-11-10T09:30:00Z"]]};
+  assert.equal(virtualRawCellCopyText(overlaid,0,"start",cols),"2026-11-10");
+  assert.equal(virtualRawCellCopyText(overlaid,0,"at",cols),"2026-11-10T09:30:00Z");
+  const pending={data:[["secret","2026-11-10",
+    new Date("2026-11-10T09:30:00.000Z")]]};
+  assert.equal(virtualRawCellCopyText(pending,0,"at",cols),
+    "2026-11-10T09:30:00.000Z");
+  assert.equal(virtualRawCellCopyText({data:[["secret",'a"b',null]]},0,"start",cols),
+    '"a""b"');
+  assert.equal(virtualRawCellCopyText({data:[["secret",null,null]]},0,"start",cols),"");
+  assert.equal(virtualRawCellCopyText(overlaid,5,"start",cols),null);
+  assert.equal(virtualRawCellCopyText(overlaid,0,"missing",cols),null);
+});
+
 test("TSV parser preserves escaped quotes, tabs and embedded linebreaks",()=>{
   assert.deepEqual(parseClipboardTsv('one\t"two\tinside"\n"line\nnext"\t"say ""hello"""\n'),[
     ["one","two\tinside"],["line\nnext",'say "hello"'],
@@ -50,6 +70,25 @@ test("copy requests use stable visible IDs, rejecting a stale column response",(
   assert.equal(matchesCopyResponse({...request,text:"A\t5"},request),true);
   assert.equal(matchesCopyResponse({...request,columnIds:["name","hidden"],text:"A\t5"},request),false);
   assert.equal(matchesCopyResponse({...request,columnIds:null,text:"A\t5"},request),false);
+});
+
+test("virtual fill commands exclude non-editable columns without misaligning values",()=>{
+  const columns=[
+    {columnId:"label",type:"text"},
+    {columnId:"constant",type:"text",nonEditable:true},
+    {columnId:"amount",type:"number"},
+  ];
+  assert.deepEqual(editableFillColumns(columns,["updated","ignored",17]),{
+    columnIds:["label","amount"],values:["updated",17],
+  });
+  assert.deepEqual(editableFillColumns(columns),{
+    columnIds:["label","amount"],
+  });
+  assert.deepEqual(editableFillColumns([columns[1]],["ignore"]),{
+    columnIds:[],values:[],
+  });
+  assert.deepEqual(editableFillColumns([columns[1]]),{columnIds:[]});
+  assert.throws(()=>editableFillColumns(columns,["missing"]),/match selected columns/);
 });
 
 test("undo and redo history references transaction receipts after reload",()=>{

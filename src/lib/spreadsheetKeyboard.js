@@ -5,7 +5,8 @@
 import { escapeTsvCell } from "./virtualOperations.js";
 import { pastedValue, valueOf } from "./model.js";
 
-export const MAX_KEYBOARD_EDIT_CELLS = 20000;
+// Large clipboard exports remain bounded independently of editing operations.
+export const MAX_KEYBOARD_COPY_CELLS = 20000;
 
 /** Arrow keys jump to the first/last data row or visible column. */
 export const sheetEdge = (key, current, rowCount, columnCount) => {
@@ -90,9 +91,6 @@ export const fillDownChanges = (rect, data, rowIds, allColumns, columns, canEdit
   const source=rect.end-rect.start>1 ? rect.start : rect.start-1;
   if (source<0 || source>=data.length) return [];
   const start=source===rect.start ? rect.start+1 : rect.start;
-  const count=(rect.end-start)*(rect.columnEnd-rect.columnStart);
-  if (count>MAX_KEYBOARD_EDIT_CELLS)
-    throw new RangeError("Fill down is limited to 20,000 cells per operation");
   const indexes=new Map(allColumns.map((col,i)=>[col.columnId,i]));
   const edits=[];
   for(let row=start;row<rect.end;row++){
@@ -113,8 +111,6 @@ export const fillDownChanges = (rect, data, rowIds, allColumns, columns, canEdit
  */
 export const multiEditChanges = (rect, changed, sourceColumn, rowAt, columns, canEdit, parsers) => {
   if (keyboardArea(rect)<=1) return null;
-  if (keyboardArea(rect)>MAX_KEYBOARD_EDIT_CELLS)
-    throw new RangeError("Multi-cell editing is limited to 20,000 cells per operation");
   const raw=valueOf(sourceColumn,changed.newCell);
   const edits=[];
   for(let row=rect.start;row<rect.end;row++){
@@ -132,7 +128,7 @@ export const multiEditChanges = (rect, changed, sourceColumn, rowAt, columns, ca
 };
 
 /** Text for a compact selection, preserving the same TSV/Excel escaping. */
-export const keyboardClipboardText = (rect,data,allColumns,columns,maxCells=MAX_KEYBOARD_EDIT_CELLS) => {
+export const keyboardClipboardText = (rect,data,allColumns,columns,maxCells=MAX_KEYBOARD_COPY_CELLS) => {
   if (keyboardArea(rect)>maxCells) return null;
   const indexes=new Map(allColumns.map((col,i)=>[col.columnId,i]));
   const lines=[];

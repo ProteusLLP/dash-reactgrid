@@ -104,32 +104,11 @@
   background: #f4f5f7;
 }
 
-/* Global row selection can span windows that are not mounted in ReactGrid. */
-.drg-virtual-toolbar {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.45rem;
-  padding: 0.45rem 0;
-  font-size: 0.82rem;
-}
-.drg-virtual-toolbar label {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-}
-.drg-virtual-toolbar input[type=number] {
-  width: 6.2rem;
-  padding: 0.25rem;
-}
-.drg-virtual-toolbar button {
-  padding: 0.25rem 0.5rem;
-}
-.drg-virtual-toolbar a {
-  text-decoration: underline;
-}
-.drg-selection-count {
+/* Large server-backed selections are managed with native grid interaction. */
+.drg-virtual-selection-status {
+  padding: 0.25rem 0;
   color: #526174;
+  font-size: 0.82rem;
 }
 .reactgrid .rg-cell.rg-virtual-selected {
   background: rgba(45, 116, 214, 0.17);

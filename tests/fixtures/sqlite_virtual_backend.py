@@ -43,21 +43,37 @@ class VirtualGridStore(SparseGridStore):
                 "SELECT revision FROM datasets WHERE dataset_id=?", (self.dataset_id,)
             ).fetchone()[0]
 
+    def _cell_edit_rejection(self, row_id, column_id, current_values):
+        """Return a protection reason, or None for an editable destination.
+
+        Invalid rule definitions still raise so an incorrect application
+        schema cannot silently turn a multi-column fill into a partial edit.
+        """
+        meta=self.column_definitions.get(column_id, {})
+        rules=meta.get("editableWhen", [])
+        # Validate the entire rule schema before evaluating permissions.
+        # Otherwise an early failed predicate could conceal a later invalid
+        # reference and allow a partially successful transaction.
+        for rule in rules:
+            if rule.get("columnId") not in self.columns:
+                raise ValueError("Invalid editableWhen column")
+        if meta.get("nonEditable") or (row_key(row_id),column_id) in self.locked_cells:
+            return "A selected cell is locked: " + str(column_id)
+        for rule in rules:
+            value=current_values[self.columns.index(rule["columnId"])]
+            if "in" in rule and value not in rule["in"]:
+                return "Cell edit rules reject the selected row"
+            if "truthy" in rule and bool(value)!=rule["truthy"]:
+                return "Cell edit rules reject the selected row"
+        return None
+
     def _assert_can_edit(self, row_id, columns, current_values):
         if self.read_only:
             raise ValueError("The dataset is read-only")
         for column_id in columns:
-            meta=self.column_definitions.get(column_id, {})
-            if meta.get("nonEditable") or (row_key(row_id),column_id) in self.locked_cells:
-                raise ValueError("A selected cell is locked: " + str(column_id))
-            for rule in meta.get("editableWhen", []):
-                if rule.get("columnId") not in self.columns:
-                    raise ValueError("Invalid editableWhen column")
-                value=current_values[self.columns.index(rule["columnId"])]
-                if "in" in rule and value not in rule["in"]:
-                    raise ValueError("Cell edit rules reject the selected row")
-                if "truthy" in rule and bool(value)!=rule["truthy"]:
-                    raise ValueError("Cell edit rules reject the selected row")
+            rejection=self._cell_edit_rejection(row_id,column_id,current_values)
+            if rejection is not None:
+                raise ValueError(rejection)
 
     def _count(self, db):
         return db.execute("SELECT COUNT(*) FROM grid_rows WHERE dataset_id=?",
@@ -188,6 +204,85 @@ class VirtualGridStore(SparseGridStore):
         db.executemany("UPDATE grid_rows SET values_json=? WHERE dataset_id=? AND row_id=?",updates)
         return {"kind":"setRows","rowIds":ids,"columnIds":cols,"rows":before}
 
+
+    def _fill_bulk(self, db, op, internal=False):
+        """Apply a compact, absolute-index fill in one transaction.
+
+        Target rows are processed in bounded windows, and the inverse is
+        recorded by stable row ID so undo remains valid after row insertion.
+        A protected destination is skipped without affecting other rows.
+        """
+        kind=op["kind"]
+        start,end=op.get("start"),op.get("end")
+        cols=op.get("columnIds")
+        if (not all(isinstance(n,int) and not isinstance(n,bool) for n in (start,end))
+                or not 0<=start<end<=self._count(db)):
+            raise ValueError("Invalid fill interval")
+        if (not isinstance(cols,list) or not cols or len(cols)!=len(set(cols))
+                or any(c not in self.columns for c in cols)):
+            raise ValueError("Invalid fill columns")
+        if not internal and self.read_only:
+            raise ValueError("The dataset is read-only")
+        indexes=[self.columns.index(c) for c in cols]
+        if kind=="fillRange":
+            values=op.get("values")
+            if not isinstance(values,list) or len(values)!=len(cols):
+                raise ValueError("Invalid fill values")
+        else:
+            source=op.get("sourceRow")
+            if not isinstance(source,int) or isinstance(source,bool) or not 0<=source<start:
+                raise ValueError("Invalid fill source row")
+            source_entries=self._ordered(db,source,source+1)
+            if len(source_entries)!=1:
+                raise ValueError("Fill source row is missing")
+            row=json.loads(source_entries[0][2])
+            values=[row[i] for i in indexes]
+
+        inverses=[]
+        for offset in range(start,end,250):
+            stop=min(offset+250,end)
+            entries=self._ordered(db,offset,stop)
+            if len(entries)!=stop-offset:
+                raise ValueError("Fill extends beyond the current dataset")
+            # Save only the cells actually changed, grouped by column, so
+            # locked and conditionally protected destinations remain untouched
+            # and undo never overwrites their later independent updates.
+            previous={c:[] for c in cols}
+            row_ids={c:[] for c in cols}
+            updates=[]
+            for rid,_,raw in entries:
+                original=json.loads(raw)
+                data=list(original)
+                decoded_id=json.loads(rid)
+                changed=False
+                for col,index,value in zip(cols,indexes,values):
+                    if not internal and self._cell_edit_rejection(
+                            decoded_id,col,original) is not None:
+                        continue
+                    # JSON distinguishes booleans from numbers: Python's
+                    # True == 1 would otherwise suppress a required write.
+                    if canonical(data[index])==canonical(value):
+                        continue
+                    row_ids[col].append(decoded_id)
+                    previous[col].append([data[index]])
+                    data[index]=value
+                    changed=True
+                if changed:
+                    updates.append((canonical(data),self.dataset_id,rid))
+            if updates:
+                db.executemany(
+                    "UPDATE grid_rows SET values_json=? WHERE dataset_id=? AND row_id=?",
+                    updates,
+                )
+                for col in cols:
+                    if row_ids[col]:
+                        inverses.append({"kind":"setRows","rowIds":row_ids[col],
+                                         "columnIds":[col],"rows":previous[col]})
+        # Reverse once to undo in reverse write order. Repeated insert(0)
+        # would shift an ever-growing journal during a large fill transaction.
+        inverses.reverse()
+        return {"kind":"sequence","edits":inverses}
+
     def _operation(self, db, op, stream, current_seq, internal=False):
         if not isinstance(op,dict):raise ValueError("Edit must be an object")
         kind=op.get("kind")
@@ -204,6 +299,8 @@ class VirtualGridStore(SparseGridStore):
             entries=self._ordered(db,start,end)
             if len(entries)!=end-start:raise ValueError("Deletion is outside the dataset")
             return self._remove(db,[json.loads(row[0]) for row in entries])
+        if kind in ("fillRange","fillDown"):
+            return self._fill_bulk(db,op,internal=internal)
         if kind=="paste":
             return self._paste(db,op,internal=internal)
         if kind=="setRows":
@@ -228,12 +325,14 @@ class VirtualGridStore(SparseGridStore):
             # of this sequence is saved as a new receipt.
             actions=[]
             for child in inverse:
-                actions.insert(0,self._operation(db,child,stream,current_seq,internal=True))
+                actions.append(self._operation(db,child,stream,current_seq,internal=True))
+            actions.reverse()
             return {"kind":"sequence","edits":actions}
         if kind=="sequence":
             actions=[]
             for child in op["edits"]:
-                actions.insert(0,self._operation(db,child,stream,current_seq))
+                actions.append(self._operation(db,child,stream,current_seq,internal=internal))
+            actions.reverse()
             return {"kind":"sequence","edits":actions}
         raise ValueError("Unsupported edit kind: "+str(kind))
 

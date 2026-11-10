@@ -25,7 +25,7 @@ dashReactGrid(id=NULL, className=NULL, columns=NULL, data=NULL,
   selectedRange=NULL, selectedRowIds=NULL, stickyBottomRows=NULL,
   stickyLeftColumns=NULL, stickyRightColumns=NULL, stickyTopRows=NULL,
   style=NULL, styleHeader=NULL, virtualFindRequest=NULL,
-  virtualFindData=NULL)
+  virtualFindData=NULL, virtualClipboardUrl=NULL)
 }
 
 \arguments{
@@ -129,6 +129,8 @@ The whole data array is still transferred to Dash on edits.}
 The changed table is retained locally in the browser, including new
 and deleted rows, and is replaced only by an external data/rowIds
 update. Default false publishes full data as before.}
+
+\item{virtualClipboardUrl}{Character. Authenticated same-origin endpoint streaming selected rows as TSV without a header.}
 
 \item{virtualData}{Named list. Server response {datasetId, requestId, start, rowIds, data} or
 {datasetId, requestId, start, error}. Must echo the request identity.}

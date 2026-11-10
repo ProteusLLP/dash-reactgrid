@@ -75,6 +75,7 @@ The whole data array is still transferred to Dash on edits.
 The changed table is retained locally in the browser, including new
 and deleted rows, and is replaced only by an external data/rowIds
 update. Default false publishes full data as before.
+- `virtualClipboardUrl` (String; optional): Authenticated same-origin endpoint streaming selected rows as TSV without a header.
 - `virtualData` (Dict; optional): Server response {datasetId, requestId, start, rowIds, data} or
 {datasetId, requestId, start, error}. Must echo the request identity.
 - `virtualDatasetId` (String; optional): Stable identifier of the ordered server dataset. Change it when the
@@ -101,7 +102,7 @@ Supplying a nonnegative integer enables virtual mode instead of paging.
 - `virtualWindowSize` (Real; optional): Approximate number of rows fetched per request, default 120.
 """
 function dashreactgrid(; kwargs...)
-        available_props = Symbol[:id, :className, :columns, :data, :disableVirtualScrolling, :dropdownMenuPortal, :editAck, :editDatasetId, :edits, :enableColumnSelection, :enableFillHandle, :enableRangeSelection, :enableRowSelection, :hiddenColumns, :highlights, :isExtendable, :lockedCells, :newRow, :persisted_props, :persistence, :persistence_type, :readOnly, :rowIds, :rowPageSize, :selectedCell, :selectedRange, :selectedRowIds, :stickyBottomRows, :stickyLeftColumns, :stickyRightColumns, :stickyTopRows, :style, :styleHeader, :transmitSparseEdits, :virtualData, :virtualDatasetId, :virtualExportUrl, :virtualFindData, :virtualFindRequest, :virtualRangeData, :virtualRangeRequest, :virtualRequest, :virtualRowCount, :virtualRowHeight, :virtualSelection, :virtualViewportHeight, :virtualWindowSize]
+        available_props = Symbol[:id, :className, :columns, :data, :disableVirtualScrolling, :dropdownMenuPortal, :editAck, :editDatasetId, :edits, :enableColumnSelection, :enableFillHandle, :enableRangeSelection, :enableRowSelection, :hiddenColumns, :highlights, :isExtendable, :lockedCells, :newRow, :persisted_props, :persistence, :persistence_type, :readOnly, :rowIds, :rowPageSize, :selectedCell, :selectedRange, :selectedRowIds, :stickyBottomRows, :stickyLeftColumns, :stickyRightColumns, :stickyTopRows, :style, :styleHeader, :transmitSparseEdits, :virtualClipboardUrl, :virtualData, :virtualDatasetId, :virtualExportUrl, :virtualFindData, :virtualFindRequest, :virtualRangeData, :virtualRangeRequest, :virtualRequest, :virtualRowCount, :virtualRowHeight, :virtualSelection, :virtualViewportHeight, :virtualWindowSize]
         wild_props = Symbol[]
         return Component("dashreactgrid", "DashReactGrid", "dash_reactgrid", available_props, wild_props; kwargs...)
 end

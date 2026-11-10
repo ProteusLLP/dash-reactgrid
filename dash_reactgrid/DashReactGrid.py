@@ -144,6 +144,10 @@ Keyword arguments:
     new and deleted rows, and is replaced only by an external
     data/rowIds update. Default False publishes full data as before.
 
+- virtualClipboardUrl (string; optional):
+    Authenticated same-origin endpoint streaming selected rows as TSV
+    without a header.
+
 - virtualData (dict; optional):
     Server response {datasetId, requestId, start, rowIds, data} or
     {datasetId, requestId, start, error}. Must echo the request
@@ -256,11 +260,12 @@ Keyword arguments:
         persisted_props: typing.Optional[typing.Sequence[Literal["columns", "data"]]] = None,
         virtualFindRequest: typing.Optional[dict] = None,
         virtualFindData: typing.Optional[dict] = None,
+        virtualClipboardUrl: typing.Optional[str] = None,
         **kwargs
     ):
-        self._prop_names = ['id', 'className', 'columns', 'data', 'disableVirtualScrolling', 'dropdownMenuPortal', 'editAck', 'editDatasetId', 'edits', 'enableColumnSelection', 'enableFillHandle', 'enableRangeSelection', 'enableRowSelection', 'hiddenColumns', 'highlights', 'isExtendable', 'lockedCells', 'newRow', 'persisted_props', 'persistence', 'persistence_type', 'readOnly', 'rowIds', 'rowPageSize', 'selectedCell', 'selectedRange', 'selectedRowIds', 'stickyBottomRows', 'stickyLeftColumns', 'stickyRightColumns', 'stickyTopRows', 'style', 'styleHeader', 'transmitSparseEdits', 'virtualData', 'virtualDatasetId', 'virtualExportUrl', 'virtualFindData', 'virtualFindRequest', 'virtualRangeData', 'virtualRangeRequest', 'virtualRequest', 'virtualRowCount', 'virtualRowHeight', 'virtualSelection', 'virtualViewportHeight', 'virtualWindowSize']
+        self._prop_names = ['id', 'className', 'columns', 'data', 'disableVirtualScrolling', 'dropdownMenuPortal', 'editAck', 'editDatasetId', 'edits', 'enableColumnSelection', 'enableFillHandle', 'enableRangeSelection', 'enableRowSelection', 'hiddenColumns', 'highlights', 'isExtendable', 'lockedCells', 'newRow', 'persisted_props', 'persistence', 'persistence_type', 'readOnly', 'rowIds', 'rowPageSize', 'selectedCell', 'selectedRange', 'selectedRowIds', 'stickyBottomRows', 'stickyLeftColumns', 'stickyRightColumns', 'stickyTopRows', 'style', 'styleHeader', 'transmitSparseEdits', 'virtualClipboardUrl', 'virtualData', 'virtualDatasetId', 'virtualExportUrl', 'virtualFindData', 'virtualFindRequest', 'virtualRangeData', 'virtualRangeRequest', 'virtualRequest', 'virtualRowCount', 'virtualRowHeight', 'virtualSelection', 'virtualViewportHeight', 'virtualWindowSize']
         self._valid_wildcard_attributes =            []
-        self.available_properties = ['id', 'className', 'columns', 'data', 'disableVirtualScrolling', 'dropdownMenuPortal', 'editAck', 'editDatasetId', 'edits', 'enableColumnSelection', 'enableFillHandle', 'enableRangeSelection', 'enableRowSelection', 'hiddenColumns', 'highlights', 'isExtendable', 'lockedCells', 'newRow', 'persisted_props', 'persistence', 'persistence_type', 'readOnly', 'rowIds', 'rowPageSize', 'selectedCell', 'selectedRange', 'selectedRowIds', 'stickyBottomRows', 'stickyLeftColumns', 'stickyRightColumns', 'stickyTopRows', 'style', 'styleHeader', 'transmitSparseEdits', 'virtualData', 'virtualDatasetId', 'virtualExportUrl', 'virtualFindData', 'virtualFindRequest', 'virtualRangeData', 'virtualRangeRequest', 'virtualRequest', 'virtualRowCount', 'virtualRowHeight', 'virtualSelection', 'virtualViewportHeight', 'virtualWindowSize']
+        self.available_properties = ['id', 'className', 'columns', 'data', 'disableVirtualScrolling', 'dropdownMenuPortal', 'editAck', 'editDatasetId', 'edits', 'enableColumnSelection', 'enableFillHandle', 'enableRangeSelection', 'enableRowSelection', 'hiddenColumns', 'highlights', 'isExtendable', 'lockedCells', 'newRow', 'persisted_props', 'persistence', 'persistence_type', 'readOnly', 'rowIds', 'rowPageSize', 'selectedCell', 'selectedRange', 'selectedRowIds', 'stickyBottomRows', 'stickyLeftColumns', 'stickyRightColumns', 'stickyTopRows', 'style', 'styleHeader', 'transmitSparseEdits', 'virtualClipboardUrl', 'virtualData', 'virtualDatasetId', 'virtualExportUrl', 'virtualFindData', 'virtualFindRequest', 'virtualRangeData', 'virtualRangeRequest', 'virtualRequest', 'virtualRowCount', 'virtualRowHeight', 'virtualSelection', 'virtualViewportHeight', 'virtualWindowSize']
         self.available_wildcard_properties =            []
         _explicit_args = kwargs.pop('_explicit_args')
         _locals = locals()

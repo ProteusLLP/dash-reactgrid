@@ -40,6 +40,11 @@ export const virtualRowWindow = (scrollTop, total, rowHeight = DEFAULT_VIRTUAL_R
     : Math.min(maxStart, Math.floor(idealStart / step) * step);
   // Never allow the selected visual range to fall into a compressed spacer.
   start = Math.max(start, Math.max(0, first + visible - size));
+  // On compressed scrollbars a coarse snapped window can put the first
+  // logical row below the viewport even when the top spacer reaches zero.
+  // Shift its start forward just enough to fit the full-height loaded rows.
+  start = Math.max(start, Math.min(maxStart,
+    Math.max(0, first - Math.floor(position / rowHeight))));
   start = Math.min(start, Math.max(0, first));
   // When very large tables compress millions of rows into a few pixels,
   // the browser can round the scroll coordinate to an adjacent window.
@@ -50,6 +55,33 @@ export const virtualRowWindow = (scrollTop, total, rowHeight = DEFAULT_VIRTUAL_R
       Math.max(Math.min(start,priorityRow),priorityRow-size+1)));
   const end = Math.min(total, start + size);
   return { start, end, first, visible, size, totalHeight };
+};
+
+/** Scroll position that brings a logical row into the virtual viewport.
+ * The mapping mirrors virtualRowWindow's compressed physical scrollbar.
+ */
+export const scrollTopForVirtualRow = (row, total, rowHeight, viewportHeight, alignToTop=false) => {
+  if (total <= 0 || row < 0 || row >= total) return 0;
+  const visible = Math.ceil(Math.max(1, viewportHeight) / rowHeight) + 2;
+  const pageRows = Math.max(1, Math.floor((viewportHeight-rowHeight) / rowHeight));
+  const first = alignToTop ? row : Math.max(0, row-pageRows+1);
+  const maxFirst = Math.max(0, total-visible);
+  const maxScroll = Math.max(0, Math.min(total*rowHeight,
+    MAX_BROWSER_SCROLL_PX)-viewportHeight);
+  const desired = maxFirst ? Math.min(first,maxFirst) / maxFirst * maxScroll : 0;
+  // At the top, don't scroll past the requested row. At the bottom, round
+  // forward so the moving endpoint is inside the visible portion.
+  let position=Math.min(maxScroll,alignToTop ? Math.floor(desired) : Math.ceil(desired));
+  if (alignToTop && total-row<=visible*2) {
+    // At the end of the dataset the bottom spacer is exhausted. Cap the
+    // upward scroll to the actual top of the requested full-height row,
+    // rather than scrolling several pixels past it.
+    const rowTop=Math.max(0,Math.min(maxScroll,
+      Math.min(total*rowHeight,MAX_BROWSER_SCROLL_PX)-
+        (total-row)*rowHeight));
+    position=Math.min(position,rowTop);
+  }
+  return position;
 };
 
 /** Map an absolute row to the compressed browser scrollbar coordinates. */
@@ -124,7 +156,7 @@ export const addViewportCache = (cache, key, response, limit = 4) => {
 
 export const buildVirtualRows = ({
   columns, descriptors, allColumns, rowCount, range, page, rowHeight,
-  readOnly, locked, styleHeader, openDropdown, selection,
+  viewportHeight = 400, readOnly, locked, styleHeader, openDropdown, selection,
 }) => {
   const spacer = (id, height) => ({
     rowId: id,
@@ -144,9 +176,20 @@ export const buildVirtualRows = ({
   });
   // Keep loaded rows at full, readable height. Only the offscreen spacer
   // distances are compressed when the logical table exceeds browser limits.
-  // Mapping the window start over the available physical spacer distance
-  // also ensures the final rows line up with the bottom of the scrollbar.
-  const { topHeight, bottomHeight } = virtualSpacerHeights(rowCount, rowHeight, range);
+  // Align the logical visible row with the physical scroll position.
+  const windowHeight = rangeSize * rowHeight;
+  const physicalHeight = Math.min(rowCount * rowHeight, MAX_BROWSER_SCROLL_PX);
+  const spacerHeight = Math.max(0, physicalHeight - windowHeight);
+  // The physical scrollbar can be compressed, while loaded cells remain
+  // rowHeight tall. Align the row denoted by range.first with its scroll
+  // position; scaling the top spacer by range.start alone makes intermediate
+  // rows (e.g. row 1000 of 2m) unreachable in the visible viewport.
+  const maxFirst=Math.max(0,rowCount-range.visible);
+  const maxScroll=Math.max(0,physicalHeight-viewportHeight);
+  const scrollAtFirst=maxFirst ? range.first/maxFirst*maxScroll : 0;
+  const firstOffset=(range.first-range.start)*rowHeight;
+  const topHeight=Math.max(0,Math.min(spacerHeight,
+    scrollAtFirst-firstOffset));
   const headerCount = headerDepth(columns);
   const rows = built.rows.slice(0, headerCount);
   if (topHeight > 0) rows.push(spacer(VIRTUAL_SPACER_TOP, topHeight));
@@ -166,6 +209,7 @@ export const buildVirtualRows = ({
       })),
     });
   }
+  const bottomHeight = spacerHeight - topHeight;
   if (bottomHeight > 0) rows.push(spacer(VIRTUAL_SPACER_BOTTOM, bottomHeight));
   return rows;
 };

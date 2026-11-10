@@ -24,7 +24,7 @@ jobs:
       - name: Install dependencies
         run: |
           npm ci --legacy-peer-deps
-          python -m pip install "dash>=3,<5" "numpy>=1.23,<3"
+          python -m pip install "dash>=3,<5" "numpy>=1.23,<3" "pyyaml>=6"
       - name: Generate JavaScript and Python/R/Julia bindings
         run: npm run build
       - name: Commit generated files

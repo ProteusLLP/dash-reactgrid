@@ -75,7 +75,48 @@ def run():
             assert any(edit.get("columnId")=="0" and edit.get("value")==9
                        for edit in event.get("edits",[])),event
             assert len(driver.find_elements(By.CSS_SELECTOR,"#client-grid .rg-cell"))<1800
-            print("Client virtual Chrome test passed: 100k rows, bounded DOM, offscreen scroll, sparse editing")
+
+            # Acknowledged edits must survive viewport eviction and remounting.
+            # This catches a regression where the typed-array backing store is
+            # not updated when ReactGrid discards its visible row components.
+            driver.execute_script("""
+                const viewport=document.querySelector(arguments[0]);
+                viewport.scrollTop=800000;
+                viewport.dispatchEvent(new Event('scroll',{bubbles:true}));
+            """,viewport)
+            wait.until(lambda _:driver.execute_script("""
+                return [...document.querySelectorAll(arguments[0])]
+                    .some(c=>Number(c.textContent.replaceAll(',',''))>100000);
+            """,cell))
+            driver.execute_script("""
+                const viewport=document.querySelector(arguments[0]);
+                viewport.scrollTop=0;
+                viewport.dispatchEvent(new Event('scroll',{bubbles:true}));
+            """,viewport)
+            wait.until(lambda _:driver.execute_script("""
+                return [...document.querySelectorAll(arguments[0])]
+                    .some(c=>c.textContent.trim()==='9');
+            """,cell))
+            assert driver.find_elements(By.CSS_SELECTOR,cell)[0].text.strip() == "9", (
+                "Edited first row was lost after scrolling out and back"
+            )
+
+            # Repeated distant scrolls must not accumulate DOM cells.
+            for offset in (1800000, 100000, 2200000, 0):
+                driver.execute_script("""
+                    const viewport=document.querySelector(arguments[0]);
+                    viewport.scrollTop=arguments[1];
+                    viewport.dispatchEvent(new Event('scroll',{bubbles:true}));
+                """,viewport,offset)
+                wait.until(lambda _:driver.execute_script("""
+                    const viewport=document.querySelector(arguments[0]);
+                    return Math.abs(viewport.scrollTop-arguments[1])<100;
+                """,viewport,offset))
+                wait.until(lambda _:len(driver.find_elements(
+                    By.CSS_SELECTOR,"#client-grid .rg-cell"))<1800)
+            wait.until(lambda _:driver.find_elements(By.CSS_SELECTOR,cell)
+                       and driver.find_elements(By.CSS_SELECTOR,cell)[0].text.strip()=="9")
+            print("Client virtual Chrome test passed: 100k rows, bounded DOM, repeated offscreen scroll, persistent sparse editing")
         finally:
             if driver:driver.quit()
             process.terminate()

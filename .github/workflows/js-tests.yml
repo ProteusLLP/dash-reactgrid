@@ -21,6 +21,8 @@ jobs:
       - name: Run JavaScript unit tests
         shell: bash
         run: node --experimental-detect-module --test --experimental-test-coverage --test-coverage-include='src/lib/**' --test-coverage-exclude='**/*.test.js' --test-coverage-exclude='**/*.test.mjs' | tee js-coverage.txt
+      - name: Validate guarded generated-file rebase
+        run: python3 -m unittest tests.test_rebase_generated -v
       - name: Compile component
         run: npm run build:js
       - name: Verify committed browser assets match source

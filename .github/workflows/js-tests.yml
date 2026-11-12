@@ -19,7 +19,8 @@ jobs:
       - name: Install build and test dependencies
         run: npm ci --legacy-peer-deps
       - name: Run JavaScript unit tests
-        run: npm run test:js
+        shell: bash
+        run: node --experimental-detect-module --test --experimental-test-coverage --test-coverage-include='src/lib/**' --test-coverage-exclude='**/*.test.js' --test-coverage-exclude='**/*.test.mjs' | tee js-coverage.txt
       - name: Compile component
         run: npm run build:js
       - name: Verify committed browser assets match source
@@ -44,6 +45,22 @@ jobs:
         run: python3 -m unittest tests.test_numpy_data -v
       - name: Test Python column and stateless callback contracts
         run: python3 -m unittest tests.test_component_contract -v
+      - name: Collect Python branch coverage (unit contracts)
+        run: |
+          python3 -m pip install "coverage>=7,<8"
+          python3 -m coverage run --branch --source=dash_reactgrid -m unittest tests.test_column tests.test_numpy_data tests.test_component_contract tests.test_stateless_virtual_callbacks tests.test_sparse_edit_server tests.test_virtual_grid_store
+          python3 -m coverage report -m | tee python-coverage.txt
+          python3 -m coverage xml -o python-coverage.xml
+      - name: Publish unit coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-coverage
+          path: |
+            js-coverage.txt
+            python-coverage.txt
+            python-coverage.xml
+          if-no-files-found: warn
       - name: Test full Chrome cell, clipboard and interaction matrix
         run: python3 tests/test_feature_matrix_browser.py
       - name: Test real-browser sparse edit and ACK

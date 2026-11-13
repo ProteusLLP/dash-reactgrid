@@ -40,7 +40,7 @@ jobs:
       - name: Test virtual operations against optional SQLite fixture
         run: python3 -m unittest discover -s tests -p test_virtual_grid_store.py -v
       - name: Install Dash and Selenium browser testing
-        run: python3 -m pip install "dash>=3,<5" "selenium>=4,<5" "numpy>=1.23,<3"
+        run: python3 -m pip install "dash>=3,<5" "selenium>=4,<5" "numpy>=1.23,<3" "pandas>=2.2,<4"
       - name: Test Python column helper
         run: python3 -m unittest tests.test_column -v
       - name: Test NumPy binary grid transport and callbacks
@@ -50,7 +50,7 @@ jobs:
       - name: Collect Python branch coverage (unit contracts)
         run: |
           python3 -m pip install "coverage>=7,<8"
-          python3 -m coverage run --branch --source=dash_reactgrid -m unittest tests.test_column tests.test_numpy_data tests.test_component_contract tests.test_stateless_virtual_callbacks tests.test_sparse_edit_server tests.test_virtual_grid_store
+          python3 -m coverage run --branch --source=dash_reactgrid -m unittest tests.test_column tests.test_numpy_data tests.test_component_contract tests.test_dataframe tests.test_stateless_virtual_callbacks tests.test_sparse_edit_server tests.test_virtual_grid_store
           python3 -m coverage report -m | tee python-coverage.txt
           python3 -m coverage xml -o python-coverage.xml
       - name: Publish unit coverage reports

@@ -384,9 +384,11 @@ or row deletion is needed. This prevents queued structural operations from
 being replayed against shifted positional IDs after a reload. In server
 virtual mode, positional IDs are valid for row operations as long as the
 application atomically commits/deduplicates edit batches and updates its
-authoritative ordering before acknowledging them. Change `virtualDatasetId`
-(and the edit dataset identity when appropriate) when sorting, filtering or
-replacing the dataset.
+authoritative ordering before acknowledging them. When sorting, filtering or replacing a dataset with positional IDs, change
+`editDatasetId` before accepting edits for the new ordering, including for
+fixed-size in-memory grids. In server virtual mode also change
+`virtualDatasetId` to invalidate cached windows. Do not replay pending edits
+from the previous positional dataset against the new ordering.
 
 ## Editing with stable row ids
 

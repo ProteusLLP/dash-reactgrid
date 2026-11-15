@@ -85,3 +85,18 @@ test("metadata-only props preserve local acknowledged sparse edits",()=>{
     assert.deepEqual(authoritative.table.data,[["Server refresh",99]]);
   }finally {globalThis.window=old;}
 });
+
+test("implicit positional IDs admit durable sparse cell editing",()=>{
+  const old=globalThis.window;
+  try {
+    globalThis.window=fakeBrowser();
+    const values=[[10],[20]];
+    const conf=config({data:values,rowIds:undefined,
+      columns:[{columnId:"value",title:"Value"}]});
+    const session=makeSession(conf);
+    assert.equal(session.error,null);
+    assert.deepEqual(session.table.rowIds,[0,1]);
+    assert.ok(session.outbox);
+    assert.strictEqual(reconcileSession(session,conf),session);
+  } finally {globalThis.window=old;}
+});

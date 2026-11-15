@@ -244,13 +244,12 @@ def load_rows(request):
     start, end = request["start"], request["end"]  # [start, end)
     # Fetch by indexed offset from your authoritative store; never
     # construct or serialize the complete table in this callback.
-    row_ids, values = fetch_rows(start, end)  # application-specific
+    values = fetch_rows(start, end)  # application-specific
     return {
         "datasetId": request["datasetId"],
         "requestId": request["requestId"],
         "start": start,
-        "rowIds": row_ids,          # one stable ID per returned row
-        "data": values,             # arrays in columns' original order
+        "data": values,             # row IDs derive from start + offset
     }
 ```
 
@@ -340,7 +339,7 @@ a cache service, or a process-local row store. No full table is kept in the
 component. The application already owns the authoritative data; it supplies
 four functions to Dash:
 
-- **Read a window:** `read_rows(start, end)` returns stable row IDs and values.
+- **Read a window:** `read_rows(start, end)` returns row values; optional `rowIds` may carry stable custom IDs.
 - **Commit a batch:** `commit_batch(batch)` applies commands to the
   application's data source and returns an acknowledgement.
 - **Read a clipboard range:** `read_rows` can also supply the selected
@@ -360,7 +359,7 @@ from dash_reactgrid.stateless_virtual import (
 
 # These functions already belong to your application. They may access
 # a DataFrame, a file, a database, an existing service, or another model.
-# read_rows(start, end) -> {"rowIds": [...], "data": [[...], ...]}
+# read_rows(start, end) -> {"data": [[...], ...]}  # rowIds optional
 # commit_batch(batch) -> {"status": "ok", "rowCount": ..., "revision": ...}
 # count_rows() -> int
 
@@ -374,7 +373,6 @@ app.layout = DashReactGrid(
     id="grid",
     columns=columns,
     data=[],
-    rowIds=[],
     virtualRowCount=count_rows(),
     virtualDatasetId=DATASET,
     virtualWindowSize=120,
@@ -555,6 +553,33 @@ validate request sizes, use efficient set-based or batched updates suited to
 their backing store, and preserve atomic edit acknowledgement and undo
 semantics. Benchmark and set application-specific resource/time limits rather
 than using this test fixture as a high-volume production storage engine.
+
+## Row identities (optional)
+
+You can omit `rowIds` for ordinary grids. Rows are then identified by
+their zero-based positions. This works for in-memory grids, and for server
+virtualisation the browser derives positions from each bounded viewport's
+`start` offset without transmitting a full array of IDs. In server mode,
+a provider can return `{"data": rows}` or simply `rows`.
+
+NumPy integer arrays can be passed directly as `rowIds` when stable custom
+identity is useful, for example `rowIds=np.arange(len(data), dtype=np.int32)`.
+Signed and unsigned integer dtypes up to 64 bits are accepted. Values beyond
+JavaScript's exact integer range (±(2**53-1)) become decimal strings so IDs
+do not lose precision. Floating-point, boolean, multidimensional and masked
+NumPy ID arrays are rejected.
+
+For `transmitSparseEdits=True` in an in-memory grid, **implicit IDs are for
+fixed-size cell editing only**: use supplied stable IDs if an extendable sheet
+or row deletion is needed. This prevents queued structural operations from
+being replayed against shifted positional IDs after a reload. In server
+virtual mode, positional IDs are valid for row operations as long as the
+application atomically commits/deduplicates edit batches and updates its
+authoritative ordering before acknowledging them. When sorting, filtering or replacing a dataset with positional IDs, change
+`editDatasetId` before accepting edits for the new ordering, including for
+fixed-size in-memory grids. In server virtual mode also change
+`virtualDatasetId` to invalidate cached windows. Do not replay pending edits
+from the previous positional dataset against the new ordering.
 
 ## Editing with stable row ids
 

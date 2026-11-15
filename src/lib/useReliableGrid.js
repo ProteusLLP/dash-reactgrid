@@ -36,10 +36,10 @@ export const makeSession = ({ enabled, id, datasetId, data, rowIds, columns, new
     error: null,
   };
   if (id === undefined || id === null || typeof datasetId !== "string" || !datasetId.trim() ||
-      !Array.isArray(rowIds) || rowIds.length !== data.length ||
-      rowIds.some((rowId) => rowId === null || rowId === undefined)) {
+      (rowIds != null && (!Array.isArray(rowIds) || rowIds.length !== data.length ||
+       rowIds.some((rowId) => rowId === null || rowId === undefined)))) {
     return {
-      ...partial, error: "Reliable sparse edits require id, a nonempty editDatasetId, and one stable rowId per data row.",
+      ...partial, error: "Reliable sparse edits require id, a nonempty editDatasetId, and valid rowIds when supplied.",
     };
   }
   try {
@@ -159,6 +159,11 @@ export const useReliableGrid = ({
     }
     const before = current.current;
     if (before.error || before.outbox?.blocked || !before.outbox || before.admissionError) return false;
+    // Without explicit stable IDs, a server-side delete/insert followed by
+    // a reload could replay the pending row operation against the wrong row.
+    // Positional IDs are safe for fixed-size cell changes only.
+    if (!windowed && before.sourceRowIds == null &&
+        next.edits.some((edit) => edit.kind !== "cell")) return false;
     try {
       let queued = enqueueEdits(before.outbox, next.edits);
       // The first event is marked as an attempt before writing the durable

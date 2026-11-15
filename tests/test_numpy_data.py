@@ -92,6 +92,54 @@ class NumpyTransportTests(unittest.TestCase):
         self.assertEqual(normal.to_plotly_json()["props"]["data"], [[1, 2]])
         self.assertEqual(grid.to_plotly_json()["namespace"], "dash_reactgrid")
 
+    def test_numpy_integer_row_ids_in_component(self):
+        columns = [{"columnId": "x", "title": "X", "type": "number"}]
+        for dtype in (np.int16, np.int32, np.int64, np.uint32, np.uint64):
+            with self.subTest(dtype=dtype):
+                ids = np.array([0, 1, 100], dtype=dtype)
+                grid = DashReactGrid(columns=columns, data=[[1], [2], [3]],
+                                     rowIds=ids)
+                props = json.loads(json.dumps(grid.to_plotly_json()))["props"]
+                self.assertEqual(props["rowIds"], [0, 1, 100])
+        large = np.array([2**53, 2**64 - 1], dtype=np.uint64)
+        grid = DashReactGrid(columns=columns, data=[[1], [2]], rowIds=large)
+        self.assertEqual(grid.to_plotly_json()["props"]["rowIds"],
+                         [str(2**53), str(2**64 - 1)])
+        negative = np.array([-2**63, 0], dtype=np.int64)
+        grid = DashReactGrid(columns=columns, data=[[1], [2]], rowIds=negative)
+        self.assertEqual(grid.to_plotly_json()["props"]["rowIds"],
+                         [str(-2**63), 0])
+        # A safe ID has the same type regardless of other IDs in the window.
+        mixed = DashReactGrid(columns=columns, data=[[1], [2]],
+                              rowIds=np.array([7, 2**53], dtype=np.uint64))
+        alone = DashReactGrid(columns=columns, data=[[1]],
+                              rowIds=np.array([7], dtype=np.uint64))
+        self.assertEqual(mixed.to_plotly_json()["props"]["rowIds"],
+                         [7, str(2**53)])
+        self.assertEqual(alone.to_plotly_json()["props"]["rowIds"], [7])
+
+    def test_numpy_row_id_rejects_bad_inputs(self):
+        columns = [{"columnId": "x", "title": "X", "type": "number"}]
+        for ids in (np.array([1.0]), np.array([True]),
+                    np.array([[1]]), np.ma.array([1], mask=[True])):
+            with self.subTest(dtype=str(ids.dtype), shape=ids.shape):
+                with self.assertRaises((ValueError, TypeError)):
+                    DashReactGrid(columns=columns, data=[[1]], rowIds=ids)
+
+    def test_virtual_numpy_row_ids_and_implicit_windows(self):
+        columns = [{"columnId": "x"}]
+        req = {"datasetId": "numeric", "requestId": 1,
+               "start": 50, "end": 52}
+        data = np.array([[1], [2]], dtype=np.int32)
+        explicit = window_response(req, dataset_id="numeric", row_count=100,
+            columns=columns, fetch_rows=lambda a, b:
+            {"data": data, "rowIds": np.array([50, 51], dtype=np.int64)})
+        self.assertEqual(explicit["rowIds"], [50, 51])
+        bare = window_response(req, dataset_id="numeric", row_count=100,
+            columns=columns, fetch_rows=lambda a, b: data)
+        self.assertNotIn("rowIds", bare)
+        np.testing.assert_array_equal(decode_numpy_data(bare["data"]), data)
+
     def test_virtual_numeric_provider_and_clipboard(self):
         columns = [{"columnId": "a"}, {"columnId": "b"}]
         array = np.arange(20, dtype=np.float32).reshape(10, 2)

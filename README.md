@@ -1,5 +1,68 @@
 # Dash ReactGrid
 
+## Multi-level column headers
+
+Add `header_path` to a Python `Column` (or `headerPath` to a plain
+column dictionary) to render parent groups above the ordinary leaf header.
+Parent labels run from outermost to innermost; arbitrary nesting is supported.
+Only adjacent columns with an identical ancestor path are visually merged.
+Hidden columns are excluded from the visible spans. Data positions, IDs, edits
+and clipboard values still refer only to leaf columns.
+
+```python
+from dash_reactgrid import Column, DashReactGrid
+
+columns = [
+    Column("gbp_1y", "1y", type="number", header_path=["Rates", "GBP"]),
+    Column("gbp_5y", "5y", type="number", header_path=["Rates", "GBP"]),
+    Column("usd_1y", "1y", type="number", header_path=["Rates", "USD"]),
+]
+grid = DashReactGrid(columns=columns, data=[[0.04, 0.045, 0.039]],
+                     stickyTopRows=1)
+```
+
+The grouped header rows also work in the server-backed virtual grid. When
+`stickyTopRows` includes the leaf header, its parent bands are kept sticky
+as well. ReactGrid's cell spanning is a visual facility with known limitations
+around mouse selection and focus on merged cells; use the leaf header or data
+cells for normal spreadsheet interactions.
+
+## Create a grid from a DataFrame
+
+`DashReactGrid.from_dataframe` accepts pandas DataFrames, Polars DataFrames,
+and simple DataFrame-like objects providing `columns`, `dtypes` and a row
+iterator (`itertuples` or `iter_rows`). Neither pandas nor Polars is a
+required library dependency. Cell types are inferred (number, checkbox, date,
+or text), null values are converted to blanks, and duplicate column labels
+receive unique internal IDs. A pandas MultiIndex automatically creates grouped
+headers. Numeric homogeneous frames use the existing compact NumPy transport.
+
+```python
+import pandas as pd
+from dash_reactgrid import DashReactGrid
+
+df = pd.DataFrame({
+    ("UK", "1y"): [0.04, 0.041],
+    ("UK", "5y"): [0.045, 0.046],
+    ("US", "1y"): [0.039, 0.04],
+})
+grid = DashReactGrid.from_dataframe(
+    df, id="rates", rowPageSize=250, stickyTopRows=1,
+    column_types={("UK", "1y"): "percent"},
+    column_options={("UK", "1y"): {"width": 130, "tooltip": "UK 1 year"}},
+)
+```
+
+Pass `include_index=True` to expose a pandas index as one or more columns.
+`column_types` and `column_options` use original column labels,
+including tuples and integer-valued labels. To refer to zero-based column
+positions, use `column_types_by_position` and
+`column_options_by_position`. Positional overrides take precedence when both
+mappings specify a column. All other keyword arguments
+pass through to `DashReactGrid`. The constructor materialises mixed-type
+frames; for very large datasets use the stateless virtual-grid API instead
+of sending a full DataFrame to Dash.
+
 ## Python column definitions and header tooltips
 
 Use `Column` to create JSON-compatible column definitions with Python-style
@@ -94,6 +157,50 @@ Use `decode_numpy_data(response["data"])` to recover a read-only
 NumPy view of a binary payload. Clipboard and CSV helpers continue to
 work with list-backed or NumPy-backed provider windows.
 
+## Client-side windowed rendering (full dataset in browser memory)
+
+For in-memory tables that fit in browser RAM, set `virtualizationMode="client"`
+to render a bounded viewport without loading rows from Dash during scrolling.
+This uses the existing typed-array NumPy transport for homogeneous numeric
+matrices, plus its copy-on-write overrides for edited rows. Mixed-type tables
+remain supported using normal JavaScript row arrays. ReactGrid receives only a
+visible window and a small overscan buffer, with scroll spacers for the other
+rows. There are no paging buttons.
+
+```python
+import numpy as np
+from dash_reactgrid import DashReactGrid
+
+values = np.random.default_rng(42).normal(size=(100_000, 20))
+columns = [{"columnId": str(j), "title": str(j), "type": "number"}
+           for j in range(values.shape[1])]
+
+grid = DashReactGrid(
+    id="grid", columns=columns, data=values,
+    virtualizationMode="client", virtualWindowSize=120,
+    virtualRowHeight=25, virtualViewportHeight=420,
+    rowIds=[f"r{i}" for i in range(len(values))],
+    transmitSparseEdits=True, editDatasetId="numeric-v1",
+)
+```
+
+Client mode uses the full data for Ctrl+F, Ctrl+End, Ctrl+D, Shift+Enter,
+and absolute selections, including rows not currently mounted. Ctrl+A selects
+the entire logical dataset and Ctrl+C reads the underlying data rather than
+constructing offscreen ReactGrid cells. Browser clipboard output has a 64 MiB
+character safety cap, so especially large exports should use a separate
+backend export. In sparse-edit mode applications must implement the existing
+durable edit acknowledgements, and should provide stable row IDs for
+structural editing.
+
+The dataset is transferred **once** on initialisation. It still consumes
+browser memory, and decoding the base64 NumPy transport creates temporary
+allocations. Use server virtualisation if the dataset is too large to transfer
+or retain in the browser. Omit `virtualizationMode` to preserve legacy
+behaviour: `virtualRowCount` selects server mode; otherwise the normal
+in-memory grid is used. `virtualizationMode="none"` forces the normal
+in-memory rendering mode.
+
 ## Large tables: continuous server-side virtualization
 
 **Recommended for hundreds of thousands of rows or millions of cells:**
@@ -171,17 +278,41 @@ The component updates its row count from the committed acknowledgement and
 invalidates stale viewport caches. Server virtual mode is read-only unless
 reliable sparse transmission is enabled.
 
-**Global selection:** Use Shift-click while scrolling to extend a selection
-or the From row / To row inputs to select a range by absolute row index.
-Ctrl+A selects all rows. The browser holds only the four boundary indices,
-never an array of every selected row. `virtualSelection` publishes these
-indices to Dash. Small ranges are prepared with `virtualRangeRequest`
-and `virtualRangeData` and can be copied in TSV form. For selections
-larger than 1,000 rows or 1 MB, provide `virtualExportUrl` so users can
-download a streamed CSV export. Clipboard pastes of up to 1,000 rows and
+**Global selection:** Click and drag or Shift-click to extend a selection,
+including after scrolling into another server window. Ctrl+Arrow navigates to
+the dataset boundaries and Ctrl+Shift+Arrow extends the selection to them.
+Click a column header or use Ctrl+Space to select an entire logical column.
+Ctrl+A selects all rows and visible columns, including unloaded rows. The browser
+holds only four boundary indices, never an array of every selected row.
+`virtualSelection` publishes these indices to Dash. There are no separate
+row-number inputs or selection buttons.
+
+For Excel-compatible **Ctrl+A then Ctrl+C** on large server-virtualized
+grids, provide `virtualClipboardUrl` pointing to an authenticated same-origin
+endpoint that streams headerless TSV. Pressing Ctrl+C starts the browser
+clipboard write during the user gesture, and its `ClipboardItem` resolves
+the response asynchronously. The browser does not
+load grid rows into ReactGrid or send the selection through Dash. There is no
+arbitrary row/cell-count cap, but actual clipboard capacity depends on the
+browser, operating system and available memory. A separate `virtualExportUrl`
+can be used by the hosting application to offer a separate CSV download
+if clipboard permissions or capacity prevent copying. The grid itself does not
+render an export button or link. Applications must authorise access to the
+entire requested range. Chromium-based browsers with Async Clipboard API and
+promised ClipboardItem support provide the streaming path; on unsupported
+browsers the application can offer CSV export.
+
+When no `virtualClipboardUrl` is configured, small ranges can still be copied
+using `virtualRangeRequest`/`virtualRangeData`, with the existing
+1,000-row/1 MB preparation limits. The selection is prepared automatically;
+press Ctrl+C again if the asynchronous request has not yet completed. Clipboard **pastes** of up to 1,000 rows and
 20,000 cells are applied by the server, including cells in unloaded rows.
 Insertion and deletion operate at absolute positions, and undo/redo use
-transactional inverse receipts rather than loading the whole table.
+transactional inverse receipts rather than loading the whole table. Right-click
+inside the grid to insert a row above the selection, append a row, delete
+selected rows, or undo/redo. Ctrl+Plus inserts above the selection, Ctrl+Minus
+deletes selected rows (with confirmation), and Ctrl+Z/Ctrl+Y undo/redo.
+For an empty virtual grid, focus the empty viewport and press Ctrl+Plus.
 
 **Boundaries:** This is a single-editor editing protocol with no collaborative
 revision detection. Pending changes normally survive reloads in the same
@@ -223,7 +354,7 @@ injects its own data-access functions. For example:
 from dash import Dash, Input, Output, callback
 from dash_reactgrid import DashReactGrid
 from dash_reactgrid.stateless_virtual import (
-    window_response, clipboard_response, edit_ack,
+    window_response, clipboard_response, find_response, edit_ack,
 )
 
 # These functions already belong to your application. They may access
@@ -258,6 +389,15 @@ def fetch_window(request):
         columns=columns, fetch_rows=read_rows,
     )
 
+@callback(Output("grid", "virtualFindData"),
+          Input("grid", "virtualFindRequest"),
+          prevent_initial_call=True)
+def find_anywhere(request):
+    return find_response(
+        request, dataset_id=DATASET, row_count=count_rows(),
+        columns=columns, fetch_rows=read_rows, chunk_size=250,
+    )
+
 @callback(Output("grid", "editAck"), Input("grid", "edits"),
           prevent_initial_call=True)
 def save_commands(batch):
@@ -278,10 +418,53 @@ The row provider and commit function in this example are application-supplied,
 not provided by the grid. A production application must authorise access to
 the requested dataset and enforce edit rules on the data source. The helper
 validates window sizes and identities but is not an authentication layer.
+For indexed databases, implement the same find-response contract with an
+indexed query rather than scanning. The provided `find_response` reads
+bounded chunks (no full-table materialisation) but a search of many millions
+of rows may be expensive, so applications should consider server-side indexes.
 
-For large selections, provide `virtualExportUrl` pointing to your own
-authenticated CSV endpoint. `csv_chunks()` is a pure chunk generator that
+For application-managed CSV downloads, provide `virtualExportUrl` pointing
+to your own authenticated CSV endpoint. This property is retained for
+compatibility, but the grid no longer renders a download link. `csv_chunks()` is a pure chunk generator that
 can be passed to a streaming HTTP response. No full export is materialised.
+
+To enable direct Ctrl+A Ctrl+C for large selections, also supply
+`virtualClipboardUrl="/clipboard.tsv"` on the grid and expose a GET endpoint
+using the same row provider:
+
+```python
+from itertools import chain
+from flask import Response, abort, request, stream_with_context
+from dash_reactgrid.stateless_virtual import tsv_chunks
+
+@app.server.route("/clipboard.tsv")
+def clipboard_tsv():
+    # Authenticate the caller and authorise access to this dataset.
+    if not authorised_for_dataset(request, DATASET):
+        abort(403)
+    if request.args.get("datasetId") != DATASET:
+        abort(403)
+    try:
+        stream = tsv_chunks(
+            start=int(request.args["start"]), end=int(request.args["end"]),
+            column_start=int(request.args["columnStart"]),
+            column_end=int(request.args["columnEnd"]),
+            column_ids=json.loads(request.args["columnIds"]),
+            row_count=count_rows(), columns=columns, fetch_rows=read_rows,
+        )
+        first = next(stream)   # reject invalid requests before HTTP 200
+        return Response(stream_with_context(chain([first], stream)),
+                        mimetype="text/plain",
+                        headers={"Cache-Control":"no-store"})
+    except (ValueError, KeyError, StopIteration):
+        abort(400)
+```
+
+Here `authorised_for_dataset` is an application-defined authorisation
+function and `json` is the standard Python module. The helper fetches
+small row windows and outputs tab-separated text with correct quoting of
+embedded tabs, line breaks and quotation marks; it omits the column headers
+for direct pasting into Excel. The response should not be cached.
 
 Clipboard and export requests include `columnIds` in the current visible
 column order. Resolve these against the original `columns` array to avoid
@@ -361,7 +544,15 @@ server-virtualised grid, because it would defeat virtualization.
 The SQLite files under `tests/fixtures/` are **test-only adapters** used
 to exercise lost acknowledgements, idempotency, inverse operations, and
 cross-window editing. They are not installed dependencies, required runtime
-components, or the recommended application architecture.
+components, or the recommended application architecture. The fixture applies
+bulk fills in 250-row windows, decoding and encoding each JSON row within a
+single SQLite write transaction. Although the command protocol imposes no
+fixed row-count limit, very large fixture fills (for example 100,000+ rows)
+can hold SQLite's writer lock for a long time. Production providers should
+validate request sizes, use efficient set-based or batched updates suited to
+their backing store, and preserve atomic edit acknowledgement and undo
+semantics. Benchmark and set application-specific resource/time limits rather
+than using this test fixture as a high-volume production storage engine.
 
 ## Row identities (optional)
 
@@ -437,11 +628,27 @@ Other properties:
 - To enter one value into several selected cells, select the cells, type in the
   active cell and press Shift+Enter. Target columns use their own value types;
   a single-cell Shift+Enter retains ordinary upward navigation.
-- Keyboard fill and multi-cell edits are limited to 20,000 cells per operation;
-  server-virtualized operations also have a 1,000-row limit. When the source
-  row of an offscreen server-virtualized fill is not loaded, prepare the
-  selection for copying before using Ctrl+D. Host applications must enforce
-  row-level edit permissions when accepting sparse commands.
+- Ordinary in-memory grids allow Ctrl+D, Shift+Enter, and Delete/Backspace
+  across any selected range, including more than 20,000 cells. Clipboard copy
+  retains a separate size safeguard. In server-virtualized mode, Ctrl+D and Shift+Enter
+  use compact, unbounded row-range commands, so an entire selected column can
+  be filled without fetching offscreen rows or sending the values to Dash.
+  Select a column header or use Ctrl+Space from a focused cell to select the
+  full logical column, including unloaded rows. Other clipboard/edit limits
+  still apply.
+- Virtual Shift+Enter submits `{"kind":"fillRange","start":0,"end":100000,
+  "columnIds":["rate"],"values":[0.045]}`. Virtual Ctrl+D submits
+  `{"kind":"fillDown","sourceRow":0,"start":1,"end":100000,
+  "columnIds":["rate"]}`, with the source row resolved by the server.
+  These commands use absolute zero-based row boundaries, with an exclusive
+  `end`. They are delivered through the existing durable `edits`/`editAck`
+  protocol and can be undone as one logical operation.
+- The Dash application must implement these range commands on its underlying
+  dataset, validate dataset identity and edit permissions per destination,
+  handle the operation atomically, and return an ACK only after persistence.
+  Locked and conditionally non-editable destinations should be preserved.
+  The optional SQLite test fixture implements this contract; the grid does
+  not require SQLite or any server-side database.
 - Ctrl+Z and Ctrl+Y undo and redo cell edits.
 
 The data model (`src/lib/model.js`) has no React in it; test it with
@@ -495,6 +702,35 @@ If you have selected install_dependencies during the prompt, you can skip this p
     - Make sure that they are referenced in `MANIFEST.in` so that they get properly included when you're ready to publish your component.
     - Make sure the stylesheets are added to the `_css_dist` dict in `dash_reactgrid/__init__.py` so dash will serve them automatically when the component suite is requested.
 - [Review your code](./review_checklist.md)
+
+### Rebasing branches with generated assets
+
+The generated JavaScript bundles, Dash component bindings, metadata and R/Julia
+wrappers are committed to this repository for packaging. Parallel feature
+branches may modify them even when their source changes are compatible. Never
+resolve these conflicts by overwriting handwritten source files.
+
+From a clean feature branch, after `git fetch origin main`, run:
+
+```bash
+python scripts/rebase_generated.py origin/main
+npm run test:js
+python -m unittest tests.test_rebase_generated -v
+git push --force-with-lease
+```
+
+The helper accepts conflicts **only** in a fixed allowlist of generated files.
+During `git rebase`, it temporarily retains the upstream versions of those
+files, continues replaying feature commits, then runs `npm run build` to
+regenerate the bindings and browser assets from the combined source. It commits
+rebuilt generated files if they changed. A conflict in a source file stops
+without choosing either version, and the helper never pushes on its own.
+
+Once this workflow is present on the default branch, maintainers can also run
+**Actions → Rebase feature branch (generated files safe) → Run workflow**, with
+the existing feature branch name. It backs up the original head, rebuilds and
+runs the JS, Python and Chrome regression tests, and only then pushes using a
+force-with-lease check. Do not use the workflow for untrusted branches.
 
 ### Create a production build and publish:
 

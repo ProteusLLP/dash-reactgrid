@@ -104,32 +104,11 @@
   background: #f4f5f7;
 }
 
-/* Global row selection can span windows that are not mounted in ReactGrid. */
-.drg-virtual-toolbar {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.45rem;
-  padding: 0.45rem 0;
-  font-size: 0.82rem;
-}
-.drg-virtual-toolbar label {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-}
-.drg-virtual-toolbar input[type=number] {
-  width: 6.2rem;
-  padding: 0.25rem;
-}
-.drg-virtual-toolbar button {
-  padding: 0.25rem 0.5rem;
-}
-.drg-virtual-toolbar a {
-  text-decoration: underline;
-}
-.drg-selection-count {
+/* Large server-backed selections are managed with native grid interaction. */
+.drg-virtual-selection-status {
+  padding: 0.25rem 0;
   color: #526174;
+  font-size: 0.82rem;
 }
 .reactgrid .rg-cell.rg-virtual-selected {
   background: rgba(45, 116, 214, 0.17);
@@ -143,4 +122,35 @@
   margin: 0.3rem 0;
   color: #952323;
   font-size: 0.85rem;
+}
+
+/* Grid-local Excel-style find toolbar and single-result highlight. */
+.drg-find {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 0.4rem 0;
+  font-size: 0.85rem;
+}
+.drg-find input[type="search"] {
+  padding: 0.3rem 0.5rem;
+  border: 1px solid #aab3c1;
+  border-radius: 4px;
+  min-width: 12rem;
+  flex: 1 1 12rem;
+}
+.drg-find button {
+  padding: 0.3rem 0.5rem;
+  border: 1px solid #b9c1cd;
+  border-radius: 4px;
+  background: #f9fafb;
+  cursor: pointer;
+}
+.drg-find button:disabled { cursor: default; opacity: 0.5; }
+.drg-find-status { color: #465466; min-width: 7rem; }
+.reactgrid .rg-cell.rg-find-match,
+.reactgrid .rg-cell.rg-find-match.rg-cell-editable {
+  background: #ffe9a6;
+  box-shadow: inset 0 0 0 2px #b57e13;
 }

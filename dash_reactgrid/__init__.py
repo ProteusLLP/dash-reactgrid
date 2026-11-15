@@ -11,9 +11,11 @@ from ._imports_ import *
 from ._imports_ import __all__
 from .column import Column
 from .numpy_data import encode_numpy_data, decode_numpy_data, encode_numpy_row_ids, install_numpy_support
+from .dataframe import install_dataframe_support
 
 # Keep the generated component class and its Dash registration intact.
 install_numpy_support(DashReactGrid)
+install_dataframe_support(DashReactGrid)
 
 if not hasattr(_dash, '__plotly_dash') and not hasattr(_dash, 'development'):
     print('Dash was not successfully imported. '
@@ -72,12 +74,12 @@ _js_dist.extend(
     [
         {
             'relative_package_path': 'dash_reactgrid.min.js',
-    
+
             'namespace': package_name
         },
         {
             'relative_package_path': 'dash_reactgrid.min.js.map',
-    
+
             'namespace': package_name,
             'dynamic': True
         }

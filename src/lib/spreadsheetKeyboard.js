@@ -5,7 +5,8 @@
 import { escapeTsvCell } from "./virtualOperations.js";
 import { pastedValue, valueOf } from "./model.js";
 
-export const MAX_KEYBOARD_EDIT_CELLS = 20000;
+// Large clipboard exports remain bounded independently of editing operations.
+export const MAX_KEYBOARD_COPY_CELLS = 20000;
 
 /** Arrow keys jump to the first/last data row or visible column. */
 export const sheetEdge = (key, current, rowCount, columnCount) => {
@@ -33,7 +34,8 @@ export const keyboardArea = (selection) =>
     (selection.columnEnd-selection.columnStart) : 0;
 
 /** Convert ReactGrid's header-inclusive, page-local selection to data indices. */
-export const nativeRectangle = (ranges, pageStart, rowCount, columnCount, fallback = null) => {
+export const nativeRectangle = (ranges, pageStart, rowCount, columnCount,
+  fallback = null, headerCount = 1) => {
   const selected=ranges?.[0];
   if (!selected?.first || !selected?.last) {
     if (!fallback) return null;
@@ -43,8 +45,8 @@ export const nativeRectangle = (ranges, pageStart, rowCount, columnCount, fallba
   const lastRow=Math.max(selected.first.row.idx,selected.last.row.idx);
   const c0=Math.min(selected.first.column.idx,selected.last.column.idx);
   const c1=Math.max(selected.first.column.idx,selected.last.column.idx);
-  const start=Math.max(0,pageStart+firstRow-1);
-  const end=Math.min(rowCount,pageStart+lastRow);
+  const start=Math.max(pageStart,pageStart+firstRow-headerCount);
+  const end=Math.min(rowCount,pageStart+lastRow-headerCount+1);
   if (end <= start || c0 < 0 || c1 >= columnCount) return null;
   return {start,end,columnStart:c0,columnEnd:c1+1};
 };
@@ -52,15 +54,16 @@ export const nativeRectangle = (ranges, pageStart, rowCount, columnCount, fallba
 /** Compact public range descriptor compatible with first/last Range consumers.
  * Avoid enumerating every row when a keyboard selection spans 100k rows.
  */
-export const publicKeyboardRange = (rect, rowIds, columns) => {
-  const first={row:{idx:rect.start+1,rowId:rowIds[rect.start]},
+export const publicKeyboardRange = (rect, rowIds, columns,
+  headerCount = 1, pageStart = 0) => {
+  const first={row:{idx:rect.start-pageStart+headerCount,rowId:rowIds[rect.start]},
     column:{idx:rect.columnStart,columnId:columns[rect.columnStart].columnId}};
-  const last={row:{idx:rect.end,rowId:rowIds[rect.end-1]},
+  const last={row:{idx:rect.end-1-pageStart+headerCount,rowId:rowIds[rect.end-1]},
     column:{idx:rect.columnEnd-1,columnId:columns[rect.columnEnd-1].columnId}};
   const n=rect.end-rect.start;
   return {first,last,
     rows:n<=1000 ? Array.from({length:n},(_,i)=>({
-      idx:rect.start+1+i,rowId:rowIds[rect.start+i],
+      idx:rect.start-pageStart+headerCount+i,rowId:rowIds[rect.start+i],
     })) : [],
     columns:columns.slice(rect.columnStart,rect.columnEnd).map((column,i)=>({
       idx:rect.columnStart+i,columnId:column.columnId,
@@ -88,9 +91,6 @@ export const fillDownChanges = (rect, data, rowIds, allColumns, columns, canEdit
   const source=rect.end-rect.start>1 ? rect.start : rect.start-1;
   if (source<0 || source>=data.length) return [];
   const start=source===rect.start ? rect.start+1 : rect.start;
-  const count=(rect.end-start)*(rect.columnEnd-rect.columnStart);
-  if (count>MAX_KEYBOARD_EDIT_CELLS)
-    throw new RangeError("Fill down is limited to 20,000 cells per operation");
   const indexes=new Map(allColumns.map((col,i)=>[col.columnId,i]));
   const edits=[];
   for(let row=start;row<rect.end;row++){
@@ -111,8 +111,6 @@ export const fillDownChanges = (rect, data, rowIds, allColumns, columns, canEdit
  */
 export const multiEditChanges = (rect, changed, sourceColumn, rowAt, columns, canEdit, parsers) => {
   if (keyboardArea(rect)<=1) return null;
-  if (keyboardArea(rect)>MAX_KEYBOARD_EDIT_CELLS)
-    throw new RangeError("Multi-cell editing is limited to 20,000 cells per operation");
   const raw=valueOf(sourceColumn,changed.newCell);
   const edits=[];
   for(let row=rect.start;row<rect.end;row++){
@@ -130,7 +128,7 @@ export const multiEditChanges = (rect, changed, sourceColumn, rowAt, columns, ca
 };
 
 /** Text for a compact selection, preserving the same TSV/Excel escaping. */
-export const keyboardClipboardText = (rect,data,allColumns,columns,maxCells=MAX_KEYBOARD_EDIT_CELLS) => {
+export const keyboardClipboardText = (rect,data,allColumns,columns,maxCells=MAX_KEYBOARD_COPY_CELLS) => {
   if (keyboardArea(rect)>maxCells) return null;
   const indexes=new Map(allColumns.map((col,i)=>[col.columnId,i]));
   const lines=[];

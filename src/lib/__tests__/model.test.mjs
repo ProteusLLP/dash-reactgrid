@@ -201,3 +201,18 @@ test("complete row ids and their lookup index retain reference identity across e
   assert.equal(rowIndexesOf(table.rowIds).get("r2"), 1);
   assert.deepEqual(rowIdsOf([[1], [2]], ["a", undefined]), ["a", 1]);
 });
+
+
+test("selection membership excludes synthetic rows without reserving user ID prefixes", async () => {
+  const { rowsInRanges } = await import("../model.js");
+  const ranges = [{rows:[
+    {rowId:"header-group-0"},
+    {rowId:"header"},
+    {rowId:"header-group-record"},
+    {rowId:"actual"},
+    {rowId:"__ghost__"},
+  ]}];
+  assert.deepEqual(rowsInRanges(ranges,new Set([
+    "header-group-record","actual",
+  ])),["header-group-record","actual"]);
+});

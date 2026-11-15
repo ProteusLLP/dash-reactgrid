@@ -14,6 +14,7 @@ class Column(dict):
         type: Cell type (text, number, customnumber, percent, dropdown,
             checkbox, date or time).
         tooltip: Optional text shown on hovering over the column header.
+        header_path: Ancestor labels, outermost first; displayed as grouped headers.
         width: Column width in pixels.
         resizable: Whether the column can be resized (enabled by default).
         align: One of "left", "center" or "right".
@@ -27,7 +28,7 @@ class Column(dict):
     """
 
     def __init__(
-        self, column_id, title=None, type="text", *, tooltip=None, width=None,
+        self, column_id, title=None, type="text", *, tooltip=None, header_path=None, width=None,
         resizable=None, align=None, style=None, header_style=None, format_options=None,
         values=None, non_editable=None, class_name=None, editable_when=None,
     ):
@@ -41,10 +42,16 @@ class Column(dict):
             raise ValueError("type must be a non-empty string")
         if tooltip is not None and not isinstance(tooltip, str):
             raise TypeError("tooltip must be a string or None")
+        if header_path is not None and (
+            not isinstance(header_path, (list, tuple)) or
+            any(not isinstance(label, str) for label in header_path)
+        ):
+            raise TypeError("header_path must be a sequence of strings")
 
         super().__init__(columnId=column_id, title=title, type=type)
         options = {
-            "tooltip": tooltip, "width": width, "resizable": resizable,
+            "tooltip": tooltip, "headerPath": list(header_path) if header_path else None,
+            "width": width, "resizable": resizable,
             "align": align,
             "style": style, "headerStyle": header_style,
             "formatOptions": format_options, "values": values,

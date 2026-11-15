@@ -5,10 +5,13 @@ import sys
 import tempfile
 import time
 import urllib.request
+import urllib.parse
 from pathlib import Path
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.common.exceptions import StaleElementReferenceException
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 
@@ -48,28 +51,59 @@ def test():
             wait=WebDriverWait(driver,25)
             driver.get(URL)
 
-            def all_buttons():
-                return driver.find_elements(By.CSS_SELECTOR,"#grid .drg-virtual-toolbar button")
-            def click(label):
-                wait.until(lambda _: next(
-                    (b for b in all_buttons() if b.text.strip()==label and b.is_enabled()),
-                    None,
-                )).click()
+            def grid_key(key,code,shift=False):
+                return driver.execute_script("""
+                    const view=document.querySelector('#grid .drg-virtual-viewport');
+                    const event=new KeyboardEvent('keydown',{
+                      key:arguments[0],code:arguments[1],ctrlKey:true,
+                      shiftKey:arguments[2],bubbles:true,cancelable:true});
+                    view.dispatchEvent(event);
+                    return event.defaultPrevented;
+                """,key,code,shift)
+
             def select(start,end):
-                inputs=driver.find_elements(By.CSS_SELECTOR,
-                    "#grid .drg-virtual-toolbar input[type=number]")
-                assert len(inputs)==2
-                for el,value in zip(inputs,[start,end]):
-                    el.click()
-                    el.send_keys(Keys.CONTROL,"a")
-                    el.send_keys(str(value))
-                click("Select range")
+                # Scroll and extend a native cell selection with Shift+Down.
+                assert 1 <= start <= end <= store.row_count()
+                driver.execute_script("""
+                    const view=document.querySelector('#grid .drg-virtual-viewport');
+                    view.scrollTop=Math.max(0,arguments[0]-5)*25;
+                    view.dispatchEvent(new Event('scroll',{bubbles:true}));
+                """,start)
+                current=store.read_range(start-1,start)["data"][0][0]
+                previous=(store.read_range(start-2,start-1)["data"][0][0]
+                          if start>1 else None)
+                def focus(_):
+                    # Resolve the DOM target in one browser round-trip. The
+                    # virtual window can remount while its fetch completes.
+                    cell=driver.execute_script("""
+                        const cells=[...document.querySelectorAll(
+                          '#grid .rg-cell.rg-col-name')];
+                        const current=arguments[0],previous=arguments[1];
+                        if(current!==null)
+                          return cells.find(c=>c.textContent.trim()===String(current))||null;
+                        const i=cells.findIndex(c=>
+                          c.textContent.trim()===String(previous));
+                        return i>=0 ? cells[i+1]||null : null;
+                    """,current,previous)
+                    if cell is None:
+                        return False
+                    try:
+                        cell.click()
+                        return True
+                    except StaleElementReferenceException:
+                        return False
+                wait.until(focus)
+                for _ in range(end-start):
+                    ActionChains(driver).key_down(Keys.SHIFT).send_keys(
+                        Keys.ARROW_DOWN).key_up(Keys.SHIFT).perform()
+                # Extend from the first column to the last, matching the
+                # original all-column row-range selection using native keys.
+                ActionChains(driver).key_down(Keys.SHIFT).send_keys(
+                    Keys.ARROW_RIGHT).key_up(Keys.SHIFT).perform()
+
             def synced():
                 return "All edits acknowledged" in driver.find_element(
                     By.CSS_SELECTOR,"#grid .drg-sync-status").text
-            def copy_ready():
-                return next((b.is_enabled() for b in all_buttons()
-                             if b.text.strip()=="Copy selection"),False)
             def clipboard():
                 return driver.execute_async_script("""
                   const done=arguments[arguments.length-1];
@@ -90,13 +124,26 @@ def test():
             wait.until(lambda _: driver.find_element(By.ID,"viewport-status").text)
             wait.until(lambda _: synced())
 
-            # Copy a row range hundreds of rows away from the loaded viewport.
+            # No action toolbar, range inputs, or CSV link are rendered.
+            assert not driver.find_elements(By.CSS_SELECTOR,"#grid .drg-virtual-toolbar")
+            assert not driver.find_elements(By.CSS_SELECTOR,"#grid input[type=number]")
+            assert not driver.find_elements(By.CSS_SELECTOR,"#grid a[download]")
+
+            # Scroll to an unloaded row, select it natively, then Ctrl+C.
             select(501,503)
-            if not copy_ready():
-                click("Prepare copy")
-            wait.until(lambda _: copy_ready())
-            click("Copy selection")
-            wait.until(lambda _: clipboard()=="Row 500\t500\nRow 501\t501\nRow 502\t502")
+            wait.until(lambda _:"Copy prepared 500:503" in
+                driver.find_element(By.ID,"range-status").text)
+            # The renderer may replace its focused cell while publishing the
+            # absolute range. Focus the keyboard-accessible viewport without
+            # changing the selection before the real Ctrl+C gesture.
+            driver.execute_script("""
+                document.querySelector('#grid .drg-virtual-viewport').focus({
+                  preventScroll:true});
+            """)
+            ActionChains(driver).key_down(Keys.CONTROL).send_keys(
+                "c").key_up(Keys.CONTROL).perform()
+            wait.until(lambda _:clipboard().replace("\r\n","\n").rstrip("\n")==
+                "Row 500\t500\nRow 501\t501\nRow 502\t502")
 
             # Multi-row paste targets row indices outside the DOM; apply the
             # complete operation atomically in the backend.
@@ -106,12 +153,12 @@ def test():
                 ["Pasted 500",5000],["Pasted\t501",5001],
             ])
             wait.until(lambda _: synced())
-            click("Undo")
+            assert grid_key("z","KeyZ")
             wait.until(lambda _: store.read_range(500,502)["data"]==[
                 ["Row 500",500],["Row 501",501],
             ])
             wait.until(lambda _: synced())
-            click("Redo")
+            assert grid_key("y","KeyY")
             wait.until(lambda _: store.read_range(500,502)["data"]==[
                 ["Pasted 500",5000],["Pasted\t501",5001],
             ])
@@ -120,7 +167,7 @@ def test():
             # Insert at an absolute server row index even though the selected
             # row is not loaded in ReactGrid.
             select(501,501)
-            click("Insert row")
+            assert grid_key("+","Equal",True)
             wait.until(lambda _: store.row_count()==1001)
             wait.until(lambda _: synced())
             snapshot=store.read_range(500,503)
@@ -131,15 +178,17 @@ def test():
             # Deleting an unloaded interval shifts later rows and updates the
             # server-owned row count, without re-sending the table to Dash.
             select(501,503)
-            click("Delete selected rows")
+            # The confirmation dialog can interrupt the browser's script
+            # return value despite the shortcut being handled.
+            grid_key("-","Minus")
             driver.switch_to.alert.accept()
             wait.until(lambda _: store.row_count()==998)
             wait.until(lambda _: synced())
-            click("Undo")
+            assert grid_key("z","KeyZ")
             wait.until(lambda _: store.row_count()==1001)
             wait.until(lambda _: synced())
             assert store.read_range(500,501)["rowIds"]==[inserted_id]
-            click("Redo")
+            assert grid_key("y","KeyY")
             wait.until(lambda _: store.row_count()==998)
             wait.until(lambda _: synced())
 
@@ -148,20 +197,23 @@ def test():
             driver.refresh()
             wait.until(lambda _: "998 rows" in driver.find_element(
                 By.CSS_SELECTOR,"#grid .drg-selection-count").text)
-            click("Undo")
+            assert grid_key("z","KeyZ")
             wait.until(lambda _: store.row_count()==1001)
             wait.until(lambda _: synced())
-            click("Redo")
+            assert grid_key("y","KeyY")
             wait.until(lambda _: store.row_count()==998)
             wait.until(lambda _: synced())
 
-            click("Select all")
+            assert grid_key("a","KeyA")
             wait.until(lambda _: "998 rows selected" in driver.find_element(
                 By.CSS_SELECTOR,"#grid .drg-selection-count").text)
-            link=driver.find_element(By.CSS_SELECTOR,
-                "#grid .drg-virtual-toolbar a[download]")
-            url=link.get_attribute("href")
-            with urllib.request.urlopen(url,timeout=15) as export:
+            # CSV is still available through the hosting application's
+            # endpoint, without displaying an export control inside the grid.
+            query=urllib.parse.urlencode({
+                "start":0,"end":998,"columnStart":0,"columnEnd":2,
+                "columnIds":'["name","value"]',"datasetId":"virtual-rows-v1",
+            })
+            with urllib.request.urlopen(URL+"/export.csv?"+query,timeout=15) as export:
                 document=export.read().decode()
             assert document.startswith("name,value\r\n")
             assert len(document.splitlines())==999, "Full-range CSV streaming must include all rows"
@@ -170,14 +222,47 @@ def test():
             driver.refresh()
             wait.until(lambda _: "998 rows" in driver.find_element(By.CSS_SELECTOR,
                 "#grid .drg-selection-count").text)
-            print("Extended virtual browser test passed: offscreen copy/paste, undo/redo, insertion, deletion, CSV export and reload")
+
+            # Selecting the header must select every logical row, including
+            # rows not loaded into ReactGrid's current viewport.
+            previous_name=store.read_range(900,901)["data"][0][0]
+            header=wait.until(lambda _: driver.find_elements(
+                By.CSS_SELECTOR,"#grid .rg-header-cell"))[0]
+            header.click()
+            wait.until(lambda _: "998 rows selected" in driver.find_element(
+                By.CSS_SELECTOR,"#grid .drg-selection-count").text)
+            handled=driver.execute_script("""
+              const viewport=document.querySelector('#grid .drg-virtual-viewport');
+              const event=new KeyboardEvent('keydown',{
+                key:'d',code:'KeyD',ctrlKey:true,bubbles:true,cancelable:true});
+              viewport.dispatchEvent(event);
+              return event.defaultPrevented;
+            """)
+            assert handled, "Ctrl+D must be intercepted for virtual whole-column fill"
+            wait.until(lambda _: store.read_range(900,901)["data"][0][0]=="Row 0")
+            wait.until(lambda _: synced())
+            assert grid_key("z","KeyZ")
+            wait.until(lambda _: store.read_range(900,901)["data"][0][0]==previous_name)
+            wait.until(lambda _: synced())
+
+            # Structural actions remain accessible by the native context menu.
+            first=wait.until(lambda _:driver.find_elements(
+                By.CSS_SELECTOR,"#grid .rg-cell.rg-col-name"))[0]
+            ActionChains(driver).context_click(first).perform()
+            for label in ("Insert row above","Append row","Delete selected rows"):
+                wait.until(lambda _:next((el for el in driver.find_elements(
+                    By.XPATH,f"//*[normalize-space(text())='{label}']")
+                    if el.is_displayed()),None))
+
+            print("Extended virtual browser test passed: offscreen range operations, whole-column fill and undo/redo")
         except Exception:
             if driver:
                 try:
                     info=driver.execute_script("""
                       return {status:document.querySelector('#grid .drg-sync-status')?.textContent,
                         error:document.querySelector('#grid .drg-virtual-error')?.textContent,
-                        toolbar:document.querySelector('#grid .drg-virtual-toolbar')?.textContent,
+                        selection:document.querySelector('#grid .drg-selection-count')?.textContent,
+                        focused:document.activeElement?.outerHTML?.slice(0,300),
                         commit:document.querySelector('#commit-status')?.textContent,
                         viewport:document.querySelector('#viewport-status')?.textContent,
                         range:document.querySelector('#range-status')?.textContent};

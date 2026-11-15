@@ -228,3 +228,22 @@ test("date-only values round-trip through the model as calendar dates", async ()
   assert.equal(rendered.rows[1].cells[0].date.getDate(), 14);
   assert.equal(valueOf(columns[0], rendered.rows[1].cells[0]), "2026-11-14");
 });
+
+
+test("pasting and clearing respect multiple grouped header bands",()=>{
+  const groupRows=[
+    {rowId:"header-group-0",cells:[{type:"header",text:"Group"},{type:"header",text:"Group"}]},
+    {rowId:"header-group-1",cells:[{type:"header",text:"Sub"},{type:"header",text:"Sub"}]},
+    ...rows,
+  ];
+  assert.equal(pasteStartRow(focusedRange(groupRows,columns,{
+    rowId:"one",columnId:"name",
+  }),3),0);
+  assert.equal(pasteStartRow(focusedRange(groupRows,columns,{
+    rowId:"two",columnId:"name",
+  }),3),1);
+  assert.equal(pasteStartRow(wholeGridRange(groupRows,columns),3),0);
+  assert.deepEqual(clearSelectedCells(groupRows,columns,
+    [wholeGridRange(groupRows,columns)]).map(change=>change.rowId),
+    ["one","one","two","two"]);
+});

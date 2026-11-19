@@ -770,3 +770,36 @@ force-with-lease check. Do not use the workflow for untrusted branches.
     1. Publish this repository to GitHub
     2. Tag your GitHub repository with the plotly-dash tag so that it appears here: https://github.com/topics/plotly-dash
     3. Create a post in the Dash community forum: https://community.plotly.com/c/dash
+
+
+## Test coverage reporting
+
+CI runs JavaScript unit tests with Node's built-in coverage reporter and Python
+unit/contract tests with coverage.py branch measurement. Download the
+`unit-coverage` artifact for the underlying text/XML reports. The
+`coverage-summary` artifact contains a machine-readable JSON summary, a
+Markdown report, and a pass/fail record for each configured Chrome suite.
+The same summary is shown on the GitHub Actions run page.
+
+The JavaScript source percentages are for modules loaded by the Node unit
+tests. They do **not** describe the React component or browser-executed paths.
+Python coverage records package code executed by the selected unit and
+contract tests; Chrome fixture execution is not included.
+
+The Chrome report lists each browser suite and whether it passed, failed or
+was not run. This is **scenario execution tracking, not browser code coverage**.
+A passing suite does not imply that every line, branch or feature within its
+scenario group is covered. A failed earlier CI step leaves subsequent Chrome
+suites marked "not run" rather than counting them as passed.
+
+The results are informational baselines, with no minimum thresholds.
+Compare artifacts across commits to identify regressions and use uncovered
+source listings and issue #77 to plan targeted new tests. To generate the
+same report locally after collecting unit coverage, run:
+
+```bash
+python3 scripts/coverage_measure.py browser tests/test_client_virtual_browser.py
+python3 scripts/coverage_measure.py summary
+```
+
+Browser execution requires the production JS bundle, Dash, Selenium and Chrome.

@@ -20,7 +20,11 @@ jobs:
         run: npm ci --legacy-peer-deps
       - name: Run JavaScript unit tests
         shell: bash
-        run: node --experimental-detect-module --test --experimental-test-coverage --test-coverage-include='src/lib/**' --test-coverage-exclude='**/*.test.js' --test-coverage-exclude='**/*.test.mjs' | tee js-coverage.txt
+        run: |
+          set -o pipefail
+          node --experimental-detect-module --test --experimental-test-coverage --test-coverage-include='src/lib/**' --test-coverage-exclude='**/*.test.js' --test-coverage-exclude='**/*.test.mjs' | tee js-coverage.txt
+      - name: Verify coverage-report parser and browser runner
+        run: python3 -m unittest tests.test_coverage_measure -v
       - name: Validate guarded generated-file rebase
         run: python3 -m unittest tests.test_rebase_generated -v
       - name: Compile component
@@ -64,20 +68,34 @@ jobs:
             python-coverage.xml
           if-no-files-found: warn
       - name: Test full Chrome cell, clipboard and interaction matrix
-        run: python3 tests/test_feature_matrix_browser.py
+        run: python3 scripts/coverage_measure.py browser tests/test_feature_matrix_browser.py
       - name: Test real-browser sparse edit and ACK
-        run: python3 tests/test_sparse_browser.py
+        run: python3 scripts/coverage_measure.py browser tests/test_sparse_browser.py
       - name: Test server virtualization in Chrome
-        run: python3 tests/test_server_virtual_browser.py
+        run: python3 scripts/coverage_measure.py browser tests/test_server_virtual_browser.py
       - name: Test virtual structural edits, offscreen clipboard and undo
-        run: python3 tests/test_virtual_operations_browser.py
+        run: python3 scripts/coverage_measure.py browser tests/test_virtual_operations_browser.py
       - name: Test server virtualization with durable sparse edits
-        run: python3 tests/test_virtual_reliable_browser.py
+        run: python3 scripts/coverage_measure.py browser tests/test_virtual_reliable_browser.py
       - name: Benchmark browser-memory viewport preparation
         run: node --experimental-detect-module scripts/benchmark-client-virtual.mjs
       - name: Test client-side virtualisation in Chrome
-        run: python3 tests/test_client_virtual_browser.py
+        run: python3 scripts/coverage_measure.py browser tests/test_client_virtual_browser.py
       - name: Test in-memory operations across more than 20,000 cells
-        run: python3 tests/test_large_in_memory_browser.py
+        run: python3 scripts/coverage_measure.py browser tests/test_large_in_memory_browser.py
       - name: Test Ctrl+A Ctrl+C clipboard streaming over 25,000 virtual rows
-        run: python3 tests/test_large_virtual_clipboard_browser.py
+        run: python3 scripts/coverage_measure.py browser tests/test_large_virtual_clipboard_browser.py
+
+      - name: Summarise source and Chrome scenario coverage
+        if: always()
+        run: python3 scripts/coverage_measure.py summary
+      - name: Publish browser execution and combined coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-summary
+          path: |
+            coverage-reports/coverage-summary.json
+            coverage-reports/coverage-summary.md
+            coverage-reports/browser/*.json
+          if-no-files-found: warn

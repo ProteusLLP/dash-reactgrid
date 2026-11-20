@@ -109,7 +109,7 @@ test("dataset replacement isolates a durable queued edit from the new dataset",(
     const first=config({windowed:true,data:[],rowIds:[]});
     const initial=makeSession(first);
     const pending={...initial.outbox,queue:[{
-      datasetId:"dataset-a",streamId:initial.outbox.streamId,seq:1,
+      datasetId:"dataset-a",streamId:initial.outbox.streamId,seq:1,attempt:0,
       edits:[{kind:"cell",rowId:"r1",columnId:"name",value:"Pending A"}],
     }],nextSeq:2};
     browser.sessionStorage.setItem(initial.key,JSON.stringify(pending));
@@ -134,7 +134,7 @@ test("a replaced positional dataset does not inherit a previous dataset's outbox
     const session=makeSession(first);
     browser.sessionStorage.setItem(session.key,JSON.stringify({
       ...session.outbox,nextSeq:2,queue:[{
-        datasetId:"dataset-a",streamId:session.outbox.streamId,seq:1,
+        datasetId:"dataset-a",streamId:session.outbox.streamId,seq:1,attempt:0,
         edits:[{kind:"cell",rowId:0,columnId:"value",value:999}],
       }],
     }));

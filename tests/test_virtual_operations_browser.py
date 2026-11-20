@@ -129,6 +129,31 @@ def test():
             assert not driver.find_elements(By.CSS_SELECTOR,"#grid input[type=number]")
             assert not driver.find_elements(By.CSS_SELECTOR,"#grid a[download]")
 
+            # Ctrl+D fills a single selected cell from the previous server
+            # row. No client-side values from that source need to be loaded.
+            select(501,501)
+            assert grid_key("d","KeyD")
+            wait.until(lambda _: store.read_range(500,501)["data"]==
+                       [["Row 499",499]])
+            wait.until(lambda _: synced())
+            assert grid_key("z","KeyZ")
+            wait.until(lambda _: store.read_range(500,501)["data"]==
+                       [["Row 500",500]])
+            wait.until(lambda _: synced())
+
+            # A selected range uses its first row as the source and fills
+            # subsequent rows, preserving the source itself.
+            select(501,505)
+            assert grid_key("d","KeyD")
+            wait.until(lambda _: store.read_range(501,505)["data"]==
+                       [["Row 500",500]]*4)
+            assert store.read_range(500,501)["data"]==[["Row 500",500]]
+            wait.until(lambda _: synced())
+            assert grid_key("z","KeyZ")
+            wait.until(lambda _: store.read_range(501,505)["data"]==
+                       [[f"Row {i}",i] for i in range(501,505)])
+            wait.until(lambda _: synced())
+
             # Scroll to an unloaded row, select it natively, then Ctrl+C.
             select(501,503)
             wait.until(lambda _:"Copy prepared 500:503" in
@@ -249,7 +274,7 @@ def test():
             first=wait.until(lambda _:driver.find_elements(
                 By.CSS_SELECTOR,"#grid .rg-cell.rg-col-name"))[0]
             ActionChains(driver).context_click(first).perform()
-            for label in ("Insert row above","Append row","Delete selected rows"):
+            for label in ("Fill down (Ctrl+D)","Insert row above","Append row","Delete selected rows"):
                 wait.until(lambda _:next((el for el in driver.find_elements(
                     By.XPATH,f"//*[normalize-space(text())='{label}']")
                     if el.is_displayed()),None))

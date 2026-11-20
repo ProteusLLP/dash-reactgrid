@@ -77,7 +77,9 @@ jobs:
         run: python3 scripts/coverage_measure.py browser tests/test_virtual_operations_browser.py
       - name: Test server virtualization with durable sparse edits
         run: python3 scripts/coverage_measure.py browser tests/test_virtual_reliable_browser.py
-      - name: Test live dataset replacement with queued reliable edits\n        run: python3 scripts/coverage_measure.py browser tests/test_virtual_dataset_switch_browser.py\n      - name: Benchmark browser-memory viewport preparation
+      - name: Test live dataset replacement with queued reliable edits
+        run: python3 scripts/coverage_measure.py browser tests/test_virtual_dataset_switch_browser.py
+      - name: Benchmark browser-memory viewport preparation
         run: node --experimental-detect-module scripts/benchmark-client-virtual.mjs
       - name: Test client-side virtualisation in Chrome
         run: python3 scripts/coverage_measure.py browser tests/test_client_virtual_browser.py

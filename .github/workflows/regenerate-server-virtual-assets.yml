@@ -21,6 +21,10 @@ jobs:
           node-version: '22'
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
+      - name: Refresh latest feature source before building
+        run: |
+          git fetch origin fix/server-virtual-stability-20261120
+          git reset --hard origin/fix/server-virtual-stability-20261120
       - name: Regenerate browser bundle
         run: npm run build:js
       - name: Commit reproducible browser assets

@@ -50,9 +50,12 @@ def run_test():
             driver.get(URL)
 
             def visible(value):
-                return any(value == cell.text.strip() for cell in
-                           driver.find_elements(By.CSS_SELECTOR,
-                                                "#grid .rg-text-cell"))
+                # Virtual scrolling can remount cells between individual
+                # Selenium calls. Read the current DOM in one browser round-trip.
+                return driver.execute_script("""
+                    return [...document.querySelectorAll('#grid .rg-text-cell')]
+                        .some(cell=>cell.textContent.trim()===arguments[0]);
+                """, value)
 
             def sync_status():
                 return driver.find_element(

@@ -23,7 +23,8 @@ BROWSER_SUITES = {
     "tests/test_sparse_browser.py": "Sparse edits, acknowledgements and reload",
     "tests/test_server_virtual_browser.py": "Server scrolling and offscreen Find",
     "tests/test_virtual_operations_browser.py": "Virtual selection, fill, undo and redo",
-    "tests/test_virtual_reliable_browser.py": "Virtual edits and durable replay",\n    "tests/test_virtual_dataset_switch_browser.py": "Dataset switching and pending edit isolation",
+    "tests/test_virtual_reliable_browser.py": "Virtual edits and durable replay",
+    "tests/test_virtual_dataset_switch_browser.py": "Dataset switching and pending edit isolation",
     "tests/test_client_virtual_browser.py": "Client memory virtualisation",
     "tests/test_large_in_memory_browser.py": "Large in-memory fill and undo",
     "tests/test_large_virtual_clipboard_browser.py": "Large virtual clipboard and selection",
@@ -86,7 +87,8 @@ def run_browser(script: str, root: Path = REPORT_DIR) -> int:
         record["error"] = error
     output = browser_result_path(script, root)
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    output.write_text(json.dumps(record, indent=2) + "
+", encoding="utf-8")
     return 0 if code == 0 else 1
 
 
@@ -157,7 +159,8 @@ def markdown_summary(summary):
         "all behaviours in each scenario group were tested.",
         "No coverage thresholds are enforced. See the published raw reports "
         "and JSON artifact for historical comparisons.", ""])
-    return "\n".join(lines)
+    return "
+".join(lines)
 
 
 def write_summary(root: Path = REPORT_DIR):
@@ -165,11 +168,13 @@ def write_summary(root: Path = REPORT_DIR):
     text = markdown_summary(summary)
     root.mkdir(parents=True, exist_ok=True)
     (root / "coverage-summary.json").write_text(
-        json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+        json.dumps(summary, indent=2) + "
+", encoding="utf-8")
     (root / "coverage-summary.md").write_text(text, encoding="utf-8")
     if os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as output:
-            output.write(text + "\n")
+            output.write(text + "
+")
     print(text)
     return summary
 

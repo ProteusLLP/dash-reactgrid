@@ -92,11 +92,31 @@ def run_test():
 
             scroll(500)
             wait.until(lambda _: has("Row 500"))
+            # Observe the *unchanged* neighbouring cell throughout the edit
+            # and its acknowledgement. A cache wipe previously removed every
+            # visible data row before Dash returned the refreshed window.
+            driver.execute_script("""
+                const view=document.querySelector('#grid .drg-virtual-viewport');
+                window.__lostNeighbourDuringSave=false;
+                const neighbour=()=>[...view.querySelectorAll('.rg-cell.rg-col-name')]
+                    .some(cell=>cell.textContent.trim()==='Row 501');
+                if(!neighbour()) throw Error('Neighbour must start rendered');
+                window.__virtualSaveObserver=new MutationObserver(()=>{
+                    if(!neighbour())window.__lostNeighbourDuringSave=true;
+                });
+                window.__virtualSaveObserver.observe(view,{childList:true,
+                    subtree:true,characterData:true});
+            """)
             edit("Row 500","MiddleEdited")
             wait.until(lambda _: "Committed: 2 / ok" in
                        driver.find_element(By.ID,"commit-status").text)
             wait.until(lambda _: "All edits acknowledged" in driver.find_element(
                 By.CSS_SELECTOR,"#grid .drg-sync-status").text)
+            wait.until(lambda _: has("MiddleEdited"))
+            assert not driver.execute_script(
+                "window.__virtualSaveObserver.disconnect();"
+                "return window.__lostNeighbourDuringSave;"), (
+                "Ordinary ACK must not remove unchanged visible rows")
 
             scroll(0)
             wait.until(lambda _: has("StartEdited"))

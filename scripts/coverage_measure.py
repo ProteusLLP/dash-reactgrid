@@ -24,6 +24,7 @@ BROWSER_SUITES = {
     "tests/test_server_virtual_browser.py": "Server scrolling and offscreen Find",
     "tests/test_virtual_operations_browser.py": "Virtual selection, fill, undo and redo",
     "tests/test_virtual_reliable_browser.py": "Virtual edits and durable replay",
+    "tests/test_virtual_visibility_browser.py": "Server virtual grid hidden mount and reveal",
     "tests/test_client_virtual_browser.py": "Client memory virtualisation",
     "tests/test_large_in_memory_browser.py": "Large in-memory fill and undo",
     "tests/test_large_virtual_clipboard_browser.py": "Large virtual clipboard and selection",

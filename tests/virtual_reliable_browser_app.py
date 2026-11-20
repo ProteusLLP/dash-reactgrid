@@ -22,8 +22,7 @@ withheld=set()
 app=Dash(__name__)
 
 def layout():
-    return html.Div([
-        DashReactGrid(
+    grid = DashReactGrid(
             id="grid",columns=COLUMNS,data=[],rowIds=[],
             virtualRowCount=store.row_count(),
             virtualDatasetId=DATASET,
@@ -32,7 +31,14 @@ def layout():
             transmitSparseEdits=True,editDatasetId=DATASET,
             virtualExportUrl="/export.csv",
             persisted_props=["columns"],
-        ),
+    )
+    # The browser can fetch windows while the grid is inside a collapsed
+    # panel. Revealing it must trigger sizing without requiring a cell edit.
+    if os.environ.get("VIRTUAL_RELIABLE_START_HIDDEN")=="1":
+        grid = html.Details([html.Summary("Show virtual grid"),grid],
+                            id="virtual-grid-panel")
+    return html.Div([
+        grid,
         html.Div(id="commit-status"),
         html.Div(id="viewport-status"),
         html.Div(id="range-status"),

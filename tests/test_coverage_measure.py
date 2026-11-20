@@ -99,7 +99,7 @@ class CoverageMeasurementTests(unittest.TestCase):
                 self.assertEqual(summary["browser_suites_passed"], 1)
                 self.assertEqual(summary["browser_suites_configured"], len(cases))
                 md = (root / "coverage-summary.md").read_text()
-                self.assertIn("1 of 8 configured suites passed", md)
+                self.assertIn(f"1 of {len(cases)} configured suites passed", md)
                 self.assertIn("Not available", md)
                 self.assertIn("not browser JavaScript line/branch coverage", md)
                 self.assertEqual(

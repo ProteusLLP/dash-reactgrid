@@ -1,7 +1,7 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
 import {makeSession,reconcileSession} from "../useReliableGrid.js";
-import {outboxStorageKey} from "../durableEdits.js";
+import {outboxStorageKey, acknowledgeEdits, enqueueEdits} from "../durableEdits.js";
 
 const fakeBrowser = (invalid = false) => {
   const records=new Map();
@@ -145,5 +145,26 @@ test("a replaced positional dataset does not inherit a previous dataset's outbox
     });
     assert.deepEqual(next.table.data,[[10],[20]]);
     assert.equal(next.outbox.queue.length,0);
+  }finally {globalThis.window=old;}
+});
+
+test("stale acknowledgement cannot clear a newer dataset's queued edit",()=>{
+  const old=globalThis.window;
+  try {
+    globalThis.window=fakeBrowser();
+    const a=makeSession(config());
+    const b=makeSession(config({datasetId:"dataset-b"}));
+    const pending=enqueueEdits(b.outbox,[{
+      kind:"cell",rowId:"r1",columnId:"name",value:"New dataset edit",
+    }]);
+    const stale={
+      datasetId:"dataset-a",streamId:a.outbox.streamId,
+      seq:1,status:"ok",rowCount:1,revision:1,
+    };
+    assert.strictEqual(acknowledgeEdits(pending,stale),pending);
+    assert.equal(pending.queue.length,1);
+    assert.equal(acknowledgeEdits(pending,{
+      ...stale,datasetId:"dataset-b",streamId:pending.streamId,
+    }).queue.length,0);
   }finally {globalThis.window=old;}
 });

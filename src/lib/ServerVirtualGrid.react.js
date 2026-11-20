@@ -94,6 +94,7 @@ export const ServerVirtualGrid = (props) => {
   const [gridMountVersion, setGridMountVersion] = useState(0);
   const [openDropdown, setOpenDropdown] = useState(null);
   const currentRequest = useRef(null);
+  const staleVisiblePage = useRef(null);
   const requestCounter = useRef(0);
   const selection = useRef([]);
   const focused = useRef(null);
@@ -194,6 +195,21 @@ export const ServerVirtualGrid = (props) => {
   const isDataId = (id) => visibleDataIds.has(id);
   const loading = valid && virtualRowCount > 0 && !cachedPage;
 
+  // A page is retained only to avoid flicker while it remains on screen.
+  // If the user scrolls away before the ACK refresh completes, never reuse it
+  // as though it were an authoritative cached window.
+  useEffect(() => {
+    const stale = staleVisiblePage.current;
+    if (!stale || stale === key) return;
+    staleVisiblePage.current = null;
+    setCache((previous) => {
+      if (!previous.has(stale)) return previous;
+      const next = new Map(previous);
+      next.delete(stale);
+      return next;
+    });
+  }, [key]);
+
   useEffect(() => {
     setVirtualRowCount(suppliedRowCount);
     setFindWindowPin(null);
@@ -225,6 +241,7 @@ export const ServerVirtualGrid = (props) => {
     if (Number.isSafeInteger(ack.rowCount) && ack.rowCount >= 0)
       setVirtualRowCount(ack.rowCount);
     currentRequest.current = null;
+    staleVisiblePage.current = structureChanged ? null : key;
     // A normal edit may change unloaded rows, so invalidate all other pages.
     // Keep the visible page mounted until the refreshed response arrives.
     // Positional mappings change on insertion/deletion and must be discarded.
@@ -243,6 +260,7 @@ export const ServerVirtualGrid = (props) => {
     setCache(new Map());
     setLoadError(null);
     setRefreshPending(false);
+    staleVisiblePage.current = null;
     currentRequest.current = null;
     setScrollTop(0);
     setFindWindowPin(null);
@@ -294,7 +312,13 @@ export const ServerVirtualGrid = (props) => {
       return;
     }
     const responseKey = viewportKey(pending.datasetId, pending.start, pending.end);
-    setCache((previous) => addViewportCache(previous, responseKey, virtualData));
+    const stale = staleVisiblePage.current;
+    staleVisiblePage.current = null;
+    setCache((previous) => {
+      const next = addViewportCache(previous, responseKey, virtualData);
+      if (stale && stale !== responseKey) next.delete(stale);
+      return next;
+    });
     setRefreshPending(false);
     setLoadError(null);
   }, [virtualData, allColumns]);

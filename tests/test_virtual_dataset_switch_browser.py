@@ -102,8 +102,14 @@ def run_test():
             driver.find_element(By.ID, "switch-dataset").click()
             wait.until(lambda _: visible("Replacement 0"))
             assert not visible("Pending old dataset")
+            # Reload resets the fixture to its default (old) dataset.
+            # The committed old edit must survive; the replacement rows must
+            # never inherit it, even after another dataset switch.
             driver.refresh()
-            wait.until(lambda _: visible("Row 0"))
+            wait.until(lambda _: visible("Pending old dataset"))
+            assert not visible("Replacement 0")
+            driver.find_element(By.ID, "switch-dataset").click()
+            wait.until(lambda _: visible("Replacement 0"))
             assert not visible("Pending old dataset")
             print("Chrome dataset switch, pending isolation and replay passed")
         finally:

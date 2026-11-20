@@ -11,12 +11,20 @@ from tests.fixtures.sqlite_virtual_backend import VirtualGridStore
 PORT=int(os.environ.get("VIRTUAL_RELIABLE_PORT","8063"))
 DB=Path(os.environ["VIRTUAL_RELIABLE_DB"])
 DATASET="virtual-rows-v1"
+SECOND_DATASET="virtual-rows-v2"
+SWITCH_ENABLED=os.environ.get("VIRTUAL_RELIABLE_SWITCH_DATASET")=="1"
 COLUMNS=[
     {"columnId":"name","title":"Name","type":"text","width":170},
     {"columnId":"value","title":"Value","type":"number","width":100},
 ]
 store=VirtualGridStore(DB,DATASET,COLUMNS)
 store.seed_once([[f"Row {i}",i] for i in range(1000)],[f"r{i}" for i in range(1000)])
+second_store=VirtualGridStore(DB,SECOND_DATASET,COLUMNS)
+second_store.seed_once([[f"Replacement {i}",i] for i in range(1000)],
+                       [f"r{i}" for i in range(1000)])
+
+def dataset_store(dataset_id):
+    return {DATASET:store,SECOND_DATASET:second_store}.get(dataset_id)
 WITHHOLD_ACK=os.environ.get("VIRTUAL_RELIABLE_DROP_ACK")=="1"
 withheld=set()
 app=Dash(__name__)
@@ -33,6 +41,7 @@ def layout():
             virtualExportUrl="/export.csv",
             persisted_props=["columns"],
         ),
+        html.Button("Switch dataset",id="switch-dataset",n_clicks=0) if SWITCH_ENABLED else html.Div(),
         html.Div(id="commit-status"),
         html.Div(id="viewport-status"),
         html.Div(id="range-status"),
@@ -43,12 +52,13 @@ app.layout=layout
               Input("grid","virtualRequest"),prevent_initial_call=True)
 def fetch_window(request):
     start,end=request["start"],request["end"]
-    if request["datasetId"]!=DATASET:
+    selected=dataset_store(request["datasetId"])
+    if selected is None:
         return {"datasetId":request["datasetId"],"requestId":request["requestId"],
                 "start":start,"error":"Dataset mismatch"}, "Invalid dataset"
-    window=store.read_range(start,end)
+    window=selected.read_range(start,end)
     return {
-        "datasetId":DATASET,"requestId":request["requestId"],"start":start,
+        "datasetId":request["datasetId"],"requestId":request["requestId"],"start":start,
         **window,
     }, f"Fetched {start}:{end}"
 
@@ -92,11 +102,23 @@ def download_csv():
 @app.callback(Output("grid","editAck"),Output("commit-status","children"),
               Input("grid","edits"),prevent_initial_call=True)
 def persist(batch):
-    result=store.apply(batch)
+    selected=dataset_store(batch.get("datasetId"))
+    if selected is None:
+        return {"datasetId":batch.get("datasetId"),"streamId":batch.get("streamId"),
+                "seq":batch.get("seq"),"status":"conflict",
+                "message":"Unknown dataset"}, "Rejected dataset"
+    result=selected.apply(batch)
     if WITHHOLD_ACK and result["status"]=="ok" and not withheld:
         withheld.add((batch["streamId"],batch["seq"]))
         return no_update,f"Stored without ACK: {batch['seq']}"
     return result,f"Committed: {batch['seq']} / {result['status']}"
+
+if SWITCH_ENABLED:
+    @app.callback(Output("grid","virtualDatasetId"),Output("grid","editDatasetId"),
+                  Input("switch-dataset","n_clicks"),prevent_initial_call=True)
+    def switch_dataset(clicks):
+        selected=SECOND_DATASET if clicks % 2 else DATASET
+        return selected,selected
 
 if __name__=="__main__":
     app.run(host="127.0.0.1",port=PORT,debug=False)

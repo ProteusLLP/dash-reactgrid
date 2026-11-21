@@ -77,6 +77,8 @@ jobs:
         run: python3 scripts/coverage_measure.py browser tests/test_virtual_operations_browser.py
       - name: Test server virtualization with durable sparse edits
         run: python3 scripts/coverage_measure.py browser tests/test_virtual_reliable_browser.py
+      - name: Test live dataset replacement with queued reliable edits
+        run: python3 scripts/coverage_measure.py browser tests/test_virtual_dataset_switch_browser.py
       - name: Test virtual grid revealed after hidden mount
         run: python3 scripts/coverage_measure.py browser tests/test_virtual_visibility_browser.py
       - name: Benchmark browser-memory viewport preparation

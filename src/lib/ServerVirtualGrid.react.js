@@ -89,8 +89,12 @@ export const ServerVirtualGrid = (props) => {
   const lastAcknowledgedRevision = useRef(-1);
   const [cache, setCache] = useState(() => new Map());
   const [loadError, setLoadError] = useState(null);
+  // Retain visible rows while refreshing a committed edit.
+  const [refreshPending, setRefreshPending] = useState(false);
+  const [gridMountVersion, setGridMountVersion] = useState(0);
   const [openDropdown, setOpenDropdown] = useState(null);
   const currentRequest = useRef(null);
+  const staleVisiblePage = useRef(null);
   const requestCounter = useRef(0);
   const selection = useRef([]);
   const focused = useRef(null);
@@ -191,6 +195,21 @@ export const ServerVirtualGrid = (props) => {
   const isDataId = (id) => visibleDataIds.has(id);
   const loading = valid && virtualRowCount > 0 && !cachedPage;
 
+  // A page is retained only to avoid flicker while it remains on screen.
+  // If the user scrolls away before the ACK refresh completes, never reuse it
+  // as though it were an authoritative cached window.
+  useEffect(() => {
+    const stale = staleVisiblePage.current;
+    if (!stale || stale === key) return;
+    staleVisiblePage.current = null;
+    setCache((previous) => {
+      if (!previous.has(stale)) return previous;
+      const next = new Map(previous);
+      next.delete(stale);
+      return next;
+    });
+  }, [key]);
+
   useEffect(() => {
     setVirtualRowCount(suppliedRowCount);
     setFindWindowPin(null);
@@ -222,7 +241,16 @@ export const ServerVirtualGrid = (props) => {
     if (Number.isSafeInteger(ack.rowCount) && ack.rowCount >= 0)
       setVirtualRowCount(ack.rowCount);
     currentRequest.current = null;
-    setCache(new Map());
+    staleVisiblePage.current = structureChanged ? null : key;
+    // A normal edit may change unloaded rows, so invalidate all other pages.
+    // Keep the visible page mounted until the refreshed response arrives.
+    // Positional mappings change on insertion/deletion and must be discarded.
+    setCache((previous) => {
+      if (structureChanged) return new Map();
+      const current = previous.get(key);
+      return current ? new Map([[key, current]]) : new Map();
+    });
+    setRefreshPending(!structureChanged);
     setLoadError(null);
   }, [props.editAck, props.editDatasetId]);
 
@@ -231,6 +259,8 @@ export const ServerVirtualGrid = (props) => {
   useEffect(() => {
     setCache(new Map());
     setLoadError(null);
+    setRefreshPending(false);
+    staleVisiblePage.current = null;
     currentRequest.current = null;
     setScrollTop(0);
     setFindWindowPin(null);
@@ -259,13 +289,13 @@ export const ServerVirtualGrid = (props) => {
   }, [valid, virtualDatasetId, setProps]);
 
   useEffect(() => {
-    if (!loading || loadError) return;
+    if ((!loading && !refreshPending) || loadError) return;
     const outstanding = currentRequest.current;
     if (outstanding && outstanding.datasetId === virtualDatasetId &&
         outstanding.start === range.start && outstanding.end === range.end)
       return;
     requestWindow(range.start, range.end);
-  }, [loading, loadError, range.start, range.end, virtualDatasetId, requestWindow]);
+  }, [loading, refreshPending, loadError, range.start, range.end, virtualDatasetId, requestWindow]);
 
   useEffect(() => {
     const pending = currentRequest.current;
@@ -282,19 +312,44 @@ export const ServerVirtualGrid = (props) => {
       return;
     }
     const responseKey = viewportKey(pending.datasetId, pending.start, pending.end);
-    setCache((previous) => addViewportCache(previous, responseKey, virtualData));
+    const stale = staleVisiblePage.current;
+    staleVisiblePage.current = null;
+    setCache((previous) => {
+      const next = addViewportCache(previous, responseKey, virtualData);
+      if (stale && stale !== responseKey) next.delete(stale);
+      return next;
+    });
+    setRefreshPending(false);
     setLoadError(null);
   }, [virtualData, allColumns]);
 
   // Retry missing requests, including callbacks whose response was dropped.
   useEffect(() => {
-    if (!loading || loadError) return;
+    if ((!loading && !refreshPending) || loadError) return;
     const timer = window.setInterval(() => {
       if (window.navigator.onLine !== false)
         requestWindow(range.start, range.end);
     }, 6000);
     return () => window.clearInterval(timer);
-  }, [loading, loadError, range.start, range.end, requestWindow]);
+  }, [loading, refreshPending, loadError, range.start, range.end, requestWindow]);
+
+  // ReactGrid can measure zero width when first mounted inside a hidden tab.
+  // Reinitialize its layout on a zero-to-positive size transition, but never
+  // remount a live editor merely because its data or selection changed.
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport || typeof ResizeObserver === "undefined") return;
+    const rect = viewport.getBoundingClientRect();
+    let wasVisible = rect.width > 0 && rect.height > 0;
+    const observer = new ResizeObserver((entries) => {
+      const bounds = entries[0]?.contentRect;
+      const visible = Boolean(bounds && bounds.width > 0 && bounds.height > 0);
+      if (visible && !wasVisible) setGridMountVersion((version) => version + 1);
+      wasVisible = visible;
+    });
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, [valid, columns.length]);
 
   // Changing only the focused cell must not rebuild ReactGrid rows during
   // a double-click: that would unmount its active cell editor.
@@ -961,10 +1016,16 @@ export const ServerVirtualGrid = (props) => {
         {id:"insertVirtualRow",label:"Insert row above",handler:()=>insertRow(false)},
         {id:"appendVirtualRow",label:"Append row",handler:()=>insertRow(true)},
       ];
-      if (globalRef.current || globalSelection) options.push({
-        id:"deleteVirtualSelection",label:"Delete selected rows",
-        handler:deleteSelection,
-      });
+      if (globalRef.current || globalSelection) {
+        options.push({
+          id:"fillDownVirtualSelection",label:"Fill down (Ctrl+D)",
+          handler:fillDown,
+        });
+        options.push({
+          id:"deleteVirtualSelection",label:"Delete selected rows",
+          handler:deleteSelection,
+        });
+      }
       if (historyRef.current.undo.length && !reliable.pending) options.push({
         id:"undoVirtualEdit",label:"Undo",handler:undoOperation,
       });
@@ -1243,7 +1304,7 @@ export const ServerVirtualGrid = (props) => {
     ? {rowId:page.rowIds[keyboardFocus.row-range.start],
         columnId:columns[keyboardFocus.col]?.columnId} : undefined;
   const grid = useMemo(() => rows.length ? (
-    <ReactGrid key={String(virtualDatasetId) + ":" + range.start + ":" + range.end}
+    <ReactGrid key={String(virtualDatasetId) + ":" + range.start + ":" + range.end + ":" + gridMountVersion}
       rows={rows} columns={columns}
       onCellsChanged={onCellsChanged}
       onSelectionChanged={onSelectionChanged}
@@ -1267,7 +1328,7 @@ export const ServerVirtualGrid = (props) => {
    visibleHighlights,props.stickyLeftColumns,props.stickyRightColumns,
    props.enableRangeSelection,props.enableRowSelection,props.enableColumnSelection,
    props.enableFillHandle,editingBlocked,dropdownMenuPortal,cellTemplates,
-   keyboardFocusLocation?.rowId,keyboardFocusLocation?.columnId]);
+   keyboardFocusLocation?.rowId,keyboardFocusLocation?.columnId,gridMountVersion]);
 
   if (!valid) return <div role="alert" className="drg-virtual-error">
     Server virtualization needs a stable virtualDatasetId, nonnegative virtualRowCount,

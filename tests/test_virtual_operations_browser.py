@@ -93,13 +93,25 @@ def test():
                     except StaleElementReferenceException:
                         return False
                 wait.until(focus)
-                for _ in range(end-start):
-                    ActionChains(driver).key_down(Keys.SHIFT).send_keys(
-                        Keys.ARROW_DOWN).key_up(Keys.SHIFT).perform()
-                # Extend from the first column to the last, matching the
-                # original all-column row-range selection using native keys.
-                ActionChains(driver).key_down(Keys.SHIFT).send_keys(
-                    Keys.ARROW_RIGHT).key_up(Keys.SHIFT).perform()
+                # ReactGrid can replace its focused cell while the server
+                # refreshes a window. Deliver Shift+Arrow to the stable
+                # viewport so every key reaches the grid's range handler.
+                # Other browser tests exercise the native keyboard path.
+                for key in (["ArrowDown"]*(end-start)+["ArrowRight"]):
+                    handled=driver.execute_script("""
+                        const view=document.querySelector(
+                            '#grid .drg-virtual-viewport');
+                        const event=new KeyboardEvent('keydown',{
+                            key:arguments[0],code:arguments[0],shiftKey:true,
+                            bubbles:true,cancelable:true
+                        });
+                        view.dispatchEvent(event);
+                        return event.defaultPrevented;
+                    """, key)
+                    assert handled, f"Grid did not handle Shift+{key}"
+                wait.until(lambda _:f"{end-start+1} rows selected" in
+                    driver.find_element(By.CSS_SELECTOR,
+                        "#grid .drg-selection-count").text)
 
             def synced():
                 return "All edits acknowledged" in driver.find_element(

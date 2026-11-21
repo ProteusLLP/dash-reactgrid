@@ -1,7 +1,7 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
 import {makeSession,reconcileSession} from "../useReliableGrid.js";
-import {outboxStorageKey} from "../durableEdits.js";
+import {outboxStorageKey, acknowledgeEdits, enqueueEdits} from "../durableEdits.js";
 
 const fakeBrowser = (invalid = false) => {
   const records=new Map();
@@ -99,4 +99,72 @@ test("implicit positional IDs admit durable sparse cell editing",()=>{
     assert.ok(session.outbox);
     assert.strictEqual(reconcileSession(session,conf),session);
   } finally {globalThis.window=old;}
+});
+
+test("dataset replacement isolates a durable queued edit from the new dataset",()=>{
+  const old=globalThis.window;
+  try {
+    const browser=fakeBrowser();
+    globalThis.window=browser;
+    const first=config({windowed:true,data:[],rowIds:[]});
+    const initial=makeSession(first);
+    const pending={...initial.outbox,queue:[{
+      datasetId:"dataset-a",streamId:initial.outbox.streamId,seq:1,attempt:0,
+      edits:[{kind:"cell",rowId:"r1",columnId:"name",value:"Pending A"}],
+    }],nextSeq:2};
+    browser.sessionStorage.setItem(initial.key,JSON.stringify(pending));
+    const recovered=makeSession(first);
+    assert.equal(recovered.outbox.queue.length,1);
+    const replacement={...first,datasetId:"dataset-b"};
+    const second=reconcileSession(recovered,replacement);
+    assert.notEqual(second.key,recovered.key);
+    assert.equal(second.outbox.datasetId,"dataset-b");
+    assert.deepEqual(second.outbox.queue,[]);
+    assert.equal(reconcileSession(second,first).outbox.queue.length,1);
+  }finally {globalThis.window=old;}
+});
+
+test("a replaced positional dataset does not inherit a previous dataset's outbox",()=>{
+  const old=globalThis.window;
+  try {
+    const browser=fakeBrowser();
+    globalThis.window=browser;
+    const first=config({rowIds:undefined,data:[[1],[2]],
+      columns:[{columnId:"value"}]});
+    const session=makeSession(first);
+    browser.sessionStorage.setItem(session.key,JSON.stringify({
+      ...session.outbox,nextSeq:2,queue:[{
+        datasetId:"dataset-a",streamId:session.outbox.streamId,seq:1,attempt:0,
+        edits:[{kind:"cell",rowId:0,columnId:"value",value:999}],
+      }],
+    }));
+    const recovered=makeSession(first);
+    assert.equal(recovered.table.data[0][0],999);
+    const next=reconcileSession(recovered,{
+      ...first,datasetId:"dataset-b",data:[[10],[20]],
+    });
+    assert.deepEqual(next.table.data,[[10],[20]]);
+    assert.equal(next.outbox.queue.length,0);
+  }finally {globalThis.window=old;}
+});
+
+test("stale acknowledgement cannot clear a newer dataset's queued edit",()=>{
+  const old=globalThis.window;
+  try {
+    globalThis.window=fakeBrowser();
+    const a=makeSession(config());
+    const b=makeSession(config({datasetId:"dataset-b"}));
+    const pending=enqueueEdits(b.outbox,[{
+      kind:"cell",rowId:"r1",columnId:"name",value:"New dataset edit",
+    }]);
+    const stale={
+      datasetId:"dataset-a",streamId:a.outbox.streamId,
+      seq:1,status:"ok",rowCount:1,revision:1,
+    };
+    assert.strictEqual(acknowledgeEdits(pending,stale),pending);
+    assert.equal(pending.queue.length,1);
+    assert.equal(acknowledgeEdits(pending,{
+      ...stale,datasetId:"dataset-b",streamId:pending.streamId,
+    }).queue.length,0);
+  }finally {globalThis.window=old;}
 });
